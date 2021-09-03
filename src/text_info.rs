@@ -9,18 +9,23 @@ use crate::swc::common::BytePos;
 use crate::swc::common::Span;
 
 #[derive(Clone)]
-pub struct ParsedSourceTextInfo {
+pub struct SourceTextInfo {
   start_pos: BytePos,
   text: Arc<String>,
   text_lines: Arc<TextLines>,
 }
 
-impl ParsedSourceTextInfo {
+impl SourceTextInfo {
   pub fn new(start_pos: BytePos, text: Arc<String>) -> Self {
+    // the BOM should ideally be stripped before being
+    // provided to this struct
+    debug_assert!(!text.starts_with(BOM_CHAR));
+
     Self::with_indent_width(start_pos, text, 2)
   }
 
-  pub fn from_string(text: String) -> Self {
+  pub fn from_string(mut text: String) -> Self {
+    strip_bom_mut(&mut text);
     Self::new(BytePos(0), Arc::new(text))
   }
 
@@ -88,11 +93,22 @@ impl ParsedSourceTextInfo {
       .line_and_column_display(self.get_relative_index_from_pos(pos))
   }
 
-  pub fn line_and_column_display_with_indent_width(&self, pos: BytePos, indent_width: usize) -> LineAndColumnDisplay {
+  pub fn line_and_column_display_with_indent_width(
+    &self,
+    pos: BytePos,
+    indent_width: usize,
+  ) -> LineAndColumnDisplay {
     self.assert_pos(pos);
-    self
-      .text_lines
-      .line_and_column_display_with_indent_width(self.get_relative_index_from_pos(pos), indent_width)
+    self.text_lines.line_and_column_display_with_indent_width(
+      self.get_relative_index_from_pos(pos),
+      indent_width,
+    )
+  }
+
+  pub fn line_text(&self, line_index: usize) -> &str {
+    let line_start = self.line_start(line_index).0 as usize;
+    let line_end = self.line_end(line_index).0 as usize;
+    &self.text_str()[line_start..line_end]
   }
 
   /// Gets the source text located within the specified span.
@@ -138,7 +154,7 @@ impl ParsedSourceTextInfo {
   }
 }
 
-impl std::fmt::Debug for ParsedSourceTextInfo {
+impl std::fmt::Debug for SourceTextInfo {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("ParsedSourceTextInfo")
       .field("start_pos", &self.start_pos)
@@ -147,34 +163,43 @@ impl std::fmt::Debug for ParsedSourceTextInfo {
   }
 }
 
+const BOM_CHAR: char = '\u{FEFF}';
+
+/// Strips the byte order mark if it exists from the provided text in place.
+fn strip_bom_mut(text: &mut String) {
+  if text.starts_with(BOM_CHAR) {
+    text.drain(..BOM_CHAR.len_utf8());
+  }
+}
+
 #[cfg(feature = "view")]
-impl crate::view::SourceFile for ParsedSourceTextInfo {
+impl crate::view::SourceFile for SourceTextInfo {
   fn text(&self) -> &str {
-    ParsedSourceTextInfo::text_str(self)
+    SourceTextInfo::text_str(self)
   }
 
   fn span(&self) -> Span {
-    ParsedSourceTextInfo::span(self)
+    SourceTextInfo::span(self)
   }
 
   fn lines_count(&self) -> usize {
-    ParsedSourceTextInfo::lines_count(self)
+    SourceTextInfo::lines_count(self)
   }
 
   fn line_index(&self, pos: BytePos) -> usize {
-    ParsedSourceTextInfo::line_index(self, pos)
+    SourceTextInfo::line_index(self, pos)
   }
 
   fn line_start(&self, line_index: usize) -> BytePos {
-    ParsedSourceTextInfo::line_start(self, line_index)
+    SourceTextInfo::line_start(self, line_index)
   }
 
   fn line_end(&self, line_index: usize) -> BytePos {
-    ParsedSourceTextInfo::line_end(self, line_index)
+    SourceTextInfo::line_end(self, line_index)
   }
 
   fn line_and_column_index(&self, pos: BytePos) -> LineAndColumnIndex {
-    ParsedSourceTextInfo::line_and_column_index(self, pos)
+    SourceTextInfo::line_and_column_index(self, pos)
   }
 }
 
@@ -189,8 +214,8 @@ mod test {
     let text = "12\n3\r\nβ\n5";
     for i in 0..10 {
       let source_file =
-        ParsedSourceTextInfo::new(BytePos(i), Arc::new(text.to_string()));
-      assert_pos_line_and_col(&source_file, 0 + i, 0, 0); // 1
+        SourceTextInfo::new(BytePos(i), Arc::new(text.to_string()));
+      assert_pos_line_and_col(&source_file, i, 0, 0); // 1
       assert_pos_line_and_col(&source_file, 1 + i, 0, 1); // 2
       assert_pos_line_and_col(&source_file, 2 + i, 0, 2); // \n
       assert_pos_line_and_col(&source_file, 3 + i, 1, 0); // 3
@@ -205,7 +230,7 @@ mod test {
   }
 
   fn assert_pos_line_and_col(
-    source_file: &ParsedSourceTextInfo,
+    source_file: &SourceTextInfo,
     pos: u32,
     line_index: usize,
     column_index: usize,
@@ -224,8 +249,7 @@ mod test {
     expected = "The provided position 0 was less than the start position 1."
   )]
   fn line_and_column_index_panic_less_than() {
-    let info =
-      ParsedSourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
+    let info = SourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
     info.line_and_column_index(BytePos(0));
   }
 
@@ -234,8 +258,7 @@ mod test {
     expected = "The provided position 6 was greater than the end position 5."
   )]
   fn line_and_column_index_panic_greater_than() {
-    let info =
-      ParsedSourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
+    let info = SourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
     info.line_and_column_index(BytePos(6));
   }
 
@@ -244,8 +267,8 @@ mod test {
     let text = "12\n3\r\n4\n5";
     for i in 0..10 {
       let source_file =
-        ParsedSourceTextInfo::new(BytePos(0 + i), Arc::new(text.to_string()));
-      assert_line_start(&source_file, 0, BytePos(0 + i));
+        SourceTextInfo::new(BytePos(i), Arc::new(text.to_string()));
+      assert_line_start(&source_file, 0, BytePos(i));
       assert_line_start(&source_file, 1, BytePos(3 + i));
       assert_line_start(&source_file, 2, BytePos(6 + i));
       assert_line_start(&source_file, 3, BytePos(8 + i));
@@ -253,7 +276,7 @@ mod test {
   }
 
   fn assert_line_start(
-    source_file: &ParsedSourceTextInfo,
+    source_file: &SourceTextInfo,
     line_index: usize,
     line_end: BytePos,
   ) {
@@ -265,8 +288,7 @@ mod test {
     expected = "The specified line index 1 was greater or equal to the number of lines of 1."
   )]
   fn line_start_equal_number_lines() {
-    let info =
-      ParsedSourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
+    let info = SourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
     info.line_start(1);
   }
 
@@ -275,7 +297,7 @@ mod test {
     let text = "12\n3\r\n4\n5";
     for i in 0..10 {
       let source_file =
-        ParsedSourceTextInfo::new(BytePos(0 + i), Arc::new(text.to_string()));
+        SourceTextInfo::new(BytePos(i), Arc::new(text.to_string()));
       assert_line_end(&source_file, 0, BytePos(2 + i));
       assert_line_end(&source_file, 1, BytePos(4 + i));
       assert_line_end(&source_file, 2, BytePos(7 + i));
@@ -284,7 +306,7 @@ mod test {
   }
 
   fn assert_line_end(
-    source_file: &ParsedSourceTextInfo,
+    source_file: &SourceTextInfo,
     line_index: usize,
     line_end: BytePos,
   ) {
@@ -296,8 +318,21 @@ mod test {
     expected = "The specified line index 1 was greater or equal to the number of lines of 1."
   )]
   fn line_end_equal_number_lines() {
-    let info =
-      ParsedSourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
+    let info = SourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
     info.line_end(1);
+  }
+
+  #[test]
+  fn strip_bom_mut_with_bom() {
+    let mut text = format!("{}text", BOM_CHAR);
+    strip_bom_mut(&mut text);
+    assert_eq!(text, "text");
+  }
+
+  #[test]
+  fn strip_bom_mut_without_bom() {
+    let mut text = "text".to_string();
+    strip_bom_mut(&mut text);
+    assert_eq!(text, "text");
   }
 }

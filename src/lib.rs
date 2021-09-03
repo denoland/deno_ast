@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 mod comments;
+mod lexing;
 mod parsed_source;
 mod parsing;
 mod text_info;
@@ -10,6 +11,7 @@ mod types;
 pub use dprint_swc_ecma_ast_view as view;
 
 pub use comments::*;
+pub use lexing::*;
 pub use parsed_source::*;
 pub use parsing::*;
 pub use text_info::*;

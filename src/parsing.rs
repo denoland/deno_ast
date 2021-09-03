@@ -16,13 +16,13 @@ use crate::swc::parser::TsConfig;
 use crate::Diagnostic;
 use crate::MediaType;
 use crate::ParsedSource;
-use crate::ParsedSourceTextInfo;
+use crate::SourceTextInfo;
 
-static TARGET: JscTarget = JscTarget::Es2021;
+pub const TARGET: JscTarget = JscTarget::Es2021;
 
 pub struct ParseParams {
   pub specifier: String,
-  pub source: ParsedSourceTextInfo,
+  pub source: SourceTextInfo,
   pub media_type: MediaType,
   pub capture_tokens: bool,
   pub maybe_syntax: Option<Syntax>,

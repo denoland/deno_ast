@@ -12,14 +12,14 @@ use crate::swc::common::comments::Comments;
 use crate::swc::common::Spanned;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::MediaType;
-use crate::ParsedSourceTextInfo;
+use crate::SourceTextInfo;
 
 /// A parsed source containing an AST, comments, and possibly tokens.
 #[derive(Clone)]
 pub struct ParsedSource {
   specifier: String,
   media_type: MediaType,
-  source: ParsedSourceTextInfo,
+  source: SourceTextInfo,
   comments: MultiThreadedComments,
   program: Arc<Program>,
   tokens: Option<Arc<Vec<TokenAndSpan>>>,
@@ -29,7 +29,7 @@ impl ParsedSource {
   pub fn new(
     specifier: String,
     media_type: MediaType,
-    source: ParsedSourceTextInfo,
+    source: SourceTextInfo,
     comments: MultiThreadedComments,
     program: Arc<Program>,
     tokens: Option<Arc<Vec<TokenAndSpan>>>,
@@ -55,7 +55,7 @@ impl ParsedSource {
   }
 
   /// Gets the text content of the module.
-  pub fn source(&self) -> &ParsedSourceTextInfo {
+  pub fn source(&self) -> &SourceTextInfo {
     &self.source
   }
 

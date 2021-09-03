@@ -19,11 +19,17 @@ impl fmt::Display for Diagnostic {
     write!(
       f,
       "{} at {}:{}:{}",
-      self.message, self.specifier, self.display_position.line_number, self.display_position.column_number
+      self.message,
+      self.specifier,
+      self.display_position.line_number,
+      self.display_position.column_number
     )
   }
 }
 
+// Warning! The values in this enum are duplicated from the TypeScript compiler and
+// should match what is used in Deno CLI. Update carefully!
+#[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MediaType {
   JavaScript = 0,
