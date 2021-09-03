@@ -88,6 +88,13 @@ impl ParsedSourceTextInfo {
       .line_and_column_display(self.get_relative_index_from_pos(pos))
   }
 
+  pub fn line_and_column_display_with_indent_width(&self, pos: BytePos, indent_width: usize) -> LineAndColumnDisplay {
+    self.assert_pos(pos);
+    self
+      .text_lines
+      .line_and_column_display_with_indent_width(self.get_relative_index_from_pos(pos), indent_width)
+  }
+
   /// Gets the source text located within the specified span.
   pub fn get_span_text(&self, span: &Span) -> &str {
     let offset_lo = (span.lo() - self.start_pos).0 as usize;
