@@ -17,8 +17,10 @@ pub struct SourceTextInfo {
 
 impl SourceTextInfo {
   pub fn new(start_pos: BytePos, text: Arc<String>) -> Self {
-    // the BOM should ideally be stripped before being
-    // provided to this struct
+    // swc and text_lines should properly handle the BOM
+    // existing, but ideally it should be stripped before it
+    // gets passed here because it's a text encoding concern
+    // that should be stripped when the file is read.
     debug_assert!(!text.starts_with(BOM_CHAR));
 
     Self::with_indent_width(start_pos, text, 2)
