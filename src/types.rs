@@ -26,20 +26,3 @@ impl fmt::Display for Diagnostic {
     )
   }
 }
-
-// Warning! The values in this enum are duplicated from the TypeScript compiler and
-// should match what is used in Deno CLI. Update carefully!
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MediaType {
-  JavaScript = 0,
-  Jsx = 1,
-  TypeScript = 2,
-  Dts = 3,
-  Tsx = 4,
-  Json = 5,
-  Wasm = 6,
-  TsBuildInfo = 7,
-  SourceMap = 8,
-  Unknown = 9,
-}

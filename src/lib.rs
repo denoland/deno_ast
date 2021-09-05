@@ -2,6 +2,7 @@
 
 mod comments;
 mod lexing;
+mod media_type;
 mod parsed_source;
 mod parsing;
 mod text_info;
@@ -12,6 +13,7 @@ pub use dprint_swc_ecma_ast_view as view;
 
 pub use comments::*;
 pub use lexing::*;
+pub use media_type::*;
 pub use parsed_source::*;
 pub use parsing::*;
 pub use text_info::*;
