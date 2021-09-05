@@ -1,3 +1,5 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 use std::rc::Rc;
 
 use crate::get_syntax;
