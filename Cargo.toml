@@ -1,0 +1,40 @@
+[package]
+name = "deno_ast"
+version = "0.1.6"
+authors = ["the Deno authors"]
+documentation = "https://docs.rs/deno_ast"
+edition = "2018"
+homepage = "https://deno.land/"
+license = "MIT"
+repository = "https://github.com/denoland/deno_ast"
+description = "AST related functionality for deno"
+
+[features]
+bundler = ["swc_bundler"]
+codegen = ["swc_ecmascript/codegen"]
+dep_graph = ["swc_ecmascript/dep_graph"]
+minifier = ["swc_ecmascript/minifier"]
+module_specifier = ["data-url", "url"]
+preset_env = ["swc_ecmascript/preset_env"]
+proposal = ["swc_ecmascript/proposal"]
+react = ["swc_ecmascript/react"]
+sourcemap = ["swc_common/sourcemap"]
+transforms = ["swc_ecmascript/transforms"]
+typescript = ["swc_ecmascript/typescript"]
+view = ["dprint-swc-ecma-ast-view"]
+visit = ["swc_ecmascript/visit"]
+utils = ["swc_ecmascript/utils"]
+
+[dependencies]
+data-url = { version = "0.1.0", optional = true }
+dprint-swc-ecma-ast-view = { version = "0.35.0", optional = true }
+serde = { version = "1.0.126", features = ["derive"] }
+swc_atoms = "0.2.7"
+swc_bundler = { version = "0.58.0", optional = true }
+swc_common = "0.12.0"
+swc_ecmascript = { version = "0.63.0", features = ["parser"] }
+text_lines = { version = "0.3.0", features = ["serialization"] }
+url = { version = "2.2.2", features = ["serde"], optional = true }
+
+[dev-dependencies]
+serde_json = { version = "1.0.67", features = ["preserve_order"] }
