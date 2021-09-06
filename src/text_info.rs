@@ -17,11 +17,22 @@ pub struct SourceTextInfo {
 
 impl SourceTextInfo {
   pub fn new(start_pos: BytePos, text: Arc<String>) -> Self {
-    // swc and text_lines should properly handle the BOM
-    // existing, but ideally it should be stripped before it
-    // gets passed here because it's a text encoding concern
-    // that should be stripped when the file is read.
-    debug_assert!(!text.starts_with(BOM_CHAR));
+    // The BOM should be stripped before it gets passed here
+    // because it's a text encoding concern that should be
+    // stripped when the file is read.
+    // todo(dsherret): re-enable once stripped in deno_graph
+    // debug_assert!(!text.starts_with(BOM_CHAR));
+
+    let text = if text.starts_with(BOM_CHAR) {
+      let mut text = match Arc::try_unwrap(text) {
+        Ok(text) => text,
+        Err(text) => text.to_string(),
+      };
+      strip_bom_mut(&mut text);
+      Arc::new(text)
+    } else {
+      text
+    };
 
     Self::with_indent_width(start_pos, text, 2)
   }
