@@ -1,5 +1,31 @@
 # deno_ast
 
-AST related functionality for Deno.
+[![](https://img.shields.io/crates/v/deno_ast.svg)](https://crates.io/crates/deno_ast) [![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
 
-Documentation will follow in the future...
+Source text parsing, lexing, and AST related functionality for [Deno](https://deno.land).
+
+```rust
+use deno::ast::MediaType;
+use deno::ast::parse_module;
+use deno::ast::ParseParams;
+use deno::ast::SourceTextInfo;
+
+let source_text = Arc::new("class MyClass {}");
+let source_text_info = SourceTextInfo::new(source_text);
+let parsed_source = parse_module(ParseParams {
+  specifier: "file:///my_file.ts".to_string(),
+  media_type: MediaType::TypeScript,
+  source: source_text_info,
+  capture_tokens: true,
+  maybe_syntax: None,
+}).expect("should parse");
+
+// returns the comments
+parsed_source.comments();
+// returns the tokens if captured
+parsed_source.tokens();
+// returns the module (AST)
+parsed_source.module();
+// returns the `SourceTextInfo`
+parsed_source.source();
+```

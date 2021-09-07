@@ -52,7 +52,7 @@ pub fn parse_program(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
 /// ```
 /// deno_ast::parse_program_with_post_process(
 ///  deno_ast::ParseParams {
-///    specifier: "file:///my-file.ts".to_string(),
+///    specifier: "file:///my_file.ts".to_string(),
 ///    media_type: deno_ast::MediaType::TypeScript,
 ///    source: deno_ast::SourceTextInfo::from_string("".to_string()),
 ///    capture_tokens: true,

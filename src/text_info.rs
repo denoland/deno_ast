@@ -8,10 +8,13 @@ use super::types::LineAndColumnIndex;
 use crate::swc::common::BytePos;
 use crate::swc::common::Span;
 
-/// Stores the source text along with other data such
-/// as where all the lines occur in the text.
+/// Stores the source text along with other data such as where all the lines
+/// occur in the text.
+///
+/// Note: This struct is cheap to clone.
 #[derive(Clone)]
 pub struct SourceTextInfo {
+  // keep this struct cheap to clone
   start_pos: BytePos,
   text: Arc<String>,
   text_lines: Arc<TextLines>,

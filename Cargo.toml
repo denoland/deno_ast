@@ -7,7 +7,7 @@ edition = "2018"
 homepage = "https://deno.land/"
 license = "MIT"
 repository = "https://github.com/denoland/deno_ast"
-description = "AST related functionality for deno"
+description = "Source text parsing, lexing, and AST related functionality for Deno"
 
 [features]
 bundler = ["swc_bundler"]

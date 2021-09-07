@@ -15,8 +15,11 @@ use crate::MediaType;
 use crate::SourceTextInfo;
 
 /// A parsed source containing an AST, comments, and possibly tokens.
+///
+/// Note: This struct is cheap to clone.
 #[derive(Clone)]
 pub struct ParsedSource {
+  // keep this struct cheap to clone
   specifier: String,
   media_type: MediaType,
   source: SourceTextInfo,
