@@ -325,7 +325,8 @@ mod test {
     expected = "The provided position 0 was less than the start position 1."
   )]
   fn line_and_column_index_panic_less_than() {
-    let info = SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_and_column_index(BytePos(0));
   }
 
@@ -334,7 +335,8 @@ mod test {
     expected = "The provided position 6 was greater than the end position 5."
   )]
   fn line_and_column_index_panic_greater_than() {
-    let info = SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_and_column_index(BytePos(6));
   }
 
@@ -364,7 +366,8 @@ mod test {
     expected = "The specified line index 1 was greater or equal to the number of lines of 1."
   )]
   fn line_start_equal_number_lines() {
-    let info = SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_start(1);
   }
 
@@ -394,7 +397,8 @@ mod test {
     expected = "The specified line index 1 was greater or equal to the number of lines of 1."
   )]
   fn line_end_equal_number_lines() {
-    let info = SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_end(1);
   }
 
