@@ -19,12 +19,16 @@ struct MultiThreadedCommentsInner {
 /// to support being used in multi-threaded code. This implementation
 /// is immutable and should you need mutability you may create a copy
 /// by converting it to an swc `SingleThreadedComments`.
+///
+/// When using this, you will want to use the
+/// `deno_ast::swc::common::comments::Comments` trait.
 #[derive(Clone, Debug)]
 pub struct MultiThreadedComments {
   inner: Arc<MultiThreadedCommentsInner>,
 }
 
 impl MultiThreadedComments {
+  /// Creates a new `MultiThreadedComments` from an swc `SingleThreadedComments`.
   pub fn from_single_threaded(comments: SingleThreadedComments) -> Self {
     let (leading, trailing) = comments.take_all();
     let leading = Rc::try_unwrap(leading).unwrap().into_inner();
@@ -34,6 +38,10 @@ impl MultiThreadedComments {
     }
   }
 
+  /// Gets a clone of the underlying data as `SingleThreadedComments`.
+  ///
+  /// This may be useful for getting a mutable data structure for use
+  /// when transpiling.
   pub fn as_single_threaded(&self) -> SingleThreadedComments {
     let inner = &self.inner;
     let leading = Rc::new(RefCell::new(inner.leading.to_owned()));
@@ -41,10 +49,12 @@ impl MultiThreadedComments {
     SingleThreadedComments::from_leading_and_trailing(leading, trailing)
   }
 
+  /// Gets a reference to the leading comment map.
   pub fn leading_map(&self) -> &SingleThreadedCommentsMapInner {
     &self.inner.leading
   }
 
+  /// Gets a reference to the trailing comment map.
   pub fn trailing_map(&self) -> &SingleThreadedCommentsMapInner {
     &self.inner.trailing
   }

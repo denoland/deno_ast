@@ -123,7 +123,13 @@ impl fmt::Debug for ParsedSource {
 
 #[cfg(feature = "view")]
 impl ParsedSource {
-  /// Gets a view of the module that allows for
+  /// Gets a dprint-swc-ecma-ast-view of the module.
+  ///
+  /// This provides a closure to examine an "ast view" of the swc AST
+  /// which has more helper methods and allows for going up the ancestors
+  /// of a node.
+  ///
+  /// Read more: https://github.com/dprint/dprint-swc-ecma-ast-view
   pub fn with_view<'a, T>(
     &self,
     with_view: impl FnOnce(crate::view::Program<'a>) -> T,
@@ -134,7 +140,7 @@ impl ParsedSource {
         Program::Script(script) => crate::view::ProgramRef::Script(script),
       },
       source_file: Some(self.source()),
-      tokens: Some(self.tokens()),
+      tokens: self.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
       comments: Some(crate::view::Comments {
         leading: self.comments().leading_map(),
         trailing: self.comments().trailing_map(),

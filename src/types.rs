@@ -2,13 +2,21 @@
 
 use std::fmt;
 
-pub type LineAndColumnDisplay = text_lines::LineAndColumnDisplay;
+/// A 0-indexed line and column type.
 pub type LineAndColumnIndex = text_lines::LineAndColumnIndex;
 
+/// A 1-indexed line and column type which should be used for
+/// display purposes only (ex. in diagnostics).
+pub type LineAndColumnDisplay = text_lines::LineAndColumnDisplay;
+
+/// Parsing diagnostic.
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
+  /// Specifier of the source the diagnostic occurred in.
   pub specifier: String,
+  /// 1-indexed display position the diagnostic occurred at.
   pub display_position: LineAndColumnDisplay,
+  /// Message text of the diagnostic.
   pub message: String,
 }
 
