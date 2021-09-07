@@ -18,20 +18,52 @@ use crate::MediaType;
 use crate::ParsedSource;
 use crate::SourceTextInfo;
 
+/// Ecmascript version used for lexing and parsing.
 pub const TARGET: JscTarget = JscTarget::Es2021;
 
+/// Parameters for parsing.
 pub struct ParseParams {
+  /// Specifier of the source text.
   pub specifier: String,
+  /// Source text stored in a `SourceTextInfo`.
   pub source: SourceTextInfo,
+  /// Media type of the source text.
   pub media_type: MediaType,
+  /// Whether to capture tokens or not.
   pub capture_tokens: bool,
+  /// Syntax to use when parsing.
+  ///
+  /// `deno_ast` will get a default `Syntax` to use based on the
+  /// media type, but you may use this to provide a custom `Syntax`.
   pub maybe_syntax: Option<Syntax>,
 }
 
+/// Parses the provided information attempting to figure out if the provided
+/// text is for a script or a module.
 pub fn parse_program(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
   parse(params, ParseMode::Program, |p| p)
 }
 
+/// Parses the provided information as a program with the option of providing some
+/// post-processing to the result.
+///
+/// # Example
+///
+/// ```
+/// deno_ast::parse_program_with_post_process(
+///  deno_ast::ParseParams {
+///    specifier: "file:///my_file.ts".to_string(),
+///    media_type: deno_ast::MediaType::TypeScript,
+///    source: deno_ast::SourceTextInfo::from_string("".to_string()),
+///    capture_tokens: true,
+///    maybe_syntax: None,
+///  },
+///  |program| {
+///    // do something with the program here before it gets stored
+///    program
+///  },
+/// );
+/// ```
 pub fn parse_program_with_post_process(
   params: ParseParams,
   post_process: impl FnOnce(Program) -> Program,
@@ -39,10 +71,12 @@ pub fn parse_program_with_post_process(
   parse(params, ParseMode::Program, post_process)
 }
 
+/// Parses the provided information to a module.
 pub fn parse_module(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
   parse(params, ParseMode::Module, |p| p)
 }
 
+/// Parses the provided information to a script.
 pub fn parse_script(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
   parse(params, ParseMode::Script, |p| p)
 }
@@ -121,6 +155,7 @@ fn parse_string_input(
   }
 }
 
+/// Gets the default `Syntax` used by `deno_ast` for the provided media type.
 pub fn get_syntax(media_type: MediaType) -> Syntax {
   match media_type {
     MediaType::JavaScript => Syntax::Es(get_es_config(false)),
@@ -132,6 +167,7 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
   }
 }
 
+/// Gets the default `EsConfig` used by `deno_ast` for the provided options.
 pub fn get_es_config(jsx: bool) -> EsConfig {
   EsConfig {
     class_private_methods: true,
@@ -150,6 +186,7 @@ pub fn get_es_config(jsx: bool) -> EsConfig {
   }
 }
 
+/// Gets the default `TsConfig` used by `deno_ast` for the provided options.
 pub fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
   TsConfig {
     decorators: true,

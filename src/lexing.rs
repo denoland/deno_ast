@@ -20,10 +20,14 @@ pub enum TokenOrComment {
 }
 
 pub struct LexedItem {
+  /// Range of the token or comment.
   pub span: Span,
+  /// Token or comment.
   pub inner: TokenOrComment,
 }
 
+/// Given the source text and media type, tokenizes the provided
+/// text to a collecion of tokens and comments.
 pub fn lex(source: &str, media_type: MediaType) -> Vec<LexedItem> {
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(

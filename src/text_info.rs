@@ -8,15 +8,31 @@ use super::types::LineAndColumnIndex;
 use crate::swc::common::BytePos;
 use crate::swc::common::Span;
 
+/// Stores the source text along with other data such as where all the lines
+/// occur in the text.
+///
+/// Note: This struct is cheap to clone.
 #[derive(Clone)]
 pub struct SourceTextInfo {
+  // keep this struct cheap to clone
   start_pos: BytePos,
   text: Arc<String>,
   text_lines: Arc<TextLines>,
 }
 
 impl SourceTextInfo {
-  pub fn new(start_pos: BytePos, text: Arc<String>) -> Self {
+  /// Creates a new `SourceTextInfo` from the provided source text.
+  pub fn new(text: Arc<String>) -> Self {
+    Self::new_with_pos(BytePos(0), text)
+  }
+
+  /// Creates a new `SourceTextInfo` from the provided byte position
+  /// and source text.
+  ///
+  /// Generally, most files will have a start position of `BytePos(0)`
+  /// and when in doubt provide that, but SWC will not necessarily
+  /// start files with `BytePos(0)` when bundling.
+  pub fn new_with_pos(start_pos: BytePos, text: Arc<String>) -> Self {
     // The BOM should be stripped before it gets passed here
     // because it's a text encoding concern that should be
     // stripped when the file is read.
@@ -34,15 +50,18 @@ impl SourceTextInfo {
       text
     };
 
-    Self::with_indent_width(start_pos, text, 2)
+    Self::new_with_indent_width(start_pos, text, 2)
   }
 
-  pub fn from_string(mut text: String) -> Self {
-    strip_bom_mut(&mut text);
-    Self::new(BytePos(0), Arc::new(text))
-  }
-
-  pub fn with_indent_width(
+  /// Creates a new `SourceTextInfo` from the provided start position,
+  /// source text, and indentation width.
+  ///
+  /// The indentation width determines the number of columns to use
+  /// when going over a tab character. For example, an indent width
+  /// of 2 will mean each tab character will represent 2 columns.
+  /// The default indentation width used in the other methods is `2`
+  /// to match the default indentation used by `deno fmt`.
+  pub fn new_with_indent_width(
     start_pos: BytePos,
     text: Arc<String>,
     indent_width: usize,
@@ -54,14 +73,26 @@ impl SourceTextInfo {
     }
   }
 
+  /// Creates a new `SourceTextInfo` from the provided source text.
+  ///
+  /// Generally, prefer using `SourceTextInfo::new` to provide a
+  /// string already in an `std::sync::Arc`.
+  pub fn from_string(mut text: String) -> Self {
+    strip_bom_mut(&mut text);
+    Self::new(Arc::new(text))
+  }
+
+  /// Gets the source text.
   pub fn text(&self) -> Arc<String> {
     self.text.clone()
   }
 
+  /// Gets a reference to the source text.
   pub fn text_str(&self) -> &str {
     self.text.as_str()
   }
 
+  /// Gets the range—start and end byte position—of the source text.
   pub fn span(&self) -> Span {
     let start = self.start_pos;
     Span::new(
@@ -71,10 +102,15 @@ impl SourceTextInfo {
     )
   }
 
+  /// Gets the number of lines in the source text.
   pub fn lines_count(&self) -> usize {
     self.text_lines.lines_count()
   }
 
+  /// Gets the 0-indexed line index at the provided byte position.
+  ///
+  /// Note that this will panic when providing a byte position outside
+  /// the range of the source text.
   pub fn line_index(&self, pos: BytePos) -> usize {
     self.assert_pos(pos);
     self
@@ -82,16 +118,28 @@ impl SourceTextInfo {
       .line_index(self.get_relative_index_from_pos(pos))
   }
 
+  /// Gets the line start byte position of the provided 0-indexed line index.
+  ///
+  /// Note that this will panic if providing a line index outside the
+  /// bounds of the number of lines.
   pub fn line_start(&self, line_index: usize) -> BytePos {
     self.assert_line_index(line_index);
     self.get_pos_from_relative_index(self.text_lines.line_start(line_index))
   }
 
+  /// Gets the line end byte position of the provided 0-indexed line index.
+  ///
+  /// Note that this will panic if providing a line index outside the
+  /// bounds of the number of lines.
   pub fn line_end(&self, line_index: usize) -> BytePos {
     self.assert_line_index(line_index);
     self.get_pos_from_relative_index(self.text_lines.line_end(line_index))
   }
 
+  /// Gets the 0-indexed line and column index of the provided byte position.
+  ///
+  /// Note that this will panic when providing a byte position outside
+  /// the range of the source text.
   pub fn line_and_column_index(&self, pos: BytePos) -> LineAndColumnIndex {
     self.assert_pos(pos);
     self
@@ -99,6 +147,11 @@ impl SourceTextInfo {
       .line_and_column_index(self.get_relative_index_from_pos(pos))
   }
 
+  /// Gets the 1-indexed line and column index of the provided byte position
+  /// taking into account the default indentation width.
+  ///
+  /// Note that this will panic when providing a byte position outside
+  /// the range of the source text.
   pub fn line_and_column_display(&self, pos: BytePos) -> LineAndColumnDisplay {
     self.assert_pos(pos);
     self
@@ -106,6 +159,11 @@ impl SourceTextInfo {
       .line_and_column_display(self.get_relative_index_from_pos(pos))
   }
 
+  /// Gets the 1-indexed line and column index of the provided byte position
+  /// with a custom indentation width.
+  ///
+  /// Note that this will panic when providing a byte position outside
+  /// the range of the source text.
   pub fn line_and_column_display_with_indent_width(
     &self,
     pos: BytePos,
@@ -118,6 +176,11 @@ impl SourceTextInfo {
     )
   }
 
+  /// Gets a reference to the text slice of the line at the provided
+  /// 0-based index.
+  ///
+  /// Note that this will panic if providing a line index outside the
+  /// bounds of the number of lines.
   pub fn line_text(&self, line_index: usize) -> &str {
     let line_start = self.line_start(line_index).0 as usize;
     let line_end = self.line_end(line_index).0 as usize;
@@ -227,7 +290,7 @@ mod test {
     let text = "12\n3\r\nβ\n5";
     for i in 0..10 {
       let source_file =
-        SourceTextInfo::new(BytePos(i), Arc::new(text.to_string()));
+        SourceTextInfo::new_with_pos(BytePos(i), Arc::new(text.to_string()));
       assert_pos_line_and_col(&source_file, i, 0, 0); // 1
       assert_pos_line_and_col(&source_file, 1 + i, 0, 1); // 2
       assert_pos_line_and_col(&source_file, 2 + i, 0, 2); // \n
@@ -262,7 +325,8 @@ mod test {
     expected = "The provided position 0 was less than the start position 1."
   )]
   fn line_and_column_index_panic_less_than() {
-    let info = SourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_and_column_index(BytePos(0));
   }
 
@@ -271,7 +335,8 @@ mod test {
     expected = "The provided position 6 was greater than the end position 5."
   )]
   fn line_and_column_index_panic_greater_than() {
-    let info = SourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_and_column_index(BytePos(6));
   }
 
@@ -280,7 +345,7 @@ mod test {
     let text = "12\n3\r\n4\n5";
     for i in 0..10 {
       let source_file =
-        SourceTextInfo::new(BytePos(i), Arc::new(text.to_string()));
+        SourceTextInfo::new_with_pos(BytePos(i), Arc::new(text.to_string()));
       assert_line_start(&source_file, 0, BytePos(i));
       assert_line_start(&source_file, 1, BytePos(3 + i));
       assert_line_start(&source_file, 2, BytePos(6 + i));
@@ -301,7 +366,8 @@ mod test {
     expected = "The specified line index 1 was greater or equal to the number of lines of 1."
   )]
   fn line_start_equal_number_lines() {
-    let info = SourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_start(1);
   }
 
@@ -310,7 +376,7 @@ mod test {
     let text = "12\n3\r\n4\n5";
     for i in 0..10 {
       let source_file =
-        SourceTextInfo::new(BytePos(i), Arc::new(text.to_string()));
+        SourceTextInfo::new_with_pos(BytePos(i), Arc::new(text.to_string()));
       assert_line_end(&source_file, 0, BytePos(2 + i));
       assert_line_end(&source_file, 1, BytePos(4 + i));
       assert_line_end(&source_file, 2, BytePos(7 + i));
@@ -331,7 +397,8 @@ mod test {
     expected = "The specified line index 1 was greater or equal to the number of lines of 1."
   )]
   fn line_end_equal_number_lines() {
-    let info = SourceTextInfo::new(BytePos(1), Arc::new("test".to_string()));
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_end(1);
   }
 
