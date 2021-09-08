@@ -10,7 +10,7 @@ pub type LineAndColumnIndex = text_lines::LineAndColumnIndex;
 pub type LineAndColumnDisplay = text_lines::LineAndColumnDisplay;
 
 /// Parsing diagnostic.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
   /// Specifier of the source the diagnostic occurred in.
   pub specifier: String,

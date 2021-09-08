@@ -131,3 +131,65 @@ impl Comments for MultiThreadedComments {
 fn panic_readonly() -> ! {
   panic!("MultiThreadedComments do not support write operations")
 }
+
+#[cfg(test)]
+mod test {
+  use swc_common::comments::Comments;
+
+  use crate::parse_module;
+  use crate::swc::common::comments::SingleThreadedComments;
+  use crate::swc::common::BytePos;
+  use crate::MediaType;
+  use crate::MultiThreadedComments;
+  use crate::ParseParams;
+  use crate::SourceTextInfo;
+
+  #[test]
+  fn general_use() {
+    let comments = get_single_threaded_comments("// 1\nt;/* 2 */");
+    let comments = MultiThreadedComments::from_single_threaded(comments);
+
+    // maps
+    assert_eq!(comments.leading_map().len(), 1);
+    assert_eq!(
+      comments.leading_map().get(&BytePos(5)).unwrap()[0].text,
+      " 1"
+    );
+    assert_eq!(comments.trailing_map().len(), 1);
+    assert_eq!(
+      comments.trailing_map().get(&BytePos(7)).unwrap()[0].text,
+      " 2 "
+    );
+
+    // comment vector
+    let comments_vec = comments.get_vec();
+    assert_eq!(comments_vec.len(), 2);
+    assert_eq!(comments_vec[0].text, " 1");
+    assert_eq!(comments_vec[1].text, " 2 ");
+
+    // comments trait
+    assert!(comments.has_leading(BytePos(5)));
+    assert!(!comments.has_leading(BytePos(7)));
+
+    assert_eq!(comments.get_leading(BytePos(5)).unwrap()[0].text, " 1");
+    assert!(comments.get_leading(BytePos(7)).is_none());
+
+    assert!(!comments.has_trailing(BytePos(5)));
+    assert!(comments.has_trailing(BytePos(7)));
+
+    assert!(comments.get_trailing(BytePos(5)).is_none());
+    assert_eq!(comments.get_trailing(BytePos(7)).unwrap()[0].text, " 2 ");
+  }
+
+  fn get_single_threaded_comments(text: &str) -> SingleThreadedComments {
+    let module = parse_module(ParseParams {
+      specifier: "file.ts".to_string(),
+      source: SourceTextInfo::from_string(text.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+    })
+    .expect("expects a module");
+    module.comments().as_single_threaded()
+  }
+}
