@@ -14,11 +14,13 @@ use crate::swc::parser::token::Token;
 use crate::MediaType;
 use crate::TARGET;
 
+#[derive(Debug)]
 pub enum TokenOrComment {
   Token(Token),
   Comment { kind: CommentKind, text: String },
 }
 
+#[derive(Debug)]
 pub struct LexedItem {
   /// Range of the token or comment.
   pub span: Span,
@@ -27,7 +29,7 @@ pub struct LexedItem {
 }
 
 /// Given the source text and media type, tokenizes the provided
-/// text to a collecion of tokens and comments.
+/// text to a collection of tokens and comments.
 pub fn lex(source: &str, media_type: MediaType) -> Vec<LexedItem> {
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(
@@ -66,4 +68,35 @@ fn flatten_comments(
   let mut comments = leading;
   comments.extend(trailing);
   comments.into_iter().flat_map(|el| el.1)
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+  use crate::text_encoding::BOM_CHAR;
+  use crate::MediaType;
+
+  #[test]
+  fn tokenize_with_comments() {
+    let items = lex(
+      "const /* 1 */ t: number /* 2 */ = 5; // 3",
+      MediaType::TypeScript,
+    );
+    assert_eq!(items.len(), 10);
+
+    // only bother testing a few
+    assert!(matches!(items[1].inner, TokenOrComment::Comment { .. }));
+    assert!(matches!(
+      items[3].inner,
+      TokenOrComment::Token(Token::Colon)
+    ));
+    assert!(matches!(items[9].inner, TokenOrComment::Comment { .. }));
+  }
+
+  #[test]
+  fn handle_bom() {
+    let items = lex(&format!("{}1", BOM_CHAR), MediaType::JavaScript);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].span.lo, BytePos(BOM_CHAR.len_utf8() as u32));
+  }
 }

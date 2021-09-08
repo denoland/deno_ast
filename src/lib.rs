@@ -5,6 +5,7 @@ mod lexing;
 mod media_type;
 mod parsed_source;
 mod parsing;
+mod text_encoding;
 mod text_info;
 mod types;
 

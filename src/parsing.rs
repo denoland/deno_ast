@@ -182,7 +182,11 @@ pub fn get_es_config(jsx: bool) -> EsConfig {
     num_sep: true,
     optional_chaining: true,
     top_level_await: true,
-    ..EsConfig::default()
+    decorators: false,
+    decorators_before_export: false,
+    fn_bind: false,
+    import_assertions: true,
+    static_blocks: true,
   }
 }
 
@@ -193,6 +197,93 @@ pub fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
     dts,
     dynamic_import: true,
     tsx,
-    ..TsConfig::default()
+    import_assertions: true,
+    no_early_errors: true,
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use crate::LineAndColumnDisplay;
+
+  use super::*;
+
+  #[test]
+  fn should_parse_program() {
+    let program = parse_program(ParseParams {
+      specifier: "my_file.js".to_string(),
+      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      media_type: MediaType::JavaScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+    })
+    .expect("should parse");
+    assert_eq!(program.specifier(), "my_file.js");
+    assert_eq!(program.source().text_str(), "// 1\n1 + 1\n// 2");
+    assert_eq!(program.media_type(), MediaType::JavaScript);
+    assert!(matches!(
+      program.script().body[0],
+      crate::swc::ast::Stmt::Expr(..)
+    ));
+    assert_eq!(program.get_leading_comments().len(), 1);
+    assert_eq!(program.get_leading_comments()[0].text, " 1");
+    assert_eq!(program.tokens().len(), 3);
+    assert_eq!(program.comments().get_vec().len(), 2);
+  }
+
+  #[test]
+  fn should_parse_module() {
+    let program = parse_module(ParseParams {
+      specifier: "my_file.js".to_string(),
+      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      media_type: MediaType::JavaScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+    })
+    .expect("should parse");
+    assert!(matches!(
+      program.module().body[0],
+      crate::swc::ast::ModuleItem::Stmt(..)
+    ));
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "Tokens not found because they were not captured during parsing."
+  )]
+  fn should_panic_when_getting_tokens_and_tokens_not_captured() {
+    let program = parse_module(ParseParams {
+      specifier: "my_file.js".to_string(),
+      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      media_type: MediaType::JavaScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+    })
+    .expect("should parse");
+    program.tokens();
+  }
+
+  #[test]
+  fn should_handle_parse_error() {
+    let diagnostic = parse_module(ParseParams {
+      specifier: "my_file.js".to_string(),
+      source: SourceTextInfo::from_string("t u".to_string()),
+      media_type: MediaType::JavaScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+    })
+    .err()
+    .unwrap();
+    assert_eq!(
+      diagnostic,
+      Diagnostic {
+        specifier: "my_file.js".to_string(),
+        display_position: LineAndColumnDisplay {
+          line_number: 1,
+          column_number: 3,
+        },
+        message: "Expected ';', '}' or <eof>".to_string(),
+      }
+    )
   }
 }

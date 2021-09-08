@@ -153,3 +153,34 @@ impl ParsedSource {
     crate::view::with_ast_view(program_info, with_view)
   }
 }
+
+#[cfg(test)]
+mod test {
+  #[cfg(feature = "view")]
+  #[test]
+  fn should_parse_program() {
+    use crate::parse_program;
+    use crate::view::NodeTrait;
+    use crate::ParseParams;
+
+    use super::*;
+
+    let program = parse_program(ParseParams {
+      specifier: "my_file.js".to_string(),
+      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      media_type: MediaType::JavaScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+    })
+    .expect("should parse");
+
+    let result = program.with_view(|program| {
+      assert_eq!(program.children().len(), 1);
+      assert_eq!(program.children()[0].text(), "1 + 1");
+
+      2
+    });
+
+    assert_eq!(result, 2);
+  }
+}

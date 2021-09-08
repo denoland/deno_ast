@@ -7,6 +7,8 @@ use super::types::LineAndColumnDisplay;
 use super::types::LineAndColumnIndex;
 use crate::swc::common::BytePos;
 use crate::swc::common::Span;
+use crate::text_encoding::strip_bom_mut;
+use crate::text_encoding::BOM_CHAR;
 
 /// Stores the source text along with other data such as where all the lines
 /// occur in the text.
@@ -239,15 +241,6 @@ impl std::fmt::Debug for SourceTextInfo {
   }
 }
 
-const BOM_CHAR: char = '\u{FEFF}';
-
-/// Strips the byte order mark if it exists from the provided text in place.
-fn strip_bom_mut(text: &mut String) {
-  if text.starts_with(BOM_CHAR) {
-    text.drain(..BOM_CHAR.len_utf8());
-  }
-}
-
 #[cfg(feature = "view")]
 impl crate::view::SourceFile for SourceTextInfo {
   fn text(&self) -> &str {
@@ -400,19 +393,5 @@ mod test {
     let info =
       SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_end(1);
-  }
-
-  #[test]
-  fn strip_bom_mut_with_bom() {
-    let mut text = format!("{}text", BOM_CHAR);
-    strip_bom_mut(&mut text);
-    assert_eq!(text, "text");
-  }
-
-  #[test]
-  fn strip_bom_mut_without_bom() {
-    let mut text = "text".to_string();
-    strip_bom_mut(&mut text);
-    assert_eq!(text, "text");
   }
 }
