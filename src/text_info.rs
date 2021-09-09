@@ -190,7 +190,7 @@ impl SourceTextInfo {
   }
 
   /// Gets the source text located within the specified span.
-  pub fn get_span_text(&self, span: &Span) -> &str {
+  pub fn span_text(&self, span: &Span) -> &str {
     let offset_lo = (span.lo() - self.start_pos).0 as usize;
     let offset_hi = (span.hi - self.start_pos).0 as usize;
     &self.text_str()[offset_lo..offset_hi]
@@ -393,5 +393,15 @@ mod test {
     let info =
       SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_end(1);
+  }
+
+  #[test]
+  fn span_text() {
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("abcd".to_string()));
+    assert_eq!(
+      info.span_text(&Span::new(BytePos(1), BytePos(2), Default::default())),
+      "a"
+    )
   }
 }
