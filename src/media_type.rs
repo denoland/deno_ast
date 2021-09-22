@@ -105,7 +105,7 @@ impl MediaType {
     }
   }
 
-  fn from_path(path: &Path) -> Self {
+  pub fn from_path(path: &Path) -> Self {
     match path.extension() {
       None => match path.file_name() {
         None => Self::Unknown,
