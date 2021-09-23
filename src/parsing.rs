@@ -137,7 +137,7 @@ fn parse(
       })?;
   let program = post_process(program);
 
-  let (program, scope_analysis_info) = if params.scope_analysis {
+  let (program, top_level_context) = if params.scope_analysis {
     #[cfg(feature = "transforms")]
     {
       use crate::swc::common::Globals;
@@ -145,7 +145,6 @@ fn parse(
       use crate::swc::common::SyntaxContext;
       use crate::swc::transforms::resolver::ts_resolver;
       use crate::swc::visit::FoldWith;
-      use crate::ScopeAnalysisInfo;
 
       let globals = Globals::new();
       crate::swc::common::GLOBALS.set(&globals, || {
@@ -155,10 +154,7 @@ fn parse(
         let top_level_context =
           SyntaxContext::empty().apply_mark(top_level_mark);
 
-        (
-          program,
-          Some(Arc::new(ScopeAnalysisInfo { top_level_context })),
-        )
+        (program, Some(top_level_context))
       })
     }
     #[cfg(not(feature = "transforms"))]
@@ -174,7 +170,7 @@ fn parse(
     MultiThreadedComments::from_single_threaded(comments),
     Arc::new(program),
     tokens.map(Arc::new),
-    scope_analysis_info,
+    top_level_context,
   ))
 }
 

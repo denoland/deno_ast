@@ -15,10 +15,6 @@ use crate::swc::parser::token::TokenAndSpan;
 use crate::MediaType;
 use crate::SourceTextInfo;
 
-pub(crate) struct ScopeAnalysisInfo {
-  pub top_level_context: SyntaxContext,
-}
-
 /// A parsed source containing an AST, comments, and possibly tokens.
 ///
 /// Note: This struct is cheap to clone.
@@ -31,7 +27,7 @@ pub struct ParsedSource {
   comments: MultiThreadedComments,
   program: Arc<Program>,
   tokens: Option<Arc<Vec<TokenAndSpan>>>,
-  scope_analysis_info: Option<Arc<ScopeAnalysisInfo>>,
+  top_level_context: Option<SyntaxContext>,
 }
 
 impl ParsedSource {
@@ -42,7 +38,7 @@ impl ParsedSource {
     comments: MultiThreadedComments,
     program: Arc<Program>,
     tokens: Option<Arc<Vec<TokenAndSpan>>>,
-    scope_analysis_info: Option<Arc<ScopeAnalysisInfo>>,
+    top_level_context: Option<SyntaxContext>,
   ) -> Self {
     ParsedSource {
       specifier,
@@ -51,7 +47,7 @@ impl ParsedSource {
       comments,
       program,
       tokens,
-      scope_analysis_info,
+      top_level_context,
     }
   }
 
@@ -128,8 +124,7 @@ impl ParsedSource {
   ///
   /// This will panic if the source was not parsed with scope analysis.
   pub fn top_level_context(&self) -> SyntaxContext {
-    self.scope_analysis_info.as_ref().expect("Could not get top level context because the source was not parsed with scope analysis.")
-      .top_level_context
+    self.top_level_context.expect("Could not get top level context because the source was not parsed with scope analysis.")
   }
 }
 
