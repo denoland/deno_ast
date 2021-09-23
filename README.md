@@ -18,6 +18,7 @@ let parsed_source = parse_module(ParseParams {
   source: source_text_info,
   capture_tokens: true,
   maybe_syntax: None,
+  scope_analysis: false,
 }).expect("should parse");
 
 // returns the comments

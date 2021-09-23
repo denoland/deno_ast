@@ -9,10 +9,19 @@ use crate::swc::ast::Program;
 use crate::swc::ast::Script;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::Comments;
+use crate::swc::common::Globals;
+use crate::swc::common::Mark;
 use crate::swc::common::Spanned;
+use crate::swc::common::SyntaxContext;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::MediaType;
 use crate::SourceTextInfo;
+
+pub(crate) struct ScopeAnalysisInfo {
+  pub globals: Globals,
+  pub top_level_mark: Mark,
+  pub top_level_context: SyntaxContext,
+}
 
 /// A parsed source containing an AST, comments, and possibly tokens.
 ///
@@ -26,16 +35,18 @@ pub struct ParsedSource {
   comments: MultiThreadedComments,
   program: Arc<Program>,
   tokens: Option<Arc<Vec<TokenAndSpan>>>,
+  scope_analysis_info: Option<Arc<ScopeAnalysisInfo>>,
 }
 
 impl ParsedSource {
-  pub fn new(
+  pub(crate) fn new(
     specifier: String,
     media_type: MediaType,
     source: SourceTextInfo,
     comments: MultiThreadedComments,
     program: Arc<Program>,
     tokens: Option<Arc<Vec<TokenAndSpan>>>,
+    scope_analysis_info: Option<Arc<ScopeAnalysisInfo>>,
   ) -> Self {
     ParsedSource {
       specifier,
@@ -44,6 +55,7 @@ impl ParsedSource {
       comments,
       program,
       tokens,
+      scope_analysis_info,
     }
   }
 
@@ -107,11 +119,37 @@ impl ParsedSource {
   }
 
   /// Gets the tokens found in the source file.
+  ///
+  /// This will panic if tokens were not captured during parsing.
   pub fn tokens(&self) -> &[TokenAndSpan] {
     self
       .tokens
       .as_ref()
       .expect("Tokens not found because they were not captured during parsing.")
+  }
+
+  /// Gets the swc hygiene data used when parsing with scope analysis.
+  ///
+  /// This will panic if the source was not parsed with scope analysis.
+  pub fn globals(&self) -> &Globals {
+    &self.scope_analysis_info.as_ref().expect("Could not get globals because the source was not parsed with scope analysis.")
+      .globals
+  }
+
+  /// Gets the top level mark used when parsing with scope analysis.
+  ///
+  /// This will panic if the source was not parsed with scope analysis.
+  pub fn top_level_mark(&self) -> Mark {
+    self.scope_analysis_info.as_ref().expect("Could not get top level mark because the source was not parsed with scope analysis.")
+      .top_level_mark
+  }
+
+  /// Gets the top level context used when parsing with scope analysis.
+  ///
+  /// This will panic if the source was not parsed with scope analysis.
+  pub fn top_level_context(&self) -> SyntaxContext {
+    self.scope_analysis_info.as_ref().expect("Could not get top level context because the source was not parsed with scope analysis.")
+      .top_level_context
   }
 }
 
@@ -171,6 +209,7 @@ mod test {
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
+      scope_analysis: false,
     })
     .expect("should parse");
 

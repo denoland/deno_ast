@@ -188,6 +188,7 @@ mod test {
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
+      scope_analysis: false,
     })
     .expect("expects a module");
     module.comments().as_single_threaded()
