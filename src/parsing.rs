@@ -148,22 +148,18 @@ fn parse(
       use crate::ScopeAnalysisInfo;
 
       let globals = Globals::new();
-      let (program, top_level_mark, top_level_context) =
-        crate::swc::common::GLOBALS.set(&globals, || {
-          // This is used to apply proper "syntax context" to all AST elements.
-          let top_level_mark = Mark::fresh(Mark::root());
-          let program = program.fold_with(&mut ts_resolver(top_level_mark));
-          let top_level_context =
-            SyntaxContext::empty().apply_mark(top_level_mark);
+      crate::swc::common::GLOBALS.set(&globals, || {
+        // This is used to apply proper "syntax context" to all AST elements.
+        let top_level_mark = Mark::fresh(Mark::root());
+        let program = program.fold_with(&mut ts_resolver(top_level_mark));
+        let top_level_context =
+          SyntaxContext::empty().apply_mark(top_level_mark);
 
-          (program, top_level_mark, top_level_context)
-        });
-      let scope_analysis_info = ScopeAnalysisInfo {
-        globals,
-        top_level_mark,
-        top_level_context,
-      };
-      (program, Some(Arc::new(scope_analysis_info)))
+        (
+          program,
+          Some(Arc::new(ScopeAnalysisInfo { top_level_context })),
+        )
+      })
     }
     #[cfg(not(feature = "transforms"))]
     panic!("Cannot parse with scope analysis. Please enable the 'transforms' feature.")
@@ -351,22 +347,6 @@ mod test {
         message: "Expected ';', '}' or <eof>".to_string(),
       }
     )
-  }
-
-  #[test]
-  #[should_panic(
-    expected = "Could not get top level mark because the source was not parsed with scope analysis."
-  )]
-  fn should_panic_when_getting_top_level_mark_and_scope_analysis_false() {
-    get_scope_analysis_false_parsed_source().top_level_mark();
-  }
-
-  #[test]
-  #[should_panic(
-    expected = "Could not get globals because the source was not parsed with scope analysis."
-  )]
-  fn should_panic_when_getting_globals_and_scope_analysis_false() {
-    get_scope_analysis_false_parsed_source().globals();
   }
 
   #[test]
