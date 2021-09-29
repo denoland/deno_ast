@@ -3,7 +3,9 @@
 use std::sync::Arc;
 
 use crate::comments::MultiThreadedComments;
+use crate::swc::ast::Module;
 use crate::swc::ast::Program;
+use crate::swc::ast::Script;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
 use crate::swc::common::Spanned;
@@ -31,6 +33,8 @@ pub struct ParseParams {
   pub media_type: MediaType,
   /// Whether to capture tokens or not.
   pub capture_tokens: bool,
+  /// Whether to apply swc's scope analysis.
+  pub scope_analysis: bool,
   /// Syntax to use when parsing.
   ///
   /// `deno_ast` will get a default `Syntax` to use based on the
@@ -57,6 +61,7 @@ pub fn parse_program(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
 ///    source: deno_ast::SourceTextInfo::from_string("".to_string()),
 ///    capture_tokens: true,
 ///    maybe_syntax: None,
+///    scope_analysis: false,
 ///  },
 ///  |program| {
 ///    // do something with the program here before it gets stored
@@ -76,9 +81,31 @@ pub fn parse_module(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
   parse(params, ParseMode::Module, |p| p)
 }
 
+/// Parses a module with post processing (see docs on `parse_program_with_post_process`).
+pub fn parse_module_with_post_process(
+  params: ParseParams,
+  post_process: impl FnOnce(Module) -> Module,
+) -> Result<ParsedSource, Diagnostic> {
+  parse(params, ParseMode::Module, |program| match program {
+    Program::Module(module) => Program::Module(post_process(module)),
+    Program::Script(_) => unreachable!(),
+  })
+}
+
 /// Parses the provided information to a script.
 pub fn parse_script(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
   parse(params, ParseMode::Script, |p| p)
+}
+
+/// Parses a script with post processing (see docs on `parse_program_with_post_process`).
+pub fn parse_script_with_post_process(
+  params: ParseParams,
+  post_process: impl FnOnce(Script) -> Script,
+) -> Result<ParsedSource, Diagnostic> {
+  parse(params, ParseMode::Script, |program| match program {
+    Program::Module(_) => unreachable!(),
+    Program::Script(script) => Program::Script(post_process(script)),
+  })
 }
 
 enum ParseMode {
@@ -110,6 +137,32 @@ fn parse(
       })?;
   let program = post_process(program);
 
+  let (program, top_level_context) = if params.scope_analysis {
+    #[cfg(feature = "transforms")]
+    {
+      use crate::swc::common::Globals;
+      use crate::swc::common::Mark;
+      use crate::swc::common::SyntaxContext;
+      use crate::swc::transforms::resolver::ts_resolver;
+      use crate::swc::visit::FoldWith;
+
+      let globals = Globals::new();
+      crate::swc::common::GLOBALS.set(&globals, || {
+        // This is used to apply proper "syntax context" to all AST elements.
+        let top_level_mark = Mark::fresh(Mark::root());
+        let program = program.fold_with(&mut ts_resolver(top_level_mark));
+        let top_level_context =
+          SyntaxContext::empty().apply_mark(top_level_mark);
+
+        (program, Some(top_level_context))
+      })
+    }
+    #[cfg(not(feature = "transforms"))]
+    panic!("Cannot parse with scope analysis. Please enable the 'transforms' feature.")
+  } else {
+    (program, None)
+  };
+
   Ok(ParsedSource::new(
     specifier,
     params.media_type.to_owned(),
@@ -117,6 +170,7 @@ fn parse(
     MultiThreadedComments::from_single_threaded(comments),
     Arc::new(program),
     tokens.map(Arc::new),
+    top_level_context,
   ))
 }
 
@@ -216,6 +270,7 @@ mod test {
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
+      scope_analysis: false,
     })
     .expect("should parse");
     assert_eq!(program.specifier(), "my_file.js");
@@ -239,6 +294,7 @@ mod test {
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
+      scope_analysis: false,
     })
     .expect("should parse");
     assert!(matches!(
@@ -258,6 +314,7 @@ mod test {
       media_type: MediaType::JavaScript,
       capture_tokens: false,
       maybe_syntax: None,
+      scope_analysis: false,
     })
     .expect("should parse");
     program.tokens();
@@ -271,6 +328,7 @@ mod test {
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
+      scope_analysis: false,
     })
     .err()
     .unwrap();
@@ -285,5 +343,68 @@ mod test {
         message: "Expected ';', '}' or <eof>".to_string(),
       }
     )
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "Could not get top level context because the source was not parsed with scope analysis."
+  )]
+  fn should_panic_when_getting_top_level_context_and_scope_analysis_false() {
+    get_scope_analysis_false_parsed_source().top_level_context();
+  }
+
+  fn get_scope_analysis_false_parsed_source() -> ParsedSource {
+    parse_module(ParseParams {
+      specifier: "my_file.js".to_string(),
+      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      media_type: MediaType::JavaScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .expect("should parse")
+  }
+
+  #[cfg(all(feature = "view", feature = "transforms"))]
+  #[test]
+  fn should_do_scope_analysis() {
+    let parsed_source = parse_module(ParseParams {
+      specifier: "my_file.js".to_string(),
+      source: SourceTextInfo::from_string(
+        "export function test() { const test = 2; test; } test()".to_string(),
+      ),
+      media_type: MediaType::JavaScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .expect("should parse");
+
+    parsed_source.with_view(|view| {
+      use crate::swc::utils::ident::IdentLike;
+      use crate::view::*;
+
+      let func_decl = view.children()[0]
+        .expect::<ExportDecl>()
+        .decl
+        .expect::<FnDecl>();
+      let func_decl_inner_expr = func_decl.function.body.unwrap().stmts[1]
+        .expect::<ExprStmt>()
+        .expr
+        .expect::<Ident>();
+      let call_expr = view.children()[1]
+        .expect::<ExprStmt>()
+        .expr
+        .expect::<CallExpr>();
+      let call_expr_id = call_expr.callee.expect::<Ident>();
+
+      // these should be the same identifier
+      assert_eq!(func_decl.ident.inner.to_id(), call_expr_id.inner.to_id());
+      // but these shouldn't be
+      assert_ne!(
+        func_decl.ident.inner.to_id(),
+        func_decl_inner_expr.inner.to_id()
+      );
+    });
   }
 }

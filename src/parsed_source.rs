@@ -10,6 +10,7 @@ use crate::swc::ast::Script;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::Comments;
 use crate::swc::common::Spanned;
+use crate::swc::common::SyntaxContext;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::MediaType;
 use crate::SourceTextInfo;
@@ -26,16 +27,18 @@ pub struct ParsedSource {
   comments: MultiThreadedComments,
   program: Arc<Program>,
   tokens: Option<Arc<Vec<TokenAndSpan>>>,
+  top_level_context: Option<SyntaxContext>,
 }
 
 impl ParsedSource {
-  pub fn new(
+  pub(crate) fn new(
     specifier: String,
     media_type: MediaType,
     source: SourceTextInfo,
     comments: MultiThreadedComments,
     program: Arc<Program>,
     tokens: Option<Arc<Vec<TokenAndSpan>>>,
+    top_level_context: Option<SyntaxContext>,
   ) -> Self {
     ParsedSource {
       specifier,
@@ -44,6 +47,7 @@ impl ParsedSource {
       comments,
       program,
       tokens,
+      top_level_context,
     }
   }
 
@@ -107,11 +111,20 @@ impl ParsedSource {
   }
 
   /// Gets the tokens found in the source file.
+  ///
+  /// This will panic if tokens were not captured during parsing.
   pub fn tokens(&self) -> &[TokenAndSpan] {
     self
       .tokens
       .as_ref()
       .expect("Tokens not found because they were not captured during parsing.")
+  }
+
+  /// Gets the top level context used when parsing with scope analysis.
+  ///
+  /// This will panic if the source was not parsed with scope analysis.
+  pub fn top_level_context(&self) -> SyntaxContext {
+    self.top_level_context.expect("Could not get top level context because the source was not parsed with scope analysis.")
   }
 }
 
@@ -171,6 +184,7 @@ mod test {
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
+      scope_analysis: false,
     })
     .expect("should parse");
 

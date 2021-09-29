@@ -12,6 +12,7 @@ description = "Source text parsing, lexing, and AST related functionality for De
 [features]
 bundler = ["swc_bundler"]
 codegen = ["swc_ecmascript/codegen"]
+compat = ["swc_ecmascript/compat"]
 dep_graph = ["swc_ecmascript/dep_graph"]
 minifier = ["swc_ecmascript/minifier"]
 module_specifier = ["data-url", "url"]
