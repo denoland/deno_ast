@@ -241,6 +241,7 @@ pub fn get_es_config(jsx: bool) -> EsConfig {
     fn_bind: false,
     import_assertions: true,
     static_blocks: true,
+    private_in_object: false,
   }
 }
 
@@ -381,7 +382,6 @@ mod test {
     .expect("should parse");
 
     parsed_source.with_view(|view| {
-      use crate::swc::utils::ident::IdentLike;
       use crate::view::*;
 
       let func_decl = view.children()[0]
@@ -399,12 +399,9 @@ mod test {
       let call_expr_id = call_expr.callee.expect::<Ident>();
 
       // these should be the same identifier
-      assert_eq!(func_decl.ident.inner.to_id(), call_expr_id.inner.to_id());
+      assert_eq!(func_decl.ident.to_id(), call_expr_id.to_id());
       // but these shouldn't be
-      assert_ne!(
-        func_decl.ident.inner.to_id(),
-        func_decl_inner_expr.inner.to_id()
-      );
+      assert_ne!(func_decl.ident.to_id(), func_decl_inner_expr.to_id());
     });
   }
 }
