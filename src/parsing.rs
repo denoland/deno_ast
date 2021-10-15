@@ -8,7 +8,6 @@ use crate::swc::ast::Program;
 use crate::swc::ast::Script;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
-use crate::swc::common::Spanned;
 use crate::swc::parser::error::Error as SwcError;
 use crate::swc::parser::error::SyntaxError;
 use crate::swc::parser::lexer::Lexer;
@@ -130,13 +129,13 @@ fn parse(
   let syntax = params
     .maybe_syntax
     .unwrap_or_else(|| get_syntax(media_type));
-  let (comments, program, tokens) =
+  let (comments, program, tokens, errors) =
     parse_string_input(input, syntax, params.capture_tokens, parse_mode)
-      .map_err(|err| Diagnostic {
-        display_position: source.line_and_column_display(err.span().lo),
-        specifier: specifier.clone(),
-        message: err.into_kind().msg().to_string(),
-      })?;
+      .map_err(|err| Diagnostic::from_swc_error(err, &specifier, &source))?;
+  let diagnostics = errors
+    .into_iter()
+    .map(|err| Diagnostic::from_swc_error(err, &specifier, &source))
+    .collect();
   let program = post_process(program);
 
   let (program, top_level_context) = if params.scope_analysis {
@@ -173,16 +172,23 @@ fn parse(
     Arc::new(program),
     tokens.map(Arc::new),
     top_level_context,
+    diagnostics,
   ))
 }
 
+#[allow(clippy::type_complexity)]
 fn parse_string_input(
   input: StringInput,
   syntax: Syntax,
   capture_tokens: bool,
   parse_mode: ParseMode,
 ) -> Result<
-  (SingleThreadedComments, Program, Option<Vec<TokenAndSpan>>),
+  (
+    SingleThreadedComments,
+    Program,
+    Option<Vec<TokenAndSpan>>,
+    Vec<SwcError>,
+  ),
   SwcError,
 > {
   let comments = SingleThreadedComments::default();
@@ -210,9 +216,12 @@ fn parse_string_input(
     (program, None, parser.take_errors())
   };
 
-  ensure_no_specific_syntax_errors(errors)?;
-
-  Ok((comments, program, tokens))
+  Ok((
+    comments,
+    program,
+    tokens,
+    filter_specific_syntax_errors(errors),
+  ))
 }
 
 /// Gets the default `Syntax` used by `deno_ast` for the provided media type.
@@ -263,26 +272,22 @@ pub fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
   }
 }
 
-fn ensure_no_specific_syntax_errors(
-  errors: Vec<SwcError>,
-) -> Result<(), SwcError> {
-  let mut errors = errors.into_iter().filter(|e| {
-    matches!(
-      e.kind(),
-      // expected identifier
-      SyntaxError::TS1003 |
+fn filter_specific_syntax_errors(errors: Vec<SwcError>) -> Vec<SwcError> {
+  // for now, we're only checking for these specific extra errors
+  errors
+    .into_iter()
+    .filter(|e| {
+      matches!(
+        e.kind(),
+        // expected identifier
+        SyntaxError::TS1003 |
           // expected semi-colon
           SyntaxError::TS1005 |
           // expected expression
           SyntaxError::TS1109
-    )
-  });
-
-  if let Some(err) = errors.next() {
-    Err(err)
-  } else {
-    Ok(())
-  }
+      )
+    })
+    .collect()
 }
 
 #[cfg(test)]
@@ -435,40 +440,32 @@ mod test {
 
   #[test]
   fn should_error_on_syntax_diagnostic() {
-    let message = parse_ts_file("test;\nas#;").err().unwrap().message;
-    assert_eq!(message, concat!("Expected ';', '}' or <eof>"));
+    let diagnostic = parse_for_diagnostic("test;\nas#;");
+    assert_eq!(diagnostic.message, concat!("Expected ';', '}' or <eof>"));
   }
 
   #[test]
   fn should_error_for_no_equals_sign_in_var_decl() {
-    let message = parse_ts_file("const Methods {\nf: (x, y) => x + y,\n};")
-      .err()
-      .unwrap()
-      .message;
-    assert_eq!(message, "Expected a semicolon");
+    let diagnostic =
+      parse_for_diagnostic("const Methods {\nf: (x, y) => x + y,\n};");
+    assert_eq!(diagnostic.message, "Expected a semicolon");
   }
 
   #[test]
   fn should_error_when_var_stmts_sep_by_comma() {
-    let message = parse_ts_file("let a = 0, let b = 1;")
-      .err()
-      .unwrap()
-      .message;
-
-    assert_eq!(message, "Expected a semicolon");
+    let diagnostic = parse_for_diagnostic("let a = 0, let b = 1;");
+    assert_eq!(diagnostic.message, "Expected a semicolon");
   }
 
   #[test]
   fn should_error_without_issue_when_there_exists_multi_byte_char_on_line_with_syntax_error(
   ) {
-    let message = parse_ts_file(
-      concat!(
-        "test;\n",
-        r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
-      ),
-    ).err().unwrap().message;
+    let diagnostic = parse_for_diagnostic(concat!(
+      "test;\n",
+      r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
+    ));
     assert_eq!(
-      message,
+      diagnostic.message,
       concat!(
         "Unexpected token `;`. Expected this, import, async, function, [ for array literal, ",
         "{ for object literal, @ for decorator, function, class, null, true, false, number, bigint, string, ",
@@ -479,15 +476,13 @@ mod test {
 
   #[test]
   fn should_error_for_exected_expr_type_alias() {
-    let message = parse_ts_file("type T =\n  | unknown\n  { } & unknown;")
-      .err()
-      .unwrap()
-      .message;
-    assert_eq!(message, "Expression expected");
+    let diagnostic =
+      parse_for_diagnostic("type T =\n  | unknown\n  { } & unknown;");
+    assert_eq!(diagnostic.message, "Expression expected");
   }
 
-  fn parse_ts_file(text: &str) -> Result<ParsedSource, Diagnostic> {
-    parse_module(ParseParams {
+  fn parse_for_diagnostic(text: &str) -> Diagnostic {
+    let result = parse_module(ParseParams {
       specifier: "my_file.ts".to_string(),
       source: SourceTextInfo::from_string(text.to_string()),
       media_type: MediaType::TypeScript,
@@ -495,5 +490,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
+    .unwrap();
+    result.ensure_no_diagnostics().err().unwrap()
   }
 }

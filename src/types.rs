@@ -2,6 +2,10 @@
 
 use std::fmt;
 
+use swc_common::Spanned;
+
+use crate::SourceTextInfo;
+
 /// A 0-indexed line and column type.
 pub type LineAndColumnIndex = text_lines::LineAndColumnIndex;
 
@@ -18,6 +22,20 @@ pub struct Diagnostic {
   pub display_position: LineAndColumnDisplay,
   /// Message text of the diagnostic.
   pub message: String,
+}
+
+impl Diagnostic {
+  pub(crate) fn from_swc_error(
+    err: crate::swc::parser::error::Error,
+    specifier: &str,
+    source: &SourceTextInfo,
+  ) -> Diagnostic {
+    Diagnostic {
+      display_position: source.line_and_column_display(err.span().lo),
+      specifier: specifier.to_string(),
+      message: err.into_kind().msg().to_string(),
+    }
+  }
 }
 
 impl std::error::Error for Diagnostic {}
