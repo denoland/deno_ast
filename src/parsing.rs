@@ -9,6 +9,8 @@ use crate::swc::ast::Script;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
 use crate::swc::common::Spanned;
+use crate::swc::parser::error::Error as SwcError;
+use crate::swc::parser::error::SyntaxError;
 use crate::swc::parser::lexer::Lexer;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::swc::parser::EsConfig;
@@ -181,12 +183,12 @@ fn parse_string_input(
   parse_mode: ParseMode,
 ) -> Result<
   (SingleThreadedComments, Program, Option<Vec<TokenAndSpan>>),
-  swc_ecmascript::parser::error::Error,
+  SwcError,
 > {
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
 
-  if capture_tokens {
+  let (program, tokens, errors) = if capture_tokens {
     let lexer = swc_ecmascript::parser::Capturing::new(lexer);
     let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
     let program = match parse_mode {
@@ -196,7 +198,7 @@ fn parse_string_input(
     };
     let tokens = parser.input().take();
 
-    Ok((comments, program, Some(tokens)))
+    (program, Some(tokens), parser.take_errors())
   } else {
     let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
     let program = match parse_mode {
@@ -205,8 +207,12 @@ fn parse_string_input(
       ParseMode::Script => Program::Script(parser.parse_script()?),
     };
 
-    Ok((comments, program, None))
-  }
+    (program, None, parser.take_errors())
+  };
+
+  ensure_no_specific_syntax_errors(errors)?;
+
+  Ok((comments, program, tokens))
 }
 
 /// Gets the default `Syntax` used by `deno_ast` for the provided media type.
@@ -253,7 +259,29 @@ pub fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
     dynamic_import: true,
     tsx,
     import_assertions: true,
-    no_early_errors: true,
+    no_early_errors: false,
+  }
+}
+
+fn ensure_no_specific_syntax_errors(
+  errors: Vec<SwcError>,
+) -> Result<(), SwcError> {
+  let mut errors = errors.into_iter().filter(|e| {
+    matches!(
+      e.kind(),
+      // expected identifier
+      SyntaxError::TS1003 |
+          // expected semi-colon
+          SyntaxError::TS1005 |
+          // expected expression
+          SyntaxError::TS1109
+    )
+  });
+
+  if let Some(err) = errors.next() {
+    Err(err)
+  } else {
+    Ok(())
   }
 }
 
@@ -403,5 +431,69 @@ mod test {
       // but these shouldn't be
       assert_ne!(func_decl.ident.to_id(), func_decl_inner_expr.to_id());
     });
+  }
+
+  #[test]
+  fn should_error_on_syntax_diagnostic() {
+    let message = parse_ts_file("test;\nas#;").err().unwrap().message;
+    assert_eq!(message, concat!("Expected ';', '}' or <eof>"));
+  }
+
+  #[test]
+  fn should_error_for_no_equals_sign_in_var_decl() {
+    let message = parse_ts_file("const Methods {\nf: (x, y) => x + y,\n};")
+      .err()
+      .unwrap()
+      .message;
+    assert_eq!(message, "Expected a semicolon");
+  }
+
+  #[test]
+  fn should_error_when_var_stmts_sep_by_comma() {
+    let message = parse_ts_file("let a = 0, let b = 1;")
+      .err()
+      .unwrap()
+      .message;
+
+    assert_eq!(message, "Expected a semicolon");
+  }
+
+  #[test]
+  fn should_error_without_issue_when_there_exists_multi_byte_char_on_line_with_syntax_error(
+  ) {
+    let message = parse_ts_file(
+      concat!(
+        "test;\n",
+        r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
+      ),
+    ).err().unwrap().message;
+    assert_eq!(
+      message,
+      concat!(
+        "Unexpected token `;`. Expected this, import, async, function, [ for array literal, ",
+        "{ for object literal, @ for decorator, function, class, null, true, false, number, bigint, string, ",
+        "regexp, ` for template literal, (, or an identifier",
+      )
+    );
+  }
+
+  #[test]
+  fn should_error_for_exected_expr_type_alias() {
+    let message = parse_ts_file("type T =\n  | unknown\n  { } & unknown;")
+      .err()
+      .unwrap()
+      .message;
+    assert_eq!(message, "Expression expected");
+  }
+
+  fn parse_ts_file(text: &str) -> Result<ParsedSource, Diagnostic> {
+    parse_module(ParseParams {
+      specifier: "my_file.ts".to_string(),
+      source: SourceTextInfo::from_string(text.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
   }
 }
