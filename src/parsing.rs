@@ -440,7 +440,7 @@ mod test {
 
   #[test]
   fn should_error_on_syntax_diagnostic() {
-    let diagnostic = parse_for_diagnostic("test;\nas#;");
+    let diagnostic = parse_ts_module("test;\nas#;").err().unwrap();
     assert_eq!(diagnostic.message, concat!("Expected ';', '}' or <eof>"));
   }
 
@@ -460,10 +460,10 @@ mod test {
   #[test]
   fn should_error_without_issue_when_there_exists_multi_byte_char_on_line_with_syntax_error(
   ) {
-    let diagnostic = parse_for_diagnostic(concat!(
+    let diagnostic = parse_ts_module(concat!(
       "test;\n",
       r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
-    ));
+    )).err().unwrap();
     assert_eq!(
       diagnostic.message,
       concat!(
@@ -482,7 +482,12 @@ mod test {
   }
 
   fn parse_for_diagnostic(text: &str) -> Diagnostic {
-    let result = parse_module(ParseParams {
+    let result = parse_ts_module(text).unwrap();
+    result.ensure_no_diagnostics().err().unwrap()
+  }
+
+  fn parse_ts_module(text: &str) -> Result<ParsedSource, Diagnostic> {
+    parse_module(ParseParams {
       specifier: "my_file.ts".to_string(),
       source: SourceTextInfo::from_string(text.to_string()),
       media_type: MediaType::TypeScript,
@@ -490,7 +495,5 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .unwrap();
-    result.ensure_no_diagnostics().err().unwrap()
   }
 }
