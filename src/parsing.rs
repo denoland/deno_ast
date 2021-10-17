@@ -9,7 +9,6 @@ use crate::swc::ast::Script;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
 use crate::swc::parser::error::Error as SwcError;
-use crate::swc::parser::error::SyntaxError;
 use crate::swc::parser::lexer::Lexer;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::swc::parser::EsConfig;
@@ -216,12 +215,7 @@ fn parse_string_input(
     (program, None, parser.take_errors())
   };
 
-  Ok((
-    comments,
-    program,
-    tokens,
-    filter_specific_syntax_errors(errors),
-  ))
+  Ok((comments, program, tokens, errors))
 }
 
 /// Gets the default `Syntax` used by `deno_ast` for the provided media type.
@@ -270,24 +264,6 @@ pub fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
     import_assertions: true,
     no_early_errors: false,
   }
-}
-
-fn filter_specific_syntax_errors(errors: Vec<SwcError>) -> Vec<SwcError> {
-  // for now, we're only checking for these specific extra errors
-  errors
-    .into_iter()
-    .filter(|e| {
-      matches!(
-        e.kind(),
-        // expected identifier
-        SyntaxError::TS1003 |
-          // expected semi-colon
-          SyntaxError::TS1005 |
-          // expected expression
-          SyntaxError::TS1109
-      )
-    })
-    .collect()
 }
 
 #[cfg(test)]
@@ -366,17 +342,15 @@ mod test {
     })
     .err()
     .unwrap();
+    assert_eq!(diagnostic.specifier, "my_file.js".to_string());
     assert_eq!(
-      diagnostic,
-      Diagnostic {
-        specifier: "my_file.js".to_string(),
-        display_position: LineAndColumnDisplay {
-          line_number: 1,
-          column_number: 3,
-        },
-        message: "Expected ';', '}' or <eof>".to_string(),
+      diagnostic.display_position,
+      LineAndColumnDisplay {
+        line_number: 1,
+        column_number: 3,
       }
-    )
+    );
+    assert_eq!(diagnostic.message(), "Expected ';', '}' or <eof>");
   }
 
   #[test]
@@ -441,20 +415,20 @@ mod test {
   #[test]
   fn should_error_on_syntax_diagnostic() {
     let diagnostic = parse_ts_module("test;\nas#;").err().unwrap();
-    assert_eq!(diagnostic.message, concat!("Expected ';', '}' or <eof>"));
+    assert_eq!(diagnostic.message(), concat!("Expected ';', '}' or <eof>"));
   }
 
   #[test]
   fn should_error_for_no_equals_sign_in_var_decl() {
     let diagnostic =
       parse_for_diagnostic("const Methods {\nf: (x, y) => x + y,\n};");
-    assert_eq!(diagnostic.message, "Expected a semicolon");
+    assert_eq!(diagnostic.message(), "Expected a semicolon");
   }
 
   #[test]
   fn should_error_when_var_stmts_sep_by_comma() {
     let diagnostic = parse_for_diagnostic("let a = 0, let b = 1;");
-    assert_eq!(diagnostic.message, "Expected a semicolon");
+    assert_eq!(diagnostic.message(), "Expected a semicolon");
   }
 
   #[test]
@@ -465,7 +439,7 @@ mod test {
       r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
     )).err().unwrap();
     assert_eq!(
-      diagnostic.message,
+      diagnostic.message(),
       concat!(
         "Unexpected token `;`. Expected this, import, async, function, [ for array literal, ",
         "{ for object literal, @ for decorator, function, class, null, true, false, number, bigint, string, ",
@@ -478,12 +452,12 @@ mod test {
   fn should_error_for_exected_expr_type_alias() {
     let diagnostic =
       parse_for_diagnostic("type T =\n  | unknown\n  { } & unknown;");
-    assert_eq!(diagnostic.message, "Expression expected");
+    assert_eq!(diagnostic.message(), "Expression expected");
   }
 
   fn parse_for_diagnostic(text: &str) -> Diagnostic {
     let result = parse_ts_module(text).unwrap();
-    result.ensure_no_diagnostics().err().unwrap()
+    result.diagnostics().first().unwrap().to_owned()
   }
 
   fn parse_ts_module(text: &str) -> Result<ParsedSource, Diagnostic> {

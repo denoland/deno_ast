@@ -144,15 +144,6 @@ impl ParsedSource {
   pub fn diagnostics(&self) -> &Vec<Diagnostic> {
     &self.inner.diagnostics
   }
-
-  /// Helper method to error if there is a diagnostic.
-  pub fn ensure_no_diagnostics(&self) -> Result<(), Diagnostic> {
-    if let Some(diagnostic) = self.inner.diagnostics.first() {
-      Err(diagnostic.to_owned())
-    } else {
-      Ok(())
-    }
-  }
 }
 
 impl fmt::Debug for ParsedSource {
