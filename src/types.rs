@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::fmt;
 
+use crate::swc::common::Span;
 use crate::swc::common::Spanned;
 use crate::swc::parser::error::SyntaxError;
 use crate::SourceTextInfo;
@@ -19,6 +20,8 @@ pub type LineAndColumnDisplay = text_lines::LineAndColumnDisplay;
 pub struct Diagnostic {
   /// Specifier of the source the diagnostic occurred in.
   pub specifier: String,
+  /// Range of the diagnostic.
+  pub span: Span,
   /// 1-indexed display position the diagnostic occurred at.
   pub display_position: LineAndColumnDisplay,
   /// Swc syntax error
@@ -39,6 +42,7 @@ impl Diagnostic {
     source: &SourceTextInfo,
   ) -> Diagnostic {
     Diagnostic {
+      span: err.span(),
       display_position: source.line_and_column_display(err.span().lo),
       specifier: specifier.to_string(),
       kind: err.into_kind(),
