@@ -139,8 +139,7 @@ impl ParsedSource {
     self.inner.top_level_context.expect("Could not get top level context because the source was not parsed with scope analysis.")
   }
 
-  /// Gets extra diagnostics that should be surfaced everywhere except when
-  /// analyzing code.
+  /// Gets extra non-fatal diagnostics found while parsing.
   pub fn diagnostics(&self) -> &Vec<Diagnostic> {
     &self.inner.diagnostics
   }
