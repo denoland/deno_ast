@@ -419,19 +419,6 @@ mod test {
   }
 
   #[test]
-  fn should_error_for_no_equals_sign_in_var_decl() {
-    let diagnostic =
-      parse_for_diagnostic("const Methods {\nf: (x, y) => x + y,\n};");
-    assert_eq!(diagnostic.message(), "Expected a semicolon");
-  }
-
-  #[test]
-  fn should_error_when_var_stmts_sep_by_comma() {
-    let diagnostic = parse_for_diagnostic("let a = 0, let b = 1;");
-    assert_eq!(diagnostic.message(), "Expected a semicolon");
-  }
-
-  #[test]
   fn should_error_without_issue_when_there_exists_multi_byte_char_on_line_with_syntax_error(
   ) {
     let diagnostic = parse_ts_module(concat!(
@@ -449,7 +436,20 @@ mod test {
   }
 
   #[test]
-  fn should_error_for_exected_expr_type_alias() {
+  fn should_diagnostic_for_no_equals_sign_in_var_decl() {
+    let diagnostic =
+      parse_for_diagnostic("const Methods {\nf: (x, y) => x + y,\n};");
+    assert_eq!(diagnostic.message(), "Expected a semicolon");
+  }
+
+  #[test]
+  fn should_diganotic_when_var_stmts_sep_by_comma() {
+    let diagnostic = parse_for_diagnostic("let a = 0, let b = 1;");
+    assert_eq!(diagnostic.message(), "Expected a semicolon");
+  }
+
+  #[test]
+  fn should_diagnostic_for_exected_expr_type_alias() {
     let diagnostic =
       parse_for_diagnostic("type T =\n  | unknown\n  { } & unknown;");
     assert_eq!(diagnostic.message(), "Expression expected");
