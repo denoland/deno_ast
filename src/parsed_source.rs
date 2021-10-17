@@ -12,15 +12,11 @@ use crate::swc::common::comments::Comments;
 use crate::swc::common::Spanned;
 use crate::swc::common::SyntaxContext;
 use crate::swc::parser::token::TokenAndSpan;
+use crate::Diagnostic;
 use crate::MediaType;
 use crate::SourceTextInfo;
 
-/// A parsed source containing an AST, comments, and possibly tokens.
-///
-/// Note: This struct is cheap to clone.
-#[derive(Clone)]
-pub struct ParsedSource {
-  // keep this struct cheap to clone
+struct ParsedSourceInner {
   specifier: String,
   media_type: MediaType,
   source: SourceTextInfo,
@@ -28,9 +24,19 @@ pub struct ParsedSource {
   program: Arc<Program>,
   tokens: Option<Arc<Vec<TokenAndSpan>>>,
   top_level_context: Option<SyntaxContext>,
+  diagnostics: Vec<Diagnostic>,
+}
+
+/// A parsed source containing an AST, comments, and possibly tokens.
+///
+/// Note: This struct is cheap to clone.
+#[derive(Clone)]
+pub struct ParsedSource {
+  inner: Arc<ParsedSourceInner>,
 }
 
 impl ParsedSource {
+  #[allow(clippy::too_many_arguments)]
   pub(crate) fn new(
     specifier: String,
     media_type: MediaType,
@@ -39,41 +45,45 @@ impl ParsedSource {
     program: Arc<Program>,
     tokens: Option<Arc<Vec<TokenAndSpan>>>,
     top_level_context: Option<SyntaxContext>,
+    diagnostics: Vec<Diagnostic>,
   ) -> Self {
     ParsedSource {
-      specifier,
-      media_type,
-      source,
-      comments,
-      program,
-      tokens,
-      top_level_context,
+      inner: Arc::new(ParsedSourceInner {
+        specifier,
+        media_type,
+        source,
+        comments,
+        program,
+        tokens,
+        top_level_context,
+        diagnostics,
+      }),
     }
   }
 
   /// Gets the module specifier of the module.
   pub fn specifier(&self) -> &str {
-    &self.specifier
+    &self.inner.specifier
   }
 
   /// Gets the media type of the module.
   pub fn media_type(&self) -> MediaType {
-    self.media_type
+    self.inner.media_type
   }
 
   /// Gets the text content of the module.
   pub fn source(&self) -> &SourceTextInfo {
-    &self.source
+    &self.inner.source
   }
 
   /// Gets the parsed program.
   pub fn program(&self) -> Arc<Program> {
-    self.program.clone()
+    self.inner.program.clone()
   }
 
   /// Gets the parsed program as a reference.
   pub fn program_ref(&self) -> &Program {
-    &self.program
+    &self.inner.program
   }
 
   /// Gets the parsed module.
@@ -98,15 +108,16 @@ impl ParsedSource {
 
   /// Gets the comments found in the source file.
   pub fn comments(&self) -> &MultiThreadedComments {
-    &self.comments
+    &self.inner.comments
   }
 
   /// Get the source's leading comments, where triple slash directives might
   /// be located.
   pub fn get_leading_comments(&self) -> Vec<Comment> {
     self
+      .inner
       .comments
-      .get_leading(self.program.span().lo)
+      .get_leading(self.inner.program.span().lo)
       .unwrap_or_else(Vec::new)
   }
 
@@ -115,6 +126,7 @@ impl ParsedSource {
   /// This will panic if tokens were not captured during parsing.
   pub fn tokens(&self) -> &[TokenAndSpan] {
     self
+      .inner
       .tokens
       .as_ref()
       .expect("Tokens not found because they were not captured during parsing.")
@@ -124,15 +136,20 @@ impl ParsedSource {
   ///
   /// This will panic if the source was not parsed with scope analysis.
   pub fn top_level_context(&self) -> SyntaxContext {
-    self.top_level_context.expect("Could not get top level context because the source was not parsed with scope analysis.")
+    self.inner.top_level_context.expect("Could not get top level context because the source was not parsed with scope analysis.")
+  }
+
+  /// Gets extra non-fatal diagnostics found while parsing.
+  pub fn diagnostics(&self) -> &Vec<Diagnostic> {
+    &self.inner.diagnostics
   }
 }
 
 impl fmt::Debug for ParsedSource {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_struct("ParsedModule")
-      .field("comments", &self.comments)
-      .field("program", &self.program)
+      .field("comments", &self.inner.comments)
+      .field("program", &self.inner.program)
       .finish()
   }
 }
@@ -156,7 +173,7 @@ impl ParsedSource {
         Program::Script(script) => crate::view::ProgramRef::Script(script),
       },
       source_file: Some(self.source()),
-      tokens: self.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
+      tokens: self.inner.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
       comments: Some(crate::view::Comments {
         leading: self.comments().leading_map(),
         trailing: self.comments().trailing_map(),

@@ -8,7 +8,7 @@ use crate::swc::ast::Program;
 use crate::swc::ast::Script;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
-use crate::swc::common::Spanned;
+use crate::swc::parser::error::Error as SwcError;
 use crate::swc::parser::lexer::Lexer;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::swc::parser::EsConfig;
@@ -128,13 +128,13 @@ fn parse(
   let syntax = params
     .maybe_syntax
     .unwrap_or_else(|| get_syntax(media_type));
-  let (comments, program, tokens) =
+  let (comments, program, tokens, errors) =
     parse_string_input(input, syntax, params.capture_tokens, parse_mode)
-      .map_err(|err| Diagnostic {
-        display_position: source.line_and_column_display(err.span().lo),
-        specifier: specifier.clone(),
-        message: err.into_kind().msg().to_string(),
-      })?;
+      .map_err(|err| Diagnostic::from_swc_error(err, &specifier, &source))?;
+  let diagnostics = errors
+    .into_iter()
+    .map(|err| Diagnostic::from_swc_error(err, &specifier, &source))
+    .collect();
   let program = post_process(program);
 
   let (program, top_level_context) = if params.scope_analysis {
@@ -171,22 +171,29 @@ fn parse(
     Arc::new(program),
     tokens.map(Arc::new),
     top_level_context,
+    diagnostics,
   ))
 }
 
+#[allow(clippy::type_complexity)]
 fn parse_string_input(
   input: StringInput,
   syntax: Syntax,
   capture_tokens: bool,
   parse_mode: ParseMode,
 ) -> Result<
-  (SingleThreadedComments, Program, Option<Vec<TokenAndSpan>>),
-  swc_ecmascript::parser::error::Error,
+  (
+    SingleThreadedComments,
+    Program,
+    Option<Vec<TokenAndSpan>>,
+    Vec<SwcError>,
+  ),
+  SwcError,
 > {
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
 
-  if capture_tokens {
+  let (program, tokens, errors) = if capture_tokens {
     let lexer = swc_ecmascript::parser::Capturing::new(lexer);
     let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
     let program = match parse_mode {
@@ -196,7 +203,7 @@ fn parse_string_input(
     };
     let tokens = parser.input().take();
 
-    Ok((comments, program, Some(tokens)))
+    (program, Some(tokens), parser.take_errors())
   } else {
     let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
     let program = match parse_mode {
@@ -205,8 +212,10 @@ fn parse_string_input(
       ParseMode::Script => Program::Script(parser.parse_script()?),
     };
 
-    Ok((comments, program, None))
-  }
+    (program, None, parser.take_errors())
+  };
+
+  Ok((comments, program, tokens, errors))
 }
 
 /// Gets the default `Syntax` used by `deno_ast` for the provided media type.
@@ -253,7 +262,7 @@ pub fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
     dynamic_import: true,
     tsx,
     import_assertions: true,
-    no_early_errors: true,
+    no_early_errors: false,
   }
 }
 
@@ -333,17 +342,15 @@ mod test {
     })
     .err()
     .unwrap();
+    assert_eq!(diagnostic.specifier, "my_file.js".to_string());
     assert_eq!(
-      diagnostic,
-      Diagnostic {
-        specifier: "my_file.js".to_string(),
-        display_position: LineAndColumnDisplay {
-          line_number: 1,
-          column_number: 3,
-        },
-        message: "Expected ';', '}' or <eof>".to_string(),
+      diagnostic.display_position,
+      LineAndColumnDisplay {
+        line_number: 1,
+        column_number: 3,
       }
-    )
+    );
+    assert_eq!(diagnostic.message(), "Expected ';', '}' or <eof>");
   }
 
   #[test]
@@ -403,5 +410,64 @@ mod test {
       // but these shouldn't be
       assert_ne!(func_decl.ident.to_id(), func_decl_inner_expr.to_id());
     });
+  }
+
+  #[test]
+  fn should_error_on_syntax_diagnostic() {
+    let diagnostic = parse_ts_module("test;\nas#;").err().unwrap();
+    assert_eq!(diagnostic.message(), concat!("Expected ';', '}' or <eof>"));
+  }
+
+  #[test]
+  fn should_error_without_issue_when_there_exists_multi_byte_char_on_line_with_syntax_error(
+  ) {
+    let diagnostic = parse_ts_module(concat!(
+      "test;\n",
+      r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
+    )).err().unwrap();
+    assert_eq!(
+      diagnostic.message(),
+      concat!(
+        "Unexpected token `;`. Expected this, import, async, function, [ for array literal, ",
+        "{ for object literal, @ for decorator, function, class, null, true, false, number, bigint, string, ",
+        "regexp, ` for template literal, (, or an identifier",
+      )
+    );
+  }
+
+  #[test]
+  fn should_diagnostic_for_no_equals_sign_in_var_decl() {
+    let diagnostic =
+      parse_for_diagnostic("const Methods {\nf: (x, y) => x + y,\n};");
+    assert_eq!(diagnostic.message(), "Expected a semicolon");
+  }
+
+  #[test]
+  fn should_diganotic_when_var_stmts_sep_by_comma() {
+    let diagnostic = parse_for_diagnostic("let a = 0, let b = 1;");
+    assert_eq!(diagnostic.message(), "Expected a semicolon");
+  }
+
+  #[test]
+  fn should_diagnostic_for_exected_expr_type_alias() {
+    let diagnostic =
+      parse_for_diagnostic("type T =\n  | unknown\n  { } & unknown;");
+    assert_eq!(diagnostic.message(), "Expression expected");
+  }
+
+  fn parse_for_diagnostic(text: &str) -> Diagnostic {
+    let result = parse_ts_module(text).unwrap();
+    result.diagnostics().first().unwrap().to_owned()
+  }
+
+  fn parse_ts_module(text: &str) -> Result<ParsedSource, Diagnostic> {
+    parse_module(ParseParams {
+      specifier: "my_file.ts".to_string(),
+      source: SourceTextInfo::from_string(text.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
   }
 }
