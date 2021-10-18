@@ -193,7 +193,7 @@ fn parse_string_input(
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
 
-  let (program, tokens, errors) = if capture_tokens {
+  if capture_tokens {
     let lexer = swc_ecmascript::parser::Capturing::new(lexer);
     let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
     let program = match parse_mode {
@@ -202,8 +202,9 @@ fn parse_string_input(
       ParseMode::Script => Program::Script(parser.parse_script()?),
     };
     let tokens = parser.input().take();
+    let errors = parser.take_errors();
 
-    (program, Some(tokens), parser.take_errors())
+    Ok((comments, program, Some(tokens), errors))
   } else {
     let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
     let program = match parse_mode {
@@ -211,11 +212,10 @@ fn parse_string_input(
       ParseMode::Module => Program::Module(parser.parse_module()?),
       ParseMode::Script => Program::Script(parser.parse_script()?),
     };
+    let errors = parser.take_errors();
 
-    (program, None, parser.take_errors())
-  };
-
-  Ok((comments, program, tokens, errors))
+    Ok((comments, program, None, errors))
+  }
 }
 
 /// Gets the default `Syntax` used by `deno_ast` for the provided media type.
