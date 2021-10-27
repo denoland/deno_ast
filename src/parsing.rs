@@ -322,7 +322,9 @@ mod test {
 
     let program = parse_module(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string("class T { method() { #test in this; } }".to_string()),
+      source: SourceTextInfo::from_string(
+        "class T { method() { #test in this; } }".to_string(),
+      ),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
