@@ -282,7 +282,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("should parse");
+    .unwrap();
     assert_eq!(program.specifier(), "my_file.js");
     assert_eq!(program.source().text_str(), "// 1\n1 + 1\n// 2");
     assert_eq!(program.media_type(), MediaType::JavaScript);
@@ -306,7 +306,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("should parse");
+    .unwrap();
     assert!(matches!(
       program.module().body[0],
       crate::swc::ast::ModuleItem::Stmt(..)
@@ -330,7 +330,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("should parse");
+    .unwrap();
 
     program.with_view(|program| {
       let class_decl = program.children()[0].expect::<ClassDecl>();
@@ -353,7 +353,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("should parse");
+    .unwrap();
     program.tokens();
   }
 
@@ -397,7 +397,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("should parse")
+    .unwrap()
   }
 
   #[cfg(all(feature = "view", feature = "transforms"))]
@@ -413,7 +413,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: true,
     })
-    .expect("should parse");
+    .unwrap();
 
     parsed_source.with_view(|view| {
       use crate::view::*;
