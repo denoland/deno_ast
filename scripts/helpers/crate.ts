@@ -58,6 +58,10 @@ export class Crate {
     return this.#runCommandWithOutput(["cargo", "build"]);
   }
 
+  test() {
+    return this.#runCommandWithOutput(["cargo", "test"]);
+  }
+
   async #updateManifestFile(action: (fileText: string) => string) {
     if (this.#isUpdatingManifest) {
       throw new Error("Cannot update manifest while updating manifest.");
