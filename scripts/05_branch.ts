@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-import { Crate, Crates } from "./helpers/mod.ts";
+import { Crates } from "./helpers/mod.ts";
 
 const crates = new Crates();
 const deno = crates.get("deno");
