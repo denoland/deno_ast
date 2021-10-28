@@ -1,3 +1,5 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 export async function runCommand(params: {
   cwd: string;
   cmd: string[];
