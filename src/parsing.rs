@@ -250,7 +250,7 @@ pub fn get_es_config(jsx: bool) -> EsConfig {
     fn_bind: false,
     import_assertions: true,
     static_blocks: true,
-    private_in_object: false,
+    private_in_object: true,
   }
 }
 
@@ -282,7 +282,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("should parse");
+    .unwrap();
     assert_eq!(program.specifier(), "my_file.js");
     assert_eq!(program.source().text_str(), "// 1\n1 + 1\n// 2");
     assert_eq!(program.media_type(), MediaType::JavaScript);
@@ -306,11 +306,38 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("should parse");
+    .unwrap();
     assert!(matches!(
       program.module().body[0],
       crate::swc::ast::ModuleItem::Stmt(..)
     ));
+  }
+
+  #[cfg(feature = "view")]
+  #[test]
+  fn should_parse_brand_checks_in_js() {
+    use crate::view::ClassDecl;
+    use crate::view::ClassMethod;
+    use crate::view::NodeTrait;
+
+    let program = parse_module(ParseParams {
+      specifier: "my_file.js".to_string(),
+      source: SourceTextInfo::from_string(
+        "class T { method() { #test in this; } }".to_string(),
+      ),
+      media_type: MediaType::JavaScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+
+    program.with_view(|program| {
+      let class_decl = program.children()[0].expect::<ClassDecl>();
+      let class_method = class_decl.class.body[0].expect::<ClassMethod>();
+      let method_stmt = class_method.function.body.unwrap().stmts[0];
+      assert_eq!(method_stmt.text(), "#test in this;");
+    });
   }
 
   #[test]
@@ -326,7 +353,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("should parse");
+    .unwrap();
     program.tokens();
   }
 
@@ -370,7 +397,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("should parse")
+    .unwrap()
   }
 
   #[cfg(all(feature = "view", feature = "transforms"))]
@@ -386,7 +413,7 @@ mod test {
       maybe_syntax: None,
       scope_analysis: true,
     })
-    .expect("should parse");
+    .unwrap();
 
     parsed_source.with_view(|view| {
       use crate::view::*;
