@@ -221,10 +221,16 @@ fn parse_string_input(
 /// Gets the default `Syntax` used by `deno_ast` for the provided media type.
 pub fn get_syntax(media_type: MediaType) -> Syntax {
   match media_type {
-    MediaType::JavaScript => Syntax::Es(get_es_config(false)),
+    MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+      Syntax::Es(get_es_config(false))
+    }
     MediaType::Jsx => Syntax::Es(get_es_config(true)),
-    MediaType::TypeScript => Syntax::Typescript(get_ts_config(false, false)),
-    MediaType::Dts => Syntax::Typescript(get_ts_config(false, true)),
+    MediaType::TypeScript | MediaType::Mts | MediaType::Cts => {
+      Syntax::Typescript(get_ts_config(false, false))
+    }
+    MediaType::Dts | MediaType::Dmts | MediaType::Dcts => {
+      Syntax::Typescript(get_ts_config(false, true))
+    }
     MediaType::Tsx => Syntax::Typescript(get_ts_config(true, false)),
     _ => Syntax::Es(get_es_config(false)),
   }

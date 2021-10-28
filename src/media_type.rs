@@ -9,19 +9,44 @@ use std::path::PathBuf;
 #[cfg(feature = "module_specifier")]
 pub type ModuleSpecifier = url::Url;
 
-#[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MediaType {
-  JavaScript = 0,
-  Jsx = 1,
-  TypeScript = 2,
-  Dts = 3,
-  Tsx = 4,
-  Json = 5,
-  Wasm = 6,
-  TsBuildInfo = 7,
-  SourceMap = 8,
-  Unknown = 9,
+  JavaScript,
+  Jsx,
+  Mjs,
+  Cjs,
+  TypeScript,
+  Mts,
+  Cts,
+  Dts,
+  Dmts,
+  Dcts,
+  Tsx,
+  Json,
+  Wasm,
+  TsBuildInfo,
+  SourceMap,
+  Unknown,
+}
+
+/// Definition files don't have separate content types and so we have to "guess"
+/// at what they are meant to be.
+fn map_typescript_like(
+  path: &Path,
+  base_type: MediaType,
+  definition_type: MediaType,
+) -> MediaType {
+  match path.file_stem() {
+    None => base_type,
+    Some(os_str) => {
+      if let Some(file_stem) = os_str.to_str() {
+        if file_stem.ends_with(".d") {
+          return definition_type;
+        }
+      }
+      base_type
+    }
+  }
 }
 
 impl MediaType {
@@ -33,8 +58,14 @@ impl MediaType {
     match self {
       Self::JavaScript => ".js",
       Self::Jsx => ".jsx",
+      Self::Mjs => ".mjs",
+      Self::Cjs => ".cjs",
       Self::TypeScript => ".ts",
+      Self::Mts => ".mts",
+      Self::Cts => ".cts",
       Self::Dts => ".d.ts",
+      Self::Dmts => ".d.mts",
+      Self::Dcts => ".d.cts",
       Self::Tsx => ".tsx",
       Self::Json => ".json",
       // TypeScript doesn't have an "unknown", so we will treat WASM as JS for
@@ -58,8 +89,14 @@ impl MediaType {
     match self {
       Self::JavaScript => 1,
       Self::Jsx => 2,
+      Self::Mjs => 1,
+      Self::Cjs => 1,
       Self::TypeScript => 3,
+      Self::Mts => 3,
+      Self::Cts => 3,
       Self::Dts => 3,
+      Self::Dmts => 3,
+      Self::Dcts => 3,
       Self::Tsx => 4,
       Self::Json => 5,
       _ => 0,
@@ -115,21 +152,14 @@ impl MediaType {
         },
       },
       Some(os_str) => match os_str.to_str() {
-        Some("ts") => {
-          if let Some(os_str) = path.file_stem() {
-            if let Some(file_name) = os_str.to_str() {
-              if file_name.ends_with(".d") {
-                return Self::Dts;
-              }
-            }
-          }
-          Self::TypeScript
-        }
+        Some("ts") => map_typescript_like(path, Self::TypeScript, Self::Dts),
+        Some("mts") => map_typescript_like(path, Self::Mts, Self::Dmts),
+        Some("cts") => map_typescript_like(path, Self::Cts, Self::Dcts),
         Some("tsx") => Self::Tsx,
         Some("js") => Self::JavaScript,
         Some("jsx") => Self::Jsx,
-        Some("mjs") => Self::JavaScript,
-        Some("cjs") => Self::JavaScript,
+        Some("mjs") => Self::Mjs,
+        Some("cjs") => Self::Cjs,
         Some("json") => Self::Json,
         Some("wasm") => Self::Wasm,
         Some("tsbuildinfo") => Self::TsBuildInfo,
@@ -160,8 +190,14 @@ impl fmt::Display for MediaType {
     let value = match self {
       Self::JavaScript => "JavaScript",
       Self::Jsx => "JSX",
+      Self::Mjs => "Mjs",
+      Self::Cjs => "Cjs",
       Self::TypeScript => "TypeScript",
+      Self::Mts => "Mts",
+      Self::Cts => "Cts",
       Self::Dts => "Dts",
+      Self::Dmts => "Dmts",
+      Self::Dcts => "Dcts",
       Self::Tsx => "TSX",
       Self::Json => "Json",
       Self::Wasm => "Wasm",
@@ -244,29 +280,17 @@ fn map_js_like_extension(
     Some(os_str) => match os_str.to_str() {
       None => default,
       Some("jsx") => MediaType::Jsx,
+      Some("mjs") => MediaType::Mjs,
+      Some("cjs") => MediaType::Cjs,
       Some("tsx") => MediaType::Tsx,
-      // Because DTS files do not have a separate media type, or a unique
-      // extension, we have to "guess" at those things that we consider that
-      // look like TypeScript, and end with `.d.ts` are DTS files.
       Some("ts") => {
-        if default == MediaType::TypeScript {
-          match path.file_stem() {
-            None => default,
-            Some(os_str) => {
-              if let Some(file_stem) = os_str.to_str() {
-                if file_stem.ends_with(".d") {
-                  MediaType::Dts
-                } else {
-                  default
-                }
-              } else {
-                default
-              }
-            }
-          }
-        } else {
-          default
-        }
+        map_typescript_like(&path, MediaType::TypeScript, MediaType::Dts)
+      }
+      Some("mts") => {
+        map_typescript_like(&path, MediaType::Mts, MediaType::Dmts)
+      }
+      Some("cts") => {
+        map_typescript_like(&path, MediaType::Cts, MediaType::Dcts)
       }
       Some(_) => default,
     },
@@ -372,19 +396,21 @@ mod tests {
       MediaType::from(Path::new("foo/bar.ts")),
       MediaType::TypeScript
     );
+    assert_eq!(MediaType::from(Path::new("foo/bar.mts")), MediaType::Mts);
+    assert_eq!(MediaType::from(Path::new("foo/bar.cts")), MediaType::Cts);
     assert_eq!(MediaType::from(Path::new("foo/bar.tsx")), MediaType::Tsx);
     assert_eq!(MediaType::from(Path::new("foo/bar.d.ts")), MediaType::Dts);
+    assert_eq!(MediaType::from(Path::new("foo/bar.d.mts")), MediaType::Dmts);
+    assert_eq!(MediaType::from(Path::new("foo/bar.d.cts")), MediaType::Dcts);
     assert_eq!(
       MediaType::from(Path::new("foo/bar.js")),
       MediaType::JavaScript
     );
+    assert_eq!(MediaType::from(Path::new("foo/bar.mjs")), MediaType::Mjs);
+    assert_eq!(MediaType::from(Path::new("foo/bar.cjs")), MediaType::Cjs);
     assert_eq!(MediaType::from(Path::new("foo/bar.jsx")), MediaType::Jsx);
     assert_eq!(MediaType::from(Path::new("foo/bar.json")), MediaType::Json);
     assert_eq!(MediaType::from(Path::new("foo/bar.wasm")), MediaType::Wasm);
-    assert_eq!(
-      MediaType::from(Path::new("foo/bar.cjs")),
-      MediaType::JavaScript
-    );
     assert_eq!(
       MediaType::from(Path::new("foo/.tsbuildinfo")),
       MediaType::TsBuildInfo
@@ -405,7 +431,11 @@ mod tests {
   fn test_from_specifier() {
     let fixtures = vec![
       ("file:///a/b/c.ts", MediaType::TypeScript),
+      ("file:///a/b/c.mts", MediaType::Mts),
+      ("file:///a/b/c.cts", MediaType::Cts),
       ("file:///a/b/c.js", MediaType::JavaScript),
+      ("file:///a/b/c.mjs", MediaType::Mjs),
+      ("file:///a/b/c.cjs", MediaType::Cjs),
       ("file:///a/b/c.txt", MediaType::Unknown),
       ("https://deno.land/x/mod.ts", MediaType::TypeScript),
       ("https://deno.land/x/mod.js", MediaType::JavaScript),
@@ -431,15 +461,45 @@ mod tests {
         MediaType::TypeScript,
       ),
       (
+        "https://deno.land/x/mod.mts",
+        "application/typescript",
+        MediaType::Mts,
+      ),
+      (
+        "https://deno.land/x/mod.cts",
+        "application/typescript",
+        MediaType::Cts,
+      ),
+      (
         "https://deno.land/x/mod.d.ts",
         "application/typescript",
         MediaType::Dts,
+      ),
+      (
+        "https://deno.land/x/mod.d.mts",
+        "application/typescript",
+        MediaType::Dmts,
+      ),
+      (
+        "https://deno.land/x/mod.d.cts",
+        "application/typescript",
+        MediaType::Dcts,
       ),
       ("https://deno.land/x/mod.tsx", "text/tsx", MediaType::Tsx),
       (
         "https://deno.land/x/mod.js",
         "application/javascript",
         MediaType::JavaScript,
+      ),
+      (
+        "https://deno.land/x/mod.mjs",
+        "application/javascript",
+        MediaType::Mjs,
+      ),
+      (
+        "https://deno.land/x/mod.cjs",
+        "application/javascript",
+        MediaType::Cjs,
       ),
       ("https://deno.land/x/mod.jsx", "text/jsx", MediaType::Jsx),
       (
@@ -471,9 +531,14 @@ mod tests {
   #[test]
   fn test_serialization() {
     assert_eq!(json!(MediaType::JavaScript), json!("JavaScript"));
+    assert_eq!(json!(MediaType::Mjs), json!("Mjs"));
+    assert_eq!(json!(MediaType::Cjs), json!("Cjs"));
     assert_eq!(json!(MediaType::Jsx), json!("JSX"));
     assert_eq!(json!(MediaType::TypeScript), json!("TypeScript"));
+    assert_eq!(json!(MediaType::Mts), json!("Mts"));
     assert_eq!(json!(MediaType::Dts), json!("Dts"));
+    assert_eq!(json!(MediaType::Dmts), json!("Dmts"));
+    assert_eq!(json!(MediaType::Dcts), json!("Dcts"));
     assert_eq!(json!(MediaType::Tsx), json!("TSX"));
     assert_eq!(json!(MediaType::Json), json!("Json"));
     assert_eq!(json!(MediaType::Wasm), json!("Wasm"));
@@ -485,9 +550,15 @@ mod tests {
   #[test]
   fn test_display() {
     assert_eq!(MediaType::JavaScript.to_string(), "JavaScript");
+    assert_eq!(MediaType::Mjs.to_string(), "Mjs");
+    assert_eq!(MediaType::Cjs.to_string(), "Cjs");
     assert_eq!(MediaType::Jsx.to_string(), "JSX");
     assert_eq!(MediaType::TypeScript.to_string(), "TypeScript");
+    assert_eq!(MediaType::Mts.to_string(), "Mts");
+    assert_eq!(MediaType::Cts.to_string(), "Cts");
     assert_eq!(MediaType::Dts.to_string(), "Dts");
+    assert_eq!(MediaType::Dmts.to_string(), "Dmts");
+    assert_eq!(MediaType::Dcts.to_string(), "Dcts");
     assert_eq!(MediaType::Tsx.to_string(), "TSX");
     assert_eq!(MediaType::Json.to_string(), "Json");
     assert_eq!(MediaType::Wasm.to_string(), "Wasm");
