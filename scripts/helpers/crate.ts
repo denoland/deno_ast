@@ -138,6 +138,10 @@ export class Crate {
     return this.#runCommandWithOutput(["cargo", "build"]);
   }
 
+  cargoCheck() {
+    return this.#runCommandWithOutput(["cargo", "check"]);
+  }
+
   test() {
     return this.#runCommandWithOutput(["cargo", "test"]);
   }

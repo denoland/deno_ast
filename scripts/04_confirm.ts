@@ -3,15 +3,7 @@
 import { Crate, Crates } from "./helpers/mod.ts";
 
 const crates = new Crates();
-const deno = crates.get("deno");
-const deno_ast = crates.get("deno_ast");
-const nonDenoCrates = [
-  deno_ast,
-  crates.get("deno_graph"),
-  crates.get("deno_doc"),
-  crates.get("deno_lint"),
-  crates.get("dprint-plugin-typescript"),
-];
+const nonDenoCrates = crates.crates.filter((c) => c.name !== "deno");
 
 // bump the version numbers
 for (const crate of nonDenoCrates) {
@@ -20,18 +12,6 @@ for (const crate of nonDenoCrates) {
 
 // set the dependencies back to not being pointed at local copies
 await crates.revertLocalSource();
-
-// create a branch, commit, push for the non-deno repos
-for (const crate of nonDenoCrates) {
-  await crate.branch("release:" + crate.version.toString());
-  await crate.commit(crate.version.toString());
-  await crate.push();
-}
-
-// now branch, commit, and push for the deno repo
-await deno.branch("deno_ast:" + deno_ast.version.toString());
-await deno.commit(`chore: upgrade to deno_ast ${deno_ast.version.toString()}`);
-await deno.push();
 
 async function incrementVersion(crate: Crate) {
   console.log(`${crate.name} is on ${crate.version}`);

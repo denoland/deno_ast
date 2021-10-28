@@ -24,5 +24,7 @@ downstream crates on an swc version bump.
   and keep running this until everything builds.
 - `03_test.ts` - Tests each crate. If you encounter test failures, fix them and
   keep running this until all the tests pass.
-- `04_confirm.ts` - Bumps each crate's version, creates a branch, commits, and
-  pushes a branch for every repo.
+- `04_confirm.ts` - Bumps each crate's version and points the Cargo.toml files
+  at these new versions.
+- `05_branch.ts` - Creates a branch, commits, and pushes a branch for every
+  selected repo.
