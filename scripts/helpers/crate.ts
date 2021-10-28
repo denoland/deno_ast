@@ -1,5 +1,5 @@
 import { path } from "./deps.ts";
-import { existsSync, runCommand } from "./helpers.ts";
+import { existsSync, runCommand, runCommandWithOutput } from "./helpers.ts";
 
 export const rootDir = path.resolve(path.join(path.fromFileUrl(import.meta.url), "../../../../"));
 
@@ -33,7 +33,7 @@ export class Crate {
       const relativePath = path.relative(this.folderPath, crate.folderPath).replace(/\\/g, "/");
       // try to replace if it had a property in the object
       const versionPropRegex = new RegExp(
-        `^(\\b${crate.name}\\b\\s.*)version\s*=\s*"[^"]+"`,
+        `^(${crate.name}\\b\\s.*)version\\s*=\\s*"[^"]+"`,
         "gm",
       );
       const newFileText = fileText.replace(versionPropRegex, `$1path = "${relativePath}"`);
@@ -48,6 +48,14 @@ export class Crate {
       );
       return fileText.replace(versionStringRegex, `$1{ path = "${relativePath}" }`)
     });
+  }
+
+  resetHard() {
+    return this.#runCommand(["git", "reset", "--hard"]);
+  }
+
+  build() {
+    return this.#runCommandWithOutput(["cargo", "build"]);
   }
 
   async #updateManifestFile(action: (fileText: string) => string) {
@@ -73,6 +81,13 @@ export class Crate {
       cmd,
     });
   }
+
+  #runCommandWithOutput(cmd: string[]) {
+    return runCommandWithOutput({
+      cwd: this.folderPath,
+      cmd,
+    });
+  }
 }
 
 export class Crates {
@@ -81,14 +96,15 @@ export class Crates {
   constructor() {
     this.crates = [
       // list in build order
-      createRepo("deno_graph"),
-      createRepo("deno_doc"),
-      createRepo("deno_lint"),
+      createCrate("deno_ast"),
+      createCrate("deno_graph"),
+      createCrate("deno_doc"),
+      createCrate("deno_lint"),
+      createCrate("dprint-plugin-typescript"),
       new Crate("deno", path.join(rootDir, "deno", "cli")),
-      new Crate("deno_ast", path.join(rootDir, "deno_ast")),
     ];
 
-    function createRepo(name: string) {
+    function createCrate(name: string) {
       return new Crate(name, path.join(rootDir, name));
     }
   }
