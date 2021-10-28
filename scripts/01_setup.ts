@@ -10,7 +10,8 @@ const dprint_plugin_typescript = crates.get("dprint-plugin-typescript");
 const deno = crates.get("deno");
 
 // Ensure repos are latest main
-for (const crate of [
+for (
+  const crate of [
     deno_graph,
     deno_doc,
     deno_lint,

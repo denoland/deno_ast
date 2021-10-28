@@ -201,19 +201,19 @@ export class Crates {
     return crate;
   }
 
-  toLocalSource() {
+  async toLocalSource() {
     for (
       const [workingCrate, otherCrate] of this.#getLocalSourceRelationships()
     ) {
-      workingCrate.toLocalSource(otherCrate);
+      await workingCrate.toLocalSource(otherCrate);
     }
   }
 
-  revertLocalSource() {
+  async revertLocalSource() {
     for (
       const [workingCrate, otherCrate] of this.#getLocalSourceRelationships()
     ) {
-      workingCrate.revertLocalSource(otherCrate);
+      await workingCrate.revertLocalSource(otherCrate);
     }
   }
 
