@@ -3,13 +3,18 @@
 import { path, semver } from "./deps.ts";
 import { existsSync, runCommand, runCommandWithOutput } from "./helpers.ts";
 
-export const rootDir = path.resolve(path.join(path.fromFileUrl(import.meta.url), "../../../../"));
+export const rootDir = path.resolve(
+  path.join(path.fromFileUrl(import.meta.url), "../../../../"),
+);
 
 export class Crate {
   #manifestPath: string;
   #isUpdatingManifest = false;
 
-  constructor(public readonly name: string, public readonly folderPath: string) {
+  constructor(
+    public readonly name: string,
+    public readonly folderPath: string,
+  ) {
     if (!existsSync(folderPath)) {
       throw new Error(`Could not find crate ${name} at ${folderPath}`);
     }
@@ -29,14 +34,22 @@ export class Crate {
     return semver.parse(result[1])!;
   }
 
-  async setVersion(version: semver.SemVer) {
-    return this.#updateManifestFile(fileText => {
-      return fileText.replace(/^version = "([0-9]+\.[0-9]+\.[0-9]+)"$/m, `version = "${version.toString()}"`);
+  setVersion(version: semver.SemVer) {
+    return this.#updateManifestFile((fileText) => {
+      return fileText.replace(
+        /^version = "([0-9]+\.[0-9]+\.[0-9]+)"$/m,
+        `version = "${version.toString()}"`,
+      );
     });
   }
 
   async hasLocalChanges() {
-    const output = await this.#runCommand(["git", "status", "--porcelain", "--untracked-files=no"]);
+    const output = await this.#runCommand([
+      "git",
+      "status",
+      "--porcelain",
+      "--untracked-files=no",
+    ]);
     return output.trim().length > 0;
   }
 
@@ -49,14 +62,18 @@ export class Crate {
   }
 
   toLocalSource(crate: Crate) {
-    return this.#updateManifestFile(fileText => {
-      const relativePath = path.relative(this.folderPath, crate.folderPath).replace(/\\/g, "/");
+    return this.#updateManifestFile((fileText) => {
+      const relativePath = path.relative(this.folderPath, crate.folderPath)
+        .replace(/\\/g, "/");
       // try to replace if it had a property in the object
       const versionPropRegex = new RegExp(
         `^(${crate.name}\\b\\s.*)version\\s*=\\s*"[^"]+"`,
         "m",
       );
-      const newFileText = fileText.replace(versionPropRegex, `$1path = "${relativePath}"`);
+      const newFileText = fileText.replace(
+        versionPropRegex,
+        `$1path = "${relativePath}"`,
+      );
       if (newFileText !== fileText) {
         return newFileText;
       }
@@ -66,19 +83,25 @@ export class Crate {
         `^(\\b${crate.name}\\b\\s.*)"([=\\^])?[0-9]+[^"]+"`,
         "m",
       );
-      return fileText.replace(versionStringRegex, `$1{ path = "${relativePath}" }`)
+      return fileText.replace(
+        versionStringRegex,
+        `$1{ path = "${relativePath}" }`,
+      );
     });
   }
 
   revertLocalSource(crate: Crate) {
-    return this.#updateManifestFile(fileText => {
+    return this.#updateManifestFile((fileText) => {
       const crateVersion = crate.version.toString();
       // try to replace if it had a property in the object
       const pathOnlyRegex = new RegExp(
         `^${crate.name} = { path = "[^"]+" }$`,
         "m",
       );
-      const newFileText = fileText.replace(pathOnlyRegex, `${crate.name} = "${crateVersion}"`);
+      const newFileText = fileText.replace(
+        pathOnlyRegex,
+        `${crate.name} = "${crateVersion}"`,
+      );
       if (newFileText !== fileText) {
         return newFileText;
       }
@@ -88,7 +111,10 @@ export class Crate {
         `^(${crate.name}\\b\\s.*)path\\s*=\\s*"[^"]+"`,
         "m",
       );
-      return fileText.replace(versionStringRegex, `$1version = "${crateVersion}" }`);
+      return fileText.replace(
+        versionStringRegex,
+        `$1version = "${crateVersion}" }`,
+      );
     });
   }
 
@@ -168,7 +194,7 @@ export class Crates {
   }
 
   get(name: string) {
-    const crate = this.crates.find(c => c.name === name);
+    const crate = this.crates.find((c) => c.name === name);
     if (crate == null) {
       throw new Error(`Could not find crate with name ${name}.`);
     }
@@ -176,13 +202,17 @@ export class Crates {
   }
 
   toLocalSource() {
-    for (const [workingCrate, otherCrate] of this.#getLocalSourceRelationships()) {
+    for (
+      const [workingCrate, otherCrate] of this.#getLocalSourceRelationships()
+    ) {
       workingCrate.toLocalSource(otherCrate);
     }
   }
 
   revertLocalSource() {
-    for (const [workingCrate, otherCrate] of this.#getLocalSourceRelationships()) {
+    for (
+      const [workingCrate, otherCrate] of this.#getLocalSourceRelationships()
+    ) {
       workingCrate.revertLocalSource(otherCrate);
     }
   }

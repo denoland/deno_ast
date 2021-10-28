@@ -34,9 +34,8 @@ await deno.commit(`chore: upgrade to deno_ast ${deno_ast.version.toString()}`);
 await deno.push();
 
 async function incrementVersion(crate: Crate) {
-  let version = crate.version;
-  console.log(`${crate.name} is on ${version}`);
-  await crate.setVersion(version.inc(getVersionIncrement()));
+  console.log(`${crate.name} is on ${crate.version}`);
+  await crate.setVersion(crate.version.inc(getVersionIncrement()));
   console.log(`Set to ${crate.version}`);
 }
 

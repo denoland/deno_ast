@@ -10,10 +10,19 @@ const dprint_plugin_typescript = crates.get("dprint-plugin-typescript");
 const deno = crates.get("deno");
 
 // Ensure repos are latest main
-for (const crate of [deno_graph, deno_doc, deno_lint, dprint_plugin_typescript, deno]) {
-  console.log(`Setting up ${crate.name}...`)
+for (const crate of [
+    deno_graph,
+    deno_doc,
+    deno_lint,
+    dprint_plugin_typescript,
+    deno,
+  ]
+) {
+  console.log(`Setting up ${crate.name}...`);
   if (await crate.hasLocalChanges()) {
-    throw new Error(`Repo ${crate.name} had local changes. Please resolve this.`)
+    throw new Error(
+      `Repo ${crate.name} had local changes. Please resolve this.`,
+    );
   }
   console.log(`  Switching to main...`);
   await crate.switchMain();
