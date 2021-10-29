@@ -290,9 +290,7 @@ fn map_js_like_extension(
       //
       // This handles situations where the file is transpiled on the server and
       // is explicitly providing a media type.
-      Some("ts") => {
-        map_typescript_like(&path, default, MediaType::Dts)
-      }
+      Some("ts") => map_typescript_like(&path, default, MediaType::Dts),
       Some("mts") => {
         let base_type = if default == MediaType::JavaScript {
           MediaType::Mjs
@@ -549,16 +547,8 @@ mod tests {
         "text/plain",
         MediaType::TypeScript,
       ),
-      (
-        "https://deno.land/x/mod.mts",
-        "text/plain",
-        MediaType::Mts,
-      ),
-      (
-        "https://deno.land/x/mod.cts",
-        "text/plain",
-        MediaType::Cts,
-      ),
+      ("https://deno.land/x/mod.mts", "text/plain", MediaType::Mts),
+      ("https://deno.land/x/mod.cts", "text/plain", MediaType::Cts),
       (
         "https://deno.land/x/mod.js",
         "text/plain",
