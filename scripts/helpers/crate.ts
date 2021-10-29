@@ -126,6 +126,10 @@ export class Crate {
     return this.#runCommandWithOutput(["git", "checkout", "-b", name]);
   }
 
+  gitAdd() {
+    return this.#runCommandWithOutput(["git", "add", "."]);
+  }
+
   commit(message: string) {
     return this.#runCommandWithOutput(["git", "commit", "-m", message]);
   }
