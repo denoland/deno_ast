@@ -11,7 +11,7 @@ const nonDenoCrates = crates.crates.filter((c) => c.name !== "deno");
 for (const crate of nonDenoCrates) {
   if (confirm(`Branch for ${crate.name}?`)) {
     await crate.cargoCheck();
-    await crate.branch("release_" + crate.version.toString().replace(".", "_"));
+    await crate.branch("release_" + crate.version.toString());
     await crate.gitAdd();
     await crate.commit(crate.version.toString());
     await crate.push();
@@ -21,7 +21,7 @@ for (const crate of nonDenoCrates) {
 // now branch, commit, and push for the deno repo
 if (confirm(`Branch for deno?`)) {
   await deno.cargoCheck();
-  await deno.branch("deno_ast_" + deno_ast.version.toString().replace(".", "_"));
+  await deno.branch("deno_ast_" + deno_ast.version.toString());
   await deno.gitAdd();
   await deno.commit(
     `chore: upgrade to deno_ast ${deno_ast.version.toString()}`,
