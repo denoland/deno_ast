@@ -283,14 +283,29 @@ fn map_js_like_extension(
       Some("mjs") => MediaType::Mjs,
       Some("cjs") => MediaType::Cjs,
       Some("tsx") => MediaType::Tsx,
-      Some("ts") => {
-        map_typescript_like(&path, MediaType::TypeScript, MediaType::Dts)
-      }
+      // This preserves legacy behavior, where if a file is served with a
+      // content type of `application/javascript`, but it ends only with a `.ts`
+      // we will assume that it is JavaScript and not TypeScript, but if it ends
+      // with `.d.ts` we assume it is Dts.
+      //
+      // This handles situations where the file is transpiled on the server and
+      // is explicitly providing a media type.
+      Some("ts") => map_typescript_like(&path, default, MediaType::Dts),
       Some("mts") => {
-        map_typescript_like(&path, MediaType::Mts, MediaType::Dmts)
+        let base_type = if default == MediaType::JavaScript {
+          MediaType::Mjs
+        } else {
+          MediaType::Mts
+        };
+        map_typescript_like(&path, base_type, MediaType::Dmts)
       }
       Some("cts") => {
-        map_typescript_like(&path, MediaType::Cts, MediaType::Dcts)
+        let base_type = if default == MediaType::JavaScript {
+          MediaType::Cjs
+        } else {
+          MediaType::Cts
+        };
+        map_typescript_like(&path, base_type, MediaType::Dcts)
       }
       Some(_) => default,
     },
@@ -461,6 +476,21 @@ mod tests {
         MediaType::TypeScript,
       ),
       (
+        "https://deno.land/x/mod.ts",
+        "application/javascript",
+        MediaType::JavaScript,
+      ),
+      (
+        "https://deno.land/x/mod.mts",
+        "application/javascript",
+        MediaType::Mjs,
+      ),
+      (
+        "https://deno.land/x/mod.cts",
+        "application/javascript",
+        MediaType::Cjs,
+      ),
+      (
         "https://deno.land/x/mod.mts",
         "application/typescript",
         MediaType::Mts,
@@ -473,6 +503,11 @@ mod tests {
       (
         "https://deno.land/x/mod.d.ts",
         "application/typescript",
+        MediaType::Dts,
+      ),
+      (
+        "https://deno.land/x/mod.d.ts",
+        "application/javascript",
         MediaType::Dts,
       ),
       (
@@ -492,6 +527,11 @@ mod tests {
         MediaType::JavaScript,
       ),
       (
+        "https://deno.land/x/mod.js",
+        "application/typescript",
+        MediaType::TypeScript,
+      ),
+      (
         "https://deno.land/x/mod.mjs",
         "application/javascript",
         MediaType::Mjs,
@@ -507,6 +547,8 @@ mod tests {
         "text/plain",
         MediaType::TypeScript,
       ),
+      ("https://deno.land/x/mod.mts", "text/plain", MediaType::Mts),
+      ("https://deno.land/x/mod.cts", "text/plain", MediaType::Cts),
       (
         "https://deno.land/x/mod.js",
         "text/plain",
