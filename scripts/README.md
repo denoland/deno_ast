@@ -1,7 +1,7 @@
 # Scripts
 
-These build scripts provide a way to help upgrade, test, and open PRs in
-downstream crates on an swc version bump.
+These scripts provide a way to help upgrade, test, and open PRs in downstream
+crates on an swc version bump.
 
 ## Setup
 
