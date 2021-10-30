@@ -113,7 +113,7 @@ export class Crate {
       );
       return fileText.replace(
         versionStringRegex,
-        `$1version = "${crateVersion}" }`,
+        `$1version = "${crateVersion}"`,
       );
     });
   }
