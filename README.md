@@ -5,10 +5,11 @@
 Source text parsing, lexing, and AST related functionality for [Deno](https://deno.land).
 
 ```rust
-use deno::ast::MediaType;
-use deno::ast::parse_module;
-use deno::ast::ParseParams;
-use deno::ast::SourceTextInfo;
+use deno_ast::parse_module;
+use deno_ast::MediaType;
+use deno_ast::ParseParams;
+use deno_ast::SourceTextInfo;
+use std::sync::Arc;
 
 let source_text = Arc::new("class MyClass {}");
 let source_text_info = SourceTextInfo::new(source_text);
