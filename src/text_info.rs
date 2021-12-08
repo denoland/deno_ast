@@ -178,6 +178,16 @@ impl SourceTextInfo {
     )
   }
 
+  /// Gets the byte position of the provided line and column index.
+  ///
+  /// Note that this will panic if providing a line index outside the
+  /// bounds of the number of lines, but will clip the the line end byte index
+  /// when exceeding the line length.
+  pub fn byte_index(&self, line_and_column_index: LineAndColumnIndex) -> BytePos {
+    self.assert_line_index(line_and_column_index.line_index);
+    self.get_pos_from_relative_index(self.text_lines.byte_index(line_and_column_index))
+  }
+
   /// Gets a reference to the text slice of the line at the provided
   /// 0-based index.
   ///
