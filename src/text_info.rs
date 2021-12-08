@@ -183,9 +183,14 @@ impl SourceTextInfo {
   /// Note that this will panic if providing a line index outside the
   /// bounds of the number of lines, but will clip the the line end byte index
   /// when exceeding the line length.
-  pub fn byte_index(&self, line_and_column_index: LineAndColumnIndex) -> BytePos {
+  pub fn byte_index(
+    &self,
+    line_and_column_index: LineAndColumnIndex,
+  ) -> BytePos {
     self.assert_line_index(line_and_column_index.line_index);
-    self.get_pos_from_relative_index(self.text_lines.byte_index(line_and_column_index))
+    self.get_pos_from_relative_index(
+      self.text_lines.byte_index(line_and_column_index),
+    )
   }
 
   /// Gets a reference to the text slice of the line at the provided
@@ -341,6 +346,43 @@ mod test {
     let info =
       SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
     info.line_and_column_index(BytePos(6));
+  }
+
+  #[test]
+  fn byte_index() {
+    let text = "12\n3\r\nβ\n5";
+    for i in 0..10 {
+      let source_file =
+        SourceTextInfo::new_with_pos(BytePos(i), Arc::new(text.to_string()));
+      assert_byte_index(&source_file, 0, 0, i); // 1
+      assert_byte_index(&source_file, 0, 1, 1 + i); // 2
+      assert_byte_index(&source_file, 0, 2, 2 + i); // \n
+      assert_byte_index(&source_file, 0, 3, 2 + i); // beyond newline
+      assert_byte_index(&source_file, 0, 4, 2 + i); // beyond newline
+      assert_byte_index(&source_file, 1, 0, 3 + i); // 3
+      assert_byte_index(&source_file, 1, 1, 4 + i); // \r
+      assert_byte_index(&source_file, 1, 2, 4 + i); // \n
+      assert_byte_index(&source_file, 2, 0, 6 + i); // β
+      assert_byte_index(&source_file, 2, 1, 8 + i); // \n
+      assert_byte_index(&source_file, 3, 0, 9 + i); // 5
+      assert_byte_index(&source_file, 3, 1, 10 + i); // <EOF>
+      assert_byte_index(&source_file, 3, 2, 10 + i); // beyond <EOF>
+    }
+  }
+
+  fn assert_byte_index(
+    source_file: &SourceTextInfo,
+    line_index: usize,
+    column_index: usize,
+    pos: u32,
+  ) {
+    assert_eq!(
+      source_file.byte_index(LineAndColumnIndex {
+        line_index,
+        column_index,
+      }),
+      BytePos(pos)
+    );
   }
 
   #[test]
