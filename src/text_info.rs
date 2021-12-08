@@ -204,7 +204,7 @@ impl SourceTextInfo {
     &self.text_str()[line_start..line_end]
   }
 
-  /// Gets the source text located within the specified span.
+  /// Gets the source text located within the provided span.
   pub fn span_text(&self, span: &Span) -> &str {
     let offset_lo = (span.lo() - self.start_pos).0 as usize;
     let offset_hi = (span.hi - self.start_pos).0 as usize;
@@ -231,7 +231,7 @@ impl SourceTextInfo {
   fn assert_line_index(&self, line_index: usize) {
     if line_index >= self.lines_count() {
       panic!(
-        "The specified line index {} was greater or equal to the number of lines of {}.",
+        "The provided line index {} was greater or equal to the number of lines of {}.",
         line_index,
         self.lines_count()
       );
@@ -386,6 +386,19 @@ mod test {
   }
 
   #[test]
+  #[should_panic(
+    expected = "The provided line index 1 was greater or equal to the number of lines of 1."
+  )]
+  fn byte_index_panic_greater_than_lines() {
+    let info =
+      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+    info.byte_index(LineAndColumnIndex {
+      line_index: 1,
+      column_index: 0,
+    });
+  }
+
+  #[test]
   fn line_start() {
     let text = "12\n3\r\n4\n5";
     for i in 0..10 {
@@ -408,7 +421,7 @@ mod test {
 
   #[test]
   #[should_panic(
-    expected = "The specified line index 1 was greater or equal to the number of lines of 1."
+    expected = "The provided line index 1 was greater or equal to the number of lines of 1."
   )]
   fn line_start_equal_number_lines() {
     let info =
@@ -439,7 +452,7 @@ mod test {
 
   #[test]
   #[should_panic(
-    expected = "The specified line index 1 was greater or equal to the number of lines of 1."
+    expected = "The provided line index 1 was greater or equal to the number of lines of 1."
   )]
   fn line_end_equal_number_lines() {
     let info =
