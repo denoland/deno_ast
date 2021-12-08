@@ -239,18 +239,8 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
 /// Gets the default `EsConfig` used by `deno_ast` for the provided options.
 pub fn get_es_config(jsx: bool) -> EsConfig {
   EsConfig {
-    class_private_methods: true,
-    class_private_props: true,
-    class_props: true,
-    dynamic_import: true,
     export_default_from: true,
-    export_namespace_from: true,
-    import_meta: true,
     jsx,
-    nullish_coalescing: true,
-    num_sep: true,
-    optional_chaining: true,
-    top_level_await: true,
     decorators: false,
     decorators_before_export: false,
     fn_bind: false,
@@ -265,9 +255,7 @@ pub fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
   TsConfig {
     decorators: true,
     dts,
-    dynamic_import: true,
     tsx,
-    import_assertions: true,
     no_early_errors: false,
   }
 }
