@@ -12,7 +12,7 @@ use crate::swc::common::Span;
 use crate::swc::parser::lexer::Lexer;
 use crate::swc::parser::token::Token;
 use crate::MediaType;
-use crate::TARGET;
+use crate::ES_VERSION;
 
 #[derive(Debug)]
 pub enum TokenOrComment {
@@ -34,7 +34,7 @@ pub fn lex(source: &str, media_type: MediaType) -> Vec<LexedItem> {
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(
     get_syntax(media_type),
-    TARGET,
+    ES_VERSION,
     StringInput::new(source, BytePos(0), BytePos(source.len() as u32)),
     Some(&comments),
   );

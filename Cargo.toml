@@ -1,6 +1,6 @@
 [package]
 name = "deno_ast"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["the Deno authors"]
 documentation = "https://docs.rs/deno_ast"
 edition = "2018"
@@ -27,14 +27,14 @@ visit = ["swc_ecmascript/visit"]
 utils = ["swc_ecmascript/utils"]
 
 [dependencies]
-data-url = { version = "0.1.0", optional = true }
-dprint-swc-ecma-ast-view = { version = "0.42.0", optional = true }
+data-url = { version = "0.1.1", optional = true }
+dprint-swc-ecma-ast-view = { version = "0.45.0", optional = true }
 serde = { version = "1.0.130", features = ["derive"] }
 swc_atoms = "0.2.9"
-swc_bundler = { version = "0.75.0", optional = true }
-swc_common = "0.14.1"
-swc_ecmascript = { version = "0.80.0", features = ["parser"] }
-text_lines = { version = "0.3.0", features = ["serialization"] }
+swc_bundler = { version = "0.89.0", optional = true }
+swc_common = "0.15.0"
+swc_ecmascript = { version = "0.95.0", features = ["parser"] }
+text_lines = { version = "0.4.1", features = ["serialization"] }
 url = { version = "2.2.2", features = ["serde"], optional = true }
 
 [dev-dependencies]

@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use crate::comments::MultiThreadedComments;
+use crate::swc::ast::EsVersion;
 use crate::swc::ast::Module;
 use crate::swc::ast::Program;
 use crate::swc::ast::Script;
@@ -12,7 +13,6 @@ use crate::swc::parser::error::Error as SwcError;
 use crate::swc::parser::lexer::Lexer;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::swc::parser::EsConfig;
-use crate::swc::parser::JscTarget;
 use crate::swc::parser::Syntax;
 use crate::swc::parser::TsConfig;
 use crate::Diagnostic;
@@ -21,7 +21,7 @@ use crate::ParsedSource;
 use crate::SourceTextInfo;
 
 /// Ecmascript version used for lexing and parsing.
-pub const TARGET: JscTarget = JscTarget::Es2021;
+pub const ES_VERSION: EsVersion = EsVersion::Es2021;
 
 /// Parameters for parsing.
 pub struct ParseParams {
@@ -191,7 +191,7 @@ fn parse_string_input(
   SwcError,
 > {
   let comments = SingleThreadedComments::default();
-  let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
+  let lexer = Lexer::new(syntax, ES_VERSION, input, Some(&comments));
 
   if capture_tokens {
     let lexer = swc_ecmascript::parser::Capturing::new(lexer);
@@ -239,18 +239,8 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
 /// Gets the default `EsConfig` used by `deno_ast` for the provided options.
 pub fn get_es_config(jsx: bool) -> EsConfig {
   EsConfig {
-    class_private_methods: true,
-    class_private_props: true,
-    class_props: true,
-    dynamic_import: true,
     export_default_from: true,
-    export_namespace_from: true,
-    import_meta: true,
     jsx,
-    nullish_coalescing: true,
-    num_sep: true,
-    optional_chaining: true,
-    top_level_await: true,
     decorators: false,
     decorators_before_export: false,
     fn_bind: false,
@@ -265,9 +255,7 @@ pub fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
   TsConfig {
     decorators: true,
     dts,
-    dynamic_import: true,
     tsx,
-    import_assertions: true,
     no_early_errors: false,
   }
 }
