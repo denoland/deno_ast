@@ -84,25 +84,6 @@ impl MediaType {
     }
   }
 
-  /// Map the media type to a `ts.ScriptKind`
-  pub fn as_ts_script_kind(&self) -> i32 {
-    match self {
-      Self::JavaScript => 1,
-      Self::Jsx => 2,
-      Self::Mjs => 1,
-      Self::Cjs => 1,
-      Self::TypeScript => 3,
-      Self::Mts => 3,
-      Self::Cts => 3,
-      Self::Dts => 3,
-      Self::Dmts => 3,
-      Self::Dcts => 3,
-      Self::Tsx => 4,
-      Self::Json => 5,
-      _ => 0,
-    }
-  }
-
   #[cfg(feature = "module_specifier")]
   pub fn from_content_type<S: AsRef<str>>(
     specifier: &ModuleSpecifier,
