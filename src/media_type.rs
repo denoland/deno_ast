@@ -146,26 +146,32 @@ impl MediaType {
     match path.extension() {
       None => match path.file_name() {
         None => Self::Unknown,
-        Some(os_str) => match os_str.to_str() {
-          Some(".tsbuildinfo") => Self::TsBuildInfo,
+        Some(os_str) => {
+          let lowercase_str = os_str.to_str().map(|s| s.to_lowercase());
+          match lowercase_str.as_deref() {
+            Some(".tsbuildinfo") => Self::TsBuildInfo,
+            _ => Self::Unknown,
+          }
+        }
+      },
+      Some(os_str) => {
+        let lowercase_str = os_str.to_str().map(|s| s.to_lowercase());
+        match lowercase_str.as_deref() {
+          Some("ts") => map_typescript_like(path, Self::TypeScript, Self::Dts),
+          Some("mts") => map_typescript_like(path, Self::Mts, Self::Dmts),
+          Some("cts") => map_typescript_like(path, Self::Cts, Self::Dcts),
+          Some("tsx") => Self::Tsx,
+          Some("js") => Self::JavaScript,
+          Some("jsx") => Self::Jsx,
+          Some("mjs") => Self::Mjs,
+          Some("cjs") => Self::Cjs,
+          Some("json") => Self::Json,
+          Some("wasm") => Self::Wasm,
+          Some("tsbuildinfo") => Self::TsBuildInfo,
+          Some("map") => Self::SourceMap,
           _ => Self::Unknown,
-        },
-      },
-      Some(os_str) => match os_str.to_str() {
-        Some("ts") => map_typescript_like(path, Self::TypeScript, Self::Dts),
-        Some("mts") => map_typescript_like(path, Self::Mts, Self::Dmts),
-        Some("cts") => map_typescript_like(path, Self::Cts, Self::Dcts),
-        Some("tsx") => Self::Tsx,
-        Some("js") => Self::JavaScript,
-        Some("jsx") => Self::Jsx,
-        Some("mjs") => Self::Mjs,
-        Some("cjs") => Self::Cjs,
-        Some("json") => Self::Json,
-        Some("wasm") => Self::Wasm,
-        Some("tsbuildinfo") => Self::TsBuildInfo,
-        Some("map") => Self::SourceMap,
-        _ => Self::Unknown,
-      },
+        }
+      }
     }
   }
 }
@@ -411,6 +417,10 @@ mod tests {
       MediaType::from(Path::new("foo/bar.ts")),
       MediaType::TypeScript
     );
+    assert_eq!(
+      MediaType::from(Path::new("foo/bar.TS")),
+      MediaType::TypeScript
+    );
     assert_eq!(MediaType::from(Path::new("foo/bar.mts")), MediaType::Mts);
     assert_eq!(MediaType::from(Path::new("foo/bar.cts")), MediaType::Cts);
     assert_eq!(MediaType::from(Path::new("foo/bar.tsx")), MediaType::Tsx);
@@ -428,6 +438,10 @@ mod tests {
     assert_eq!(MediaType::from(Path::new("foo/bar.wasm")), MediaType::Wasm);
     assert_eq!(
       MediaType::from(Path::new("foo/.tsbuildinfo")),
+      MediaType::TsBuildInfo
+    );
+    assert_eq!(
+      MediaType::from(Path::new("foo/.TSBUILDINFO")),
       MediaType::TsBuildInfo
     );
     assert_eq!(
