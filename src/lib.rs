@@ -5,6 +5,8 @@ mod lexing;
 mod media_type;
 mod parsed_source;
 mod parsing;
+#[cfg(feature = "scopes")]
+mod scopes;
 mod text_encoding;
 mod text_info;
 mod types;
@@ -17,6 +19,8 @@ pub use lexing::*;
 pub use media_type::*;
 pub use parsed_source::*;
 pub use parsing::*;
+#[cfg(feature = "scopes")]
+pub use scopes::*;
 pub use text_info::*;
 pub use types::*;
 
