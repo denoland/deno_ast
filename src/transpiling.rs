@@ -173,7 +173,8 @@ pub fn transpile(
   let file_name = FileName::Url(specifier);
   source_map
     .new_source_file(file_name, parsed_source.source().text().to_string());
-  let comments = parsed_source.comments().as_single_threaded(); // needs to be mutable
+  // we need the comments to be mutable, so make it single threaded
+  let comments = parsed_source.comments().as_single_threaded();
   let globals = Globals::new();
   crate::swc::common::GLOBALS.set(&globals, || {
     let top_level_mark = Mark::fresh(Mark::root());
