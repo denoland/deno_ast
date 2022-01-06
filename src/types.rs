@@ -64,3 +64,22 @@ impl fmt::Display for Diagnostic {
     )
   }
 }
+
+#[derive(Debug)]
+pub struct Diagnostics(pub Vec<Diagnostic>);
+
+impl std::error::Error for Diagnostics {}
+
+impl fmt::Display for Diagnostics {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    for (i, diagnostic) in self.0.iter().enumerate() {
+      if i > 0 {
+        write!(f, "\n\n")?;
+      }
+
+      write!(f, "{}", diagnostic)?
+    }
+
+    Ok(())
+  }
+}

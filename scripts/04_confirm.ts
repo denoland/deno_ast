@@ -15,8 +15,11 @@ await crates.revertLocalSource();
 
 async function incrementVersion(crate: Crate) {
   console.log(`${crate.name} is on ${crate.version}`);
-  await crate.setVersion(crate.version.inc(getVersionIncrement()));
-  console.log(`Set to ${crate.version}`);
+  const version = getVersionIncrement();
+  if (version != null) {
+    await crate.setVersion(crate.version.inc(version));
+    console.log(`Set to ${crate.version}`);
+  }
 }
 
 function getVersionIncrement() {
@@ -27,6 +30,6 @@ function getVersionIncrement() {
   } else if (confirm("Increment major?")) {
     return "major";
   } else {
-    throw new Error("No decision.");
+    return undefined;
   }
 }
