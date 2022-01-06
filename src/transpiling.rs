@@ -32,7 +32,7 @@ use crate::swc::visit::FoldWith;
 use crate::text_encoding::strip_bom;
 use crate::transforms;
 use crate::Diagnostic;
-use crate::Diagnostics;
+use crate::DiagnosticsError;
 use crate::LineAndColumnDisplay;
 use crate::MediaType;
 use crate::ModuleSpecifier;
@@ -87,7 +87,7 @@ pub struct EmitOptions {
   /// Should import declarations be transformed to variable declarations using
   /// a dynamic import. This is useful for import & export declaration support
   /// in script contexts such as the Deno REPL.  Defaults to `false`.
-  pub repl_imports: bool,
+  pub variable_imports: bool,
 }
 
 impl Default for EmitOptions {
@@ -104,7 +104,32 @@ impl Default for EmitOptions {
       jsx_fragment_factory: "React.Fragment".into(),
       jsx_import_source: None,
       transform_jsx: true,
-      repl_imports: false,
+      variable_imports: false,
+    }
+  }
+}
+
+impl EmitOptions {
+  fn as_typescript_strip_config(&self) -> typescript::strip::Config {
+    typescript::strip::Config {
+      pragma: Some(self.jsx_factory.clone()),
+      pragma_frag: Some(self.jsx_fragment_factory.clone()),
+      import_not_used_as_values: match self.imports_not_used_as_values {
+        ImportsNotUsedAsValues::Remove => {
+          typescript::strip::ImportsNotUsedAsValues::Remove
+        }
+        ImportsNotUsedAsValues::Preserve => {
+          typescript::strip::ImportsNotUsedAsValues::Preserve
+        }
+        // `Error` only affects the type-checking stage. Fall back to `Remove` here.
+        ImportsNotUsedAsValues::Error => {
+          typescript::strip::ImportsNotUsedAsValues::Remove
+        }
+      },
+      use_define_for_class_fields: true,
+      // TODO(bartlomieju): this could be changed to `false` to provide `export {}`
+      // in Typescript files without manual changes
+      no_empty_export: true,
     }
   }
 }
@@ -139,7 +164,7 @@ pub fn transpile(
   options: &EmitOptions,
 ) -> Result<(String, Option<String>)> {
   ensure_no_fatal_diagnostics(parsed_source.diagnostics().iter())?;
-  let program: Program = (*parsed_source.program()).clone();
+  let program = (*parsed_source.program()).clone();
   let source_map = Rc::new(SourceMap::default());
   let source_map_config = SourceMapConfig {
     inline_sources: options.inline_sources,
@@ -306,9 +331,9 @@ fn fold_program(
   let mut passes = chain!(
     Optional::new(
       transforms::ImportDeclsToVarDeclsFolder,
-      options.repl_imports
+      options.variable_imports
     ),
-    Optional::new(transforms::StripExportsFolder, options.repl_imports),
+    Optional::new(transforms::StripExportsFolder, options.variable_imports),
     proposals::decorators::decorators(proposals::decorators::Config {
       legacy: true,
       emit_metadata: options.emit_metadata
@@ -317,7 +342,7 @@ fn fold_program(
     resolver_with_mark(top_level_mark),
     Optional::new(
       typescript::strip::strip_with_config(
-        strip_config_from_emit_options(options),
+        options.as_typescript_strip_config(),
         top_level_mark
       ),
       !options.transform_jsx
@@ -325,7 +350,7 @@ fn fold_program(
     Optional::new(
       typescript::strip::strip_with_jsx(
         source_map.clone(),
-        strip_config_from_emit_options(options),
+        options.as_typescript_strip_config(),
         comments,
         top_level_mark
       ),
@@ -348,31 +373,6 @@ fn fold_program(
   let diagnostics = diagnostics_cell.borrow();
   ensure_no_fatal_swc_diagnostics(&source_map, diagnostics.iter())?;
   Ok(result)
-}
-
-fn strip_config_from_emit_options(
-  options: &EmitOptions,
-) -> typescript::strip::Config {
-  typescript::strip::Config {
-    pragma: Some(options.jsx_factory.clone()),
-    pragma_frag: Some(options.jsx_fragment_factory.clone()),
-    import_not_used_as_values: match options.imports_not_used_as_values {
-      ImportsNotUsedAsValues::Remove => {
-        typescript::strip::ImportsNotUsedAsValues::Remove
-      }
-      ImportsNotUsedAsValues::Preserve => {
-        typescript::strip::ImportsNotUsedAsValues::Preserve
-      }
-      // `Error` only affects the type-checking stage. Fall back to `Remove` here.
-      ImportsNotUsedAsValues::Error => {
-        typescript::strip::ImportsNotUsedAsValues::Remove
-      }
-    },
-    use_define_for_class_fields: true,
-    // TODO(bartlomieju): this could be changed to `false` to provide `export {}`
-    // in Typescript files without manual changes
-    no_empty_export: true,
-  }
 }
 
 fn ensure_no_fatal_swc_diagnostics<'a>(
@@ -447,13 +447,13 @@ fn swc_err_to_diagnostic(
 
 fn ensure_no_fatal_diagnostics<'a>(
   diagnostics: impl Iterator<Item = &'a Diagnostic>,
-) -> Result<(), Diagnostics> {
+) -> Result<(), DiagnosticsError> {
   let fatal_diagnostics = diagnostics
     .filter(|d| is_fatal_syntax_error(&d.kind))
     .map(ToOwned::to_owned)
     .collect::<Vec<_>>();
   if !fatal_diagnostics.is_empty() {
-    Err(Diagnostics(fatal_diagnostics))
+    Err(DiagnosticsError(fatal_diagnostics))
   } else {
     Ok(())
   }
@@ -676,42 +676,44 @@ function App() {
     assert_eq!(&code[..expected.len()], expected);
   }
 
-  // TODO(@kitsonk) https://github.com/swc-project/swc/issues/2656
-  //   #[test]
-  //   fn test_transpile_jsx_import_source_no_pragma_dev() {
-  //     let specifier = ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
-  //     let source = r#"
-  // function App() {
-  //   return (
-  //     <div><></></div>
-  //   );
-  // }"#;
-  //     let module = parse_module(ParseParams {
-  //       specifier: specifier.as_str().to_string(),
-  //       source: SourceTextInfo::from_string(source.to_string()),
-  //       media_type: MediaType::Jsx,
-  //       capture_tokens: false,
-  //       maybe_syntax: None,
-  //       scope_analysis: true,
-  //     })
-  //     .unwrap();
-  //     let emit_options = EmitOptions {
-  //       jsx_automatic: true,
-  //       jsx_import_source: Some("jsx_lib".to_string()),
-  //       jsx_development: true,
-  //       ..Default::default()
-  //     };
-  //     let (code, _) = transpile(&module, &emit_options).unwrap();
-  //     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
-  // function App() {
-  //     return(/*#__PURE__*/ _jsx("div", {
-  //         children: /*#__PURE__*/ _jsx(_Fragment, {
-  //         })
-  //     }));
-  // }
-  // "#;
-  //     assert_eq!(&code[..expected.len()], expected);
-  //   }
+  #[test]
+  fn test_transpile_jsx_import_source_no_pragma_dev() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source = r#"function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Jsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let emit_options = EmitOptions {
+      jsx_automatic: true,
+      jsx_import_source: Some("jsx_lib".to_string()),
+      jsx_development: true,
+      ..Default::default()
+    };
+    let (code, _) = transpile(&module, &emit_options).unwrap();
+    let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
+function App() {
+    return(/*#__PURE__*/ _jsxDEV("div", {
+        children: /*#__PURE__*/ _jsxDEV(_Fragment, {}, void 0, false)
+    }, void 0, false, {
+        fileName: "https://deno.land/x/mod.tsx",
+        lineNumber: 3,
+        columnNumber: 5
+    }, this));
+}
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
 
   #[test]
   fn test_transpile_decorators() {

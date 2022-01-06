@@ -42,5 +42,5 @@ text_lines = { version = "0.4.1", features = ["serialization"] }
 url = { version = "2.2.2", features = ["serde"], optional = true }
 
 [dev-dependencies]
-pretty_assertions = "0.7.2"
+pretty_assertions = "1.0.0"
 serde_json = { version = "1.0.67", features = ["preserve_order"] }
