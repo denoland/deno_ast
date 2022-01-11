@@ -3,8 +3,6 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use anyhow::Result;
 
-use crate::get_syntax;
-use crate::swc::ast::Module;
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
 use crate::swc::codegen::Node;
@@ -15,11 +13,7 @@ use crate::swc::common::FileName;
 use crate::swc::common::Globals;
 use crate::swc::common::Mark;
 use crate::swc::common::SourceMap;
-use crate::swc::common::Spanned;
-use crate::swc::parser::error::Error as SwcError;
 use crate::swc::parser::error::SyntaxError;
-use crate::swc::parser::lexer::Lexer;
-use crate::swc::parser::StringInput;
 use crate::swc::transforms::fixer;
 use crate::swc::transforms::helpers;
 use crate::swc::transforms::hygiene;
@@ -29,12 +23,9 @@ use crate::swc::transforms::react;
 use crate::swc::transforms::resolver_with_mark;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
-use crate::text_encoding::strip_bom;
 use crate::transforms;
 use crate::Diagnostic;
 use crate::DiagnosticsError;
-use crate::LineAndColumnDisplay;
-use crate::MediaType;
 use crate::ModuleSpecifier;
 use crate::ParsedSource;
 
@@ -87,7 +78,7 @@ pub struct EmitOptions {
   /// Should import declarations be transformed to variable declarations using
   /// a dynamic import. This is useful for import & export declaration support
   /// in script contexts such as the Deno REPL.  Defaults to `false`.
-  pub variable_imports: bool,
+  pub var_decl_imports: bool,
 }
 
 impl Default for EmitOptions {
@@ -104,7 +95,7 @@ impl Default for EmitOptions {
       jsx_fragment_factory: "React.Fragment".into(),
       jsx_import_source: None,
       transform_jsx: true,
-      variable_imports: false,
+      var_decl_imports: false,
     }
   }
 }
@@ -137,7 +128,7 @@ impl EmitOptions {
 /// Implements a configuration trait for source maps that reflects the logic
 /// to embed sources in the source map or not.
 #[derive(Debug)]
-pub(crate) struct SourceMapConfig {
+pub struct SourceMapConfig {
   pub inline_sources: bool,
 }
 
@@ -155,129 +146,85 @@ impl crate::swc::common::source_map::SourceMapGenConfig for SourceMapConfig {
   }
 }
 
-/// Transform a TypeScript file into a JavaScript file, based on the supplied
-/// options.
-///
-/// The result is a tuple of the code and optional source map as strings.
-pub fn transpile(
-  parsed_source: &ParsedSource,
-  options: &EmitOptions,
-) -> Result<(String, Option<String>)> {
-  ensure_no_fatal_diagnostics(parsed_source.diagnostics().iter())?;
-  let program = (*parsed_source.program()).clone();
-  let source_map = Rc::new(SourceMap::default());
-  let source_map_config = SourceMapConfig {
-    inline_sources: options.inline_sources,
-  };
-  let specifier = ModuleSpecifier::parse(parsed_source.specifier())?;
-  let file_name = FileName::Url(specifier);
-  source_map
-    .new_source_file(file_name, parsed_source.source().text().to_string());
-  // we need the comments to be mutable, so make it single threaded
-  let comments = parsed_source.comments().as_single_threaded();
-  let globals = Globals::new();
-  crate::swc::common::GLOBALS.set(&globals, || {
-    let top_level_mark = Mark::fresh(Mark::root());
-    let module = fold_program(
-      program,
-      options,
-      source_map.clone(),
-      &comments,
-      top_level_mark,
-    )?;
-
-    let mut src_map_buf = vec![];
-    let mut buf = vec![];
-    {
-      let writer = Box::new(JsWriter::new(
-        source_map.clone(),
-        "\n",
-        &mut buf,
-        Some(&mut src_map_buf),
-      ));
-      let config = crate::swc::codegen::Config { minify: false };
-      let mut emitter = crate::swc::codegen::Emitter {
-        cfg: config,
-        comments: Some(&comments),
-        cm: source_map.clone(),
-        wr: writer,
-      };
-      module.emit_with(&mut emitter)?;
-    }
-    let mut src = String::from_utf8(buf)?;
-    let mut map: Option<String> = None;
-    {
-      let mut buf = Vec::new();
-      source_map
-        .build_source_map_with_config(&mut src_map_buf, None, source_map_config)
-        .to_writer(&mut buf)?;
-
-      if options.inline_source_map {
-        src.push_str("//# sourceMappingURL=data:application/json;base64,");
-        let encoded_map = base64::encode(buf);
-        src.push_str(&encoded_map);
-      } else {
-        map = Some(String::from_utf8(buf)?);
-      }
-    }
-    Ok((src, map))
-  })
+/// Source transpiled based on the emit options.
+pub struct TranspiledSource {
+  /// Transpiled text.
+  pub text: String,
+  /// Source map back to the original file.
+  pub source_map: Option<String>,
 }
 
-/// A low level function which transpiles a source module into an swc
-/// SourceFile.
-pub fn transpile_module(
-  specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: MediaType,
-  options: &EmitOptions,
-  cm: Rc<SourceMap>,
-) -> Result<(Rc<crate::swc::common::SourceFile>, Module)> {
-  let source = strip_bom(source);
-  let source = if media_type == MediaType::Json {
-    format!(
-      "export default JSON.parse(`{}`);",
-      source.replace("${", "\\${").replace('`', "\\`")
-    )
-  } else {
-    source.to_string()
-  };
-  let source_file =
-    cm.new_source_file(FileName::Url(specifier.clone()), source);
-  let input = StringInput::from(&*source_file);
-  let comments = SingleThreadedComments::default();
-  let syntax = if media_type == MediaType::Json {
-    get_syntax(MediaType::JavaScript)
-  } else {
-    get_syntax(media_type)
-  };
-  let lexer = Lexer::new(syntax, crate::ES_VERSION, input, Some(&comments));
-  let mut parser = crate::swc::parser::Parser::new_from(lexer);
-  let module = parser
-    .parse_module()
-    .map_err(|e| swc_err_to_diagnostic(&cm, specifier, e))?;
-  let diagnostics = parser
-    .take_errors()
-    .into_iter()
-    .map(|e| swc_err_to_diagnostic(&cm, specifier, e))
-    .collect::<Vec<_>>();
+impl ParsedSource {
+  /// Transform a TypeScript file into a JavaScript file.
+  pub fn transpile(&self, options: &EmitOptions) -> Result<TranspiledSource> {
+    let program = (*self.program()).clone();
+    let source_map = Rc::new(SourceMap::default());
+    let source_map_config = SourceMapConfig {
+      inline_sources: options.inline_sources,
+    };
+    let file_name = match ModuleSpecifier::parse(self.specifier()) {
+      Ok(specifier) => FileName::Url(specifier),
+      Err(_) => FileName::Custom(self.specifier().to_string()),
+    };
+    source_map.new_source_file(file_name, self.source().text().to_string());
+    // we need the comments to be mutable, so make it single threaded
+    let comments = self.comments().as_single_threaded();
+    let globals = Globals::new();
+    crate::swc::common::GLOBALS.set(&globals, || {
+      let top_level_mark = Mark::fresh(Mark::root());
+      let program = fold_program(
+        program,
+        options,
+        source_map.clone(),
+        &comments,
+        top_level_mark,
+        self.diagnostics().iter(),
+      )?;
 
-  ensure_no_fatal_diagnostics(diagnostics.iter())?;
+      let mut src_map_buf = vec![];
+      let mut buf = vec![];
+      {
+        let writer = Box::new(JsWriter::new(
+          source_map.clone(),
+          "\n",
+          &mut buf,
+          Some(&mut src_map_buf),
+        ));
+        let config = crate::swc::codegen::Config { minify: false };
+        let mut emitter = crate::swc::codegen::Emitter {
+          cfg: config,
+          comments: Some(&comments),
+          cm: source_map.clone(),
+          wr: writer,
+        };
+        program.emit_with(&mut emitter)?;
+      }
+      let mut src = String::from_utf8(buf)?;
+      let mut map: Option<String> = None;
+      {
+        let mut buf = Vec::new();
+        source_map
+          .build_source_map_with_config(
+            &mut src_map_buf,
+            None,
+            source_map_config,
+          )
+          .to_writer(&mut buf)?;
 
-  let top_level_mark = Mark::fresh(Mark::root());
-  let program = fold_program(
-    Program::Module(module),
-    options,
-    cm,
-    &comments,
-    top_level_mark,
-  )?;
-  let module = match program {
-    Program::Module(module) => module,
-    _ => unreachable!(),
-  };
-
-  Ok((source_file, module))
+        if options.inline_source_map {
+          src.push_str("//# sourceMappingURL=data:application/json;base64,");
+          let encoded_map = base64::encode(buf);
+          src.push_str(&encoded_map);
+        } else {
+          map = Some(String::from_utf8(buf)?);
+        }
+      }
+      Ok(TranspiledSource {
+        text: src,
+        source_map: map,
+      })
+    })
+  }
 }
 
 #[derive(Default, Clone)]
@@ -302,13 +249,17 @@ impl crate::swc::common::errors::Emitter for DiagnosticCollector {
   }
 }
 
-fn fold_program(
+/// Low level function for transpiling a program.
+pub fn fold_program<'a>(
   program: Program,
   options: &EmitOptions,
   source_map: Rc<SourceMap>,
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
+  diagnostics: impl Iterator<Item = &'a Diagnostic>,
 ) -> Result<Program> {
+  ensure_no_fatal_diagnostics(diagnostics)?;
+
   let jsx_pass = react::react(
     source_map.clone(),
     Some(comments),
@@ -332,9 +283,9 @@ fn fold_program(
   let mut passes = chain!(
     Optional::new(
       transforms::ImportDeclsToVarDeclsFolder,
-      options.variable_imports
+      options.var_decl_imports
     ),
-    Optional::new(transforms::StripExportsFolder, options.variable_imports),
+    Optional::new(transforms::StripExportsFolder, options.var_decl_imports),
     proposals::decorators::decorators(proposals::decorators::Config {
       legacy: true,
       emit_metadata: options.emit_metadata
@@ -429,23 +380,6 @@ fn format_swc_diagnostic(
   }
 }
 
-fn swc_err_to_diagnostic(
-  source_map: &SourceMap,
-  specifier: &ModuleSpecifier,
-  err: SwcError,
-) -> Diagnostic {
-  let location = source_map.lookup_char_pos(err.span().lo);
-  Diagnostic {
-    specifier: specifier.to_string(),
-    span: err.span(),
-    display_position: LineAndColumnDisplay {
-      line_number: location.line,
-      column_number: location.col_display + 1,
-    },
-    kind: err.into_kind(),
-  }
-}
-
 fn ensure_no_fatal_diagnostics<'a>(
   diagnostics: impl Iterator<Item = &'a Diagnostic>,
 ) -> Result<(), DiagnosticsError> {
@@ -478,7 +412,8 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
 mod tests {
   use super::*;
 
-  use crate::parse_module;
+  use crate::MediaType;
+use crate::parse_module;
   use crate::ParseParams;
   use crate::SourceTextInfo;
 
@@ -521,8 +456,7 @@ export class A {
       scope_analysis: false,
     })
     .unwrap();
-    let (code, maybe_map) =
-      transpile(&module, &EmitOptions::default()).unwrap();
+    let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
     let expected_text = r#"var D;
 (function(D) {
     D[D["A"] = 0] = "A";
@@ -549,11 +483,14 @@ export class A {
     }
 }
 "#;
-    assert_eq!(&code[..expected_text.len()], expected_text);
-    assert!(
-      code.contains("\n//# sourceMappingURL=data:application/json;base64,")
+    assert_eq!(
+      &transpiled_source.text[..expected_text.len()],
+      expected_text
     );
-    assert!(maybe_map.is_none());
+    assert!(transpiled_source
+      .text
+      .contains("\n//# sourceMappingURL=data:application/json;base64,"));
+    assert!(transpiled_source.source_map.is_none());
   }
 
   #[test]
@@ -576,8 +513,10 @@ export class A {
       scope_analysis: true, // ensure scope analysis doesn't conflict with a second resolver pass
     })
     .unwrap();
-    let (code, _) = transpile(&module, &EmitOptions::default()).unwrap();
-    assert!(code.contains("React.createElement(\"div\", null"));
+    let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
+    assert!(transpiled_source
+      .text
+      .contains("React.createElement(\"div\", null"));
   }
 
   #[test]
@@ -603,7 +542,7 @@ function App() {
       scope_analysis: true,
     })
     .unwrap();
-    let (code, _) = transpile(&module, &EmitOptions::default()).unwrap();
+    let code = module.transpile(&EmitOptions::default()).unwrap().text;
     let expected = r#"/** @jsx h */ /** @jsxFrag Fragment */ import { h, Fragment } from "https://deno.land/x/mod.ts";
 function App() {
     return(/*#__PURE__*/ h("div", null, /*#__PURE__*/ h(Fragment, null)));
@@ -632,7 +571,7 @@ function App() {
       scope_analysis: true,
     })
     .unwrap();
-    let (code, _) = transpile(&module, &EmitOptions::default()).unwrap();
+    let code = module.transpile(&EmitOptions::default()).unwrap().text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 /** @jsxImportSource jsx_lib */ function App() {
     return(/*#__PURE__*/ _jsx("div", {
@@ -666,7 +605,7 @@ function App() {
       jsx_import_source: Some("jsx_lib".to_string()),
       ..Default::default()
     };
-    let (code, _) = transpile(&module, &emit_options).unwrap();
+    let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
     return(/*#__PURE__*/ _jsx("div", {
@@ -701,7 +640,7 @@ function App() {
       jsx_development: true,
       ..Default::default()
     };
-    let (code, _) = transpile(&module, &emit_options).unwrap();
+    let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
 function App() {
     return(/*#__PURE__*/ _jsxDEV("div", {
@@ -747,7 +686,7 @@ function App() {
       scope_analysis: false,
     })
     .unwrap();
-    let (code, _) = transpile(&module, &EmitOptions::default()).unwrap();
+    let code = module.transpile(&EmitOptions::default()).unwrap().text;
     assert!(code.contains("_applyDecoratedDescriptor("));
   }
 
@@ -779,7 +718,7 @@ export function g() {
       transform_jsx: true,
       ..Default::default()
     };
-    let (code, _) = transpile(&module, &emit_options).unwrap();
+    let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"export function g() {
     let algorithm;
     algorithm = {};
@@ -804,9 +743,7 @@ export function g() {
       scope_analysis: false,
     })
     .unwrap();
-    let err = transpile(&parsed_source, &Default::default())
-      .err()
-      .unwrap();
+    let err = parsed_source.transpile(&Default::default()).err().unwrap();
 
     assert_eq!(err.to_string(), "Spread children are not supported in React. at https://deno.land/x/mod.ts:2:15");
   }
