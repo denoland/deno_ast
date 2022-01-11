@@ -178,7 +178,7 @@ impl ParsedSource {
         source_map.clone(),
         &comments,
         top_level_mark,
-        self.diagnostics().iter(),
+        &self.diagnostics(),
       )?;
 
       let mut src_map_buf = vec![];
@@ -256,7 +256,7 @@ pub fn fold_program<'a>(
   source_map: Rc<SourceMap>,
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
-  diagnostics: impl Iterator<Item = &'a Diagnostic>,
+  diagnostics: &[Diagnostic],
 ) -> Result<Program> {
   ensure_no_fatal_diagnostics(diagnostics)?;
 
@@ -380,10 +380,11 @@ fn format_swc_diagnostic(
   }
 }
 
-fn ensure_no_fatal_diagnostics<'a>(
-  diagnostics: impl Iterator<Item = &'a Diagnostic>,
+fn ensure_no_fatal_diagnostics(
+  diagnostics: &[Diagnostic],
 ) -> Result<(), DiagnosticsError> {
   let fatal_diagnostics = diagnostics
+    .iter()
     .filter(|d| is_fatal_syntax_error(&d.kind))
     .map(ToOwned::to_owned)
     .collect::<Vec<_>>();
