@@ -10,8 +10,6 @@ mod scopes;
 mod text_encoding;
 mod text_info;
 #[cfg(feature = "transpiling")]
-mod transforms;
-#[cfg(feature = "transpiling")]
 mod transpiling;
 mod types;
 

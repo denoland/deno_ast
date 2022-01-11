@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use std::rc::Rc;
 
 use anyhow::anyhow;
@@ -23,13 +25,14 @@ use crate::swc::transforms::react;
 use crate::swc::transforms::resolver_with_mark;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
-use crate::transforms;
 use crate::Diagnostic;
 use crate::DiagnosticsError;
 use crate::ModuleSpecifier;
 use crate::ParsedSource;
 
 use std::cell::RefCell;
+
+mod transforms;
 
 #[derive(Debug, Clone)]
 pub enum ImportsNotUsedAsValues {
@@ -53,9 +56,6 @@ pub struct EmitOptions {
   pub inline_source_map: bool,
   /// Should the sources be inlined in the source map.  Defaults to `true`.
   pub inline_sources: bool,
-  /// Should a corresponding .map file be created for the output. This should be
-  /// false if inline_source_map is true. Defaults to `false`.
-  pub source_map: bool,
   /// `true` if the program should use an implicit JSX import source/the "new"
   /// JSX transforms.
   pub jsx_automatic: bool,
@@ -73,6 +73,9 @@ pub struct EmitOptions {
   /// The string module specifier to implicitly import JSX factories from when
   /// transpiling JSX.
   pub jsx_import_source: Option<String>,
+  /// Should a corresponding .map file be created for the output. This should be
+  /// false if inline_source_map is true. Defaults to `false`.
+  pub source_map: bool,
   /// Should JSX be transformed or preserved.  Defaults to `true`.
   pub transform_jsx: bool,
   /// Should import declarations be transformed to variable declarations using
