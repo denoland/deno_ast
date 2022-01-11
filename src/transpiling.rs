@@ -412,8 +412,8 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
 mod tests {
   use super::*;
 
+  use crate::parse_module;
   use crate::MediaType;
-use crate::parse_module;
   use crate::ParseParams;
   use crate::SourceTextInfo;
 
