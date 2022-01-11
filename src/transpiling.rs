@@ -178,7 +178,7 @@ impl ParsedSource {
         source_map.clone(),
         &comments,
         top_level_mark,
-        &self.diagnostics(),
+        self.diagnostics(),
       )?;
 
       let mut src_map_buf = vec![];
@@ -250,7 +250,7 @@ impl crate::swc::common::errors::Emitter for DiagnosticCollector {
 }
 
 /// Low level function for transpiling a program.
-pub fn fold_program<'a>(
+pub fn fold_program(
   program: Program,
   options: &EmitOptions,
   source_map: Rc<SourceMap>,
