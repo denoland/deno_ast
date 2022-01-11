@@ -9,6 +9,8 @@ mod parsing;
 mod scopes;
 mod text_encoding;
 mod text_info;
+#[cfg(feature = "transpiling")]
+mod transpiling;
 mod types;
 
 #[cfg(feature = "view")]
@@ -22,6 +24,8 @@ pub use parsing::*;
 #[cfg(feature = "scopes")]
 pub use scopes::*;
 pub use text_info::*;
+#[cfg(feature = "transpiling")]
+pub use transpiling::*;
 pub use types::*;
 
 pub mod swc {
