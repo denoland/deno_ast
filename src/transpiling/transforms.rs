@@ -262,7 +262,7 @@ fn create_await_import_expr(
     span: DUMMY_SP,
     arg: Box::new(Expr::Call(CallExpr {
       span: DUMMY_SP,
-      callee: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
+      callee: Callee::Expr(Box::new(Expr::Ident(Ident {
         span: DUMMY_SP,
         sym: "import".into(),
         optional: false,

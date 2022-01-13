@@ -139,7 +139,7 @@ export class Crate {
   }
 
   build() {
-    return this.#runCommandWithOutput(["cargo", "build"]);
+    return this.#runCommandWithOutput(["cargo", "build", "--all-features"]);
   }
 
   cargoCheck() {
@@ -147,7 +147,7 @@ export class Crate {
   }
 
   test() {
-    return this.#runCommandWithOutput(["cargo", "test"]);
+    return this.#runCommandWithOutput(["cargo", "test", "--all-features"]);
   }
 
   async #updateManifestFile(action: (fileText: string) => string) {
