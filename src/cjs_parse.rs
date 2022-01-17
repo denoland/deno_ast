@@ -1,11 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::Diagnostic;
+
+#[derive(Debug)]
 struct CjsAnalysis {
   exports: Vec<String>,
   reexports: Vec<String>,
 }
 
-fn parse_cjs(source: &str) -> CjsAnalysis {
+fn parse_cjs(_source: &str) -> Result<CjsAnalysis, Diagnostic> {
   todo!()
 }
 
@@ -19,7 +22,8 @@ mod test {
   fn esbuild_hint_style() {
     let CjsAnalysis { exports, reexports } = parse_cjs(
       "0 && (module.exports = {a, b, c}) && __exportStar(require('fs'));",
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 3);
     assert_eq!(exports[0], "a");
@@ -47,7 +51,8 @@ mod test {
           }
         });
       }"#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 0);
     assert_eq!(reexports.len(), 0);
@@ -71,7 +76,7 @@ mod test {
       var color_factory_1 = require("./color-factory");
       Object.defineProperty(exports, "colorFactory", { enumerable: true, get: function () { return color_factory_1.colorFactory; }, });
     "#,
-    );
+    ).unwrap();
 
     assert_eq!(exports.len(), 2);
     assert_eq!(exports[0], "__esModule");
@@ -120,7 +125,8 @@ mod test {
         }
       });
     "#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 4);
     assert_eq!(exports[0], "a");
@@ -343,7 +349,7 @@ mod test {
         });
       });
     "#,
-    );
+    ).unwrap();
 
     assert_eq!(exports.len(), 1);
     assert_eq!(exports[0], "__esModule");
@@ -366,21 +372,6 @@ mod test {
   }
 
   #[test]
-  fn rollup_babel_reexport_getter() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
-      r#"
-    "#,
-    );
-
-    assert_eq!(exports.len(), 4);
-    assert_eq!(exports[0], "a");
-    assert_eq!(exports[1], "c");
-    assert_eq!(exports[2], "d");
-    assert_eq!(exports[3], "e");
-    assert_eq!(reexports.len(), 0);
-  }
-
-  #[test]
   fn module_exports_reexport_spread() {
     let CjsAnalysis { exports, reexports } = parse_cjs(
       r#"
@@ -393,7 +384,8 @@ mod test {
         name
       };
     "#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 2);
     assert_eq!(exports[0], "c");
@@ -414,24 +406,25 @@ mod test {
         
         const x = \`"\${label.replace(/"/g, "\\\\\\"")}"\`
     "#,
-    );
+    )
+    .unwrap();
   }
 
   #[test]
   fn regexp_division() {
-    parse_cjs(r#"\nconst x = num / /'/.exec(l)[0].slice(1, -1)//'""#);
+    parse_cjs(r#"\nconst x = num / /'/.exec(l)[0].slice(1, -1)//'""#).unwrap();
   }
 
   #[test]
   fn multiline_string_escapes() {
     parse_cjs(
       r#"const str = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeCAYAAAA7MK6iAAAABmJLR0QA/wAAAAAzJ3zzAAAGTElEQV\\\r\n\t\tRIx+VXe1BU1xn/zjn7ugvL4sIuQnll5U0ELAQxig7WiQYz6NRHa6O206qdSXXSxs60dTK200zNY9q0dcRpMs1jkrRNWmaijCVoaU';\r\n"#,
-    );
+    ).unwrap();
   }
 
   #[test]
   fn dotted_number() {
-    parse_cjs(r#"const x = 5. / 10"#);
+    parse_cjs(r#"const x = 5. / 10"#).unwrap();
   }
 
   #[test]
@@ -445,21 +438,21 @@ mod test {
       (function(n){
       })();
     "#,
-    );
+    ).unwrap();
   }
 
   #[test]
   fn single_parse_cases() {
-    parse_cjs(r#"'asdf'"#);
-    parse_cjs(r#"/asdf/"#);
-    parse_cjs(r#"\`asdf\`"#);
-    parse_cjs(r#"/**/"#);
-    parse_cjs(r#"//"#);
+    parse_cjs(r#"'asdf'"#).unwrap();
+    parse_cjs(r#"/asdf/"#).unwrap();
+    parse_cjs(r#"\`asdf\`"#).unwrap();
+    parse_cjs(r#"/**/"#).unwrap();
+    parse_cjs(r#"//"#).unwrap();
   }
 
   #[test]
   fn shebang() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(r#"#!"#);
+    let CjsAnalysis { exports, reexports } = parse_cjs(r#"#!"#).unwrap();
 
     assert_eq!(exports.len(), 0);
     assert_eq!(reexports.len(), 0);
@@ -468,7 +461,8 @@ mod test {
       r#"#! (  {
         exports.asdf = 'asdf';
       "#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 1);
     assert_eq!(exports[0], "asdf");
@@ -492,7 +486,8 @@ mod test {
       exports.package = 'STRICT RESERVED!';
       exports.var = 'RESERVED';
     "#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 11);
     assert_eq!(exports[0], "ab cd");
@@ -506,12 +501,13 @@ mod test {
     assert_eq!(exports[8], "α");
     assert_eq!(exports[9], "package");
     assert_eq!(exports[10], "var");
+    assert_eq!(reexports.len(), 0);
   }
 
   #[test]
   fn literal_exports() {
     let CjsAnalysis { exports, reexports } =
-      parse_cjs(r#"module.exports = { a, b: c, d, 'e': f };"#);
+      parse_cjs(r#"module.exports = { a, b: c, d, 'e': f };"#).unwrap();
 
     assert_eq!(exports.len(), 4);
     assert_eq!(exports[0], "a");
@@ -524,7 +520,7 @@ mod test {
   #[test]
   fn literal_exports_unsupported() {
     let CjsAnalysis { exports, reexports } =
-      parse_cjs(r#"module.exports = { a = 5, b };"#);
+      parse_cjs(r#"module.exports = { a = 5, b };"#).unwrap();
 
     assert_eq!(exports.len(), 1);
     assert_eq!(exports[0], "a");
@@ -549,7 +545,8 @@ mod test {
         f: 'f'
       }
     "#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 3);
     assert_eq!(exports[2], "e");
@@ -630,7 +627,8 @@ mod test {
         }
       };
     "#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 2);
     assert_eq!(exports[0], "Parser");
@@ -675,7 +673,7 @@ mod test {
       Object.defineProperty(exports, "other", { enumerable: true, value: true });
       Object.defineProperty(exports, "__esModule", { value: true });
     "#,
-    );
+    ).unwrap();
 
     assert_eq!(exports.len(), 3);
     assert_eq!(exports[0], "thing");
@@ -694,7 +692,8 @@ mod test {
       if (maybe)
         module.exports = require("./another");
     "#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 1);
     assert_eq!(exports[0], "asdf");
@@ -704,30 +703,36 @@ mod test {
 
   #[test]
   fn simple_export_with_unicode_conversions() {
-    todo!()
-    // parse_cjs(r#"
-    //     export var p𓀀s,q
-    // "#).unwrap_err();
+    parse_cjs(
+      r#"
+        export var p𓀀s,q
+    "#,
+    )
+    .unwrap_err();
   }
 
   #[test]
   fn simple_import() {
-    todo!()
-    // parse_cjs(r#"
-    //   import test from "test";
-    //   console.log(test);
-    // "#).unwrap_err();
+    parse_cjs(
+      r#"
+      import test from "test";
+      console.log(test);
+    "#,
+    )
+    .unwrap_err();
   }
 
   #[test]
   fn exported_function() {
-    todo!();
-    // parse_cjs(r#"
-    // export function a𓀀 () {
-    // }
-    // export class Q{
-    // }
-    // "#).unwrap_err();
+    parse_cjs(
+      r#"
+    export function a𓀀 () {
+    }
+    export class Q{
+    }
+    "#,
+    )
+    .unwrap_err();
   }
 
   #[test]
@@ -743,34 +748,34 @@ mod test {
 
   #[test]
   fn minified_import_syntax() {
-    todo!();
-    // parse_cjs(r#"
-    // import{TemplateResult as t}from"lit-html";import{a as e}from"./chunk-4be41b30.js";export{j as SVGTemplateResult,i as TemplateResult,g as html,h as svg}from"./chunk-4be41b30.js";window.JSCompiler_renameProperty='asdf';
-    // "#).unwrap_err();
+    parse_cjs(r#"
+    import{TemplateResult as t}from"lit-html";import{a as e}from"./chunk-4be41b30.js";export{j as SVGTemplateResult,i as TemplateResult,g as html,h as svg}from"./chunk-4be41b30.js";window.JSCompiler_renameProperty='asdf';
+    "#).unwrap_err();
   }
 
   #[test]
   fn plus_plus_division() {
-    parse_cjs(r#"tick++/fetti;f=(1)+")";"#);
+    parse_cjs(r#"tick++/fetti;f=(1)+")";"#).unwrap();
   }
 
   #[test]
   fn return_bracket_division() {
-    parse_cjs(r#"function variance(){return s/(a-1)}"#);
+    parse_cjs(r#"function variance(){return s/(a-1)}"#).unwrap();
   }
 
   #[test]
   fn import_dot_meta() {
-    todo!();
-    // parse_cjs(r#"
-    //   export var hello = 'world';
-    //   console.log(import.meta.url);
-    // "#).unwrap_err();
+    parse_cjs(
+      r#"
+      export var hello = 'world';
+      console.log(import.meta.url);
+    "#,
+    )
+    .unwrap_err();
   }
 
   #[test]
-  fn import_meta_edge_Cases() {
-    todo!();
+  fn import_meta_edge_cases() {
     parse_cjs(
       r#"
     // Import meta
@@ -794,12 +799,12 @@ mod test {
         }
       }
     "#,
-    );
+    )
+    .unwrap();
   }
 
   #[test]
   fn comments() {
-    todo!();
     parse_cjs(
       r#"
     /*
@@ -838,7 +843,8 @@ function x() {
         }();
       });
     "#,
-    );
+    )
+    .unwrap();
   }
 
   #[test]
@@ -868,7 +874,8 @@ function x() {
         return /*asdf8*// 5/;
       }
     "#,
-    );
+    )
+    .unwrap();
   }
 
   #[test]
@@ -884,7 +891,8 @@ function x() {
       \`{$}\`
       exports['b'].b;
     "#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(exports.len(), 2);
     assert_eq!(exports[0], "a");
