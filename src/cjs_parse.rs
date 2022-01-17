@@ -1,15 +1,34 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::parsing::parse_script;
 use crate::Diagnostic;
+use crate::MediaType;
+use crate::ParseParams;
+use crate::SourceTextInfo;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct CjsAnalysis {
   exports: Vec<String>,
   reexports: Vec<String>,
 }
 
-fn parse_cjs(_source: &str) -> Result<CjsAnalysis, Diagnostic> {
-  todo!()
+fn parse_cjs(source: &str) -> Result<CjsAnalysis, Diagnostic> {
+  let parsed_source = parse_script(ParseParams {
+    specifier: "".to_string(),
+    source: SourceTextInfo::from_string(source.to_string()),
+    media_type: MediaType::Cjs,
+    capture_tokens: true,
+    scope_analysis: false,
+    maybe_syntax: None,
+  })?;
+
+  let mut cjs_analysis = CjsAnalysis::default();
+
+  parsed_source.with_view(|program| {
+    // ..
+  });
+
+  Ok(cjs_analysis)
 }
 
 #[cfg(test)]
