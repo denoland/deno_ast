@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+mod cjs_parse;
 mod comments;
 mod lexing;
 mod media_type;
