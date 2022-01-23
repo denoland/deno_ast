@@ -5,6 +5,9 @@ use crate::Diagnostic;
 use crate::MediaType;
 use crate::ParseParams;
 use crate::SourceTextInfo;
+use swc_ecmascript::ast;
+use swc_ecmascript::utils::ExprExt;
+use swc_ecmascript::visit::{noop_visit_type, Visit, VisitWith};
 
 #[derive(Debug, Default)]
 struct CjsAnalysis {
@@ -22,13 +25,100 @@ fn parse_cjs(source: &str) -> Result<CjsAnalysis, Diagnostic> {
     maybe_syntax: None,
   })?;
 
-  let mut cjs_analysis = CjsAnalysis::default();
+  let mut visitor = CjsVisitor {
+    analysis: CjsAnalysis::default(),
+  };
+  visitor.visit_program(&parsed_source.program());
 
-  parsed_source.with_view(|program| {
-    // ..
-  });
+  // parsed_source.with_view(|program| {
+  // ..
+  // });
 
-  Ok(cjs_analysis)
+  Ok(visitor.analysis)
+}
+
+struct CjsVisitor {
+  analysis: CjsAnalysis,
+}
+
+impl CjsVisitor {
+  fn add_export(&mut self, export: &str) {
+    // TODO(bartlomieju): should be a HashSet?
+    self.analysis.exports.push(export.to_string());
+  }
+
+  fn add_reexport(&mut self, reexport: &str) {
+    // TODO(bartlomieju): should be a HashSet?
+    self.analysis.reexports.push(reexport.to_string());
+  }
+
+  fn is_module_exports_or_exports(&self, expr: &ast::Expr) -> bool {
+    if let Some(member_expr) = expr.as_member() {
+      if let Some(ident) = member_expr.obj.as_ident() {
+        if ident.sym == *"module" {
+          if let Some(prop_ident) = member_expr.prop.as_ident() {
+            if prop_ident.sym == *"exports" {
+              return true;
+            }
+          }
+        }
+      }
+    } else if let Some(ident) = expr.as_ident() {
+      if ident.sym == *"exports" {
+        return true;
+      }
+    }
+
+    false
+  }
+}
+
+impl Visit for CjsVisitor {
+  fn visit_assign_expr(&mut self, assign_expr: &ast::AssignExpr) {
+    // TODO(bartlomieju): use `if_chain` crate
+    // check if left hand side is "module.exports = " or "exports ="
+    eprintln!("assign_expr {:#?}", assign_expr);
+    if assign_expr.op == ast::AssignOp::Assign {
+      if let Some(pat) = assign_expr.left.as_pat() {
+        if let Some(inner_expr) = pat.as_expr() {
+          if self.is_module_exports_or_exports(inner_expr) {
+            eprintln!("is_module_export_or_exports true");
+            match &*assign_expr.right {
+              ast::Expr::Object(object_lit) => {
+                for prop in &object_lit.props {
+                  if let Some(prop) = prop.as_prop() {
+                    if let Some(assign_prop) = prop.as_assign() {
+                      self.add_export(&assign_prop.key.sym);
+                    }
+                  }
+                }
+              }
+              ast::Expr::Call(call_expr) => {
+                if let Some(callee_expr) = call_expr.callee.as_expr() {
+                  if let Some(ident) = callee_expr.as_ident() {
+                    if ident.sym == *"require" {
+                      if let Some(arg) = call_expr.args.get(0) {
+                        if let Some(lit) = arg.expr.as_lit() {
+                          if let ast::Lit::Str(str_) = lit {
+                            self.add_reexport(&str_.value);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              _ => todo!(),
+            };
+          } else if let Some(ident) = assign_expr.left.as_ident() {
+            if ident.sym == *"exports" {
+              todo!()
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 #[cfg(test)]
