@@ -84,6 +84,26 @@ impl MediaType {
     }
   }
 
+  /// Gets if this media type is for a TypeScript declaration file.
+  pub fn is_declaration(&self) -> bool {
+    match self {
+      Self::Dts | Self::Dmts | Self::Dcts => true,
+      Self::JavaScript
+      | Self::Jsx
+      | Self::Mjs
+      | Self::Cjs
+      | Self::TypeScript
+      | Self::Mts
+      | Self::Cts
+      | Self::Tsx
+      | Self::Json
+      | Self::Wasm
+      | Self::TsBuildInfo
+      | Self::SourceMap
+      | Self::Unknown => false,
+    }
+  }
+
   #[cfg(feature = "module_specifier")]
   pub fn from_content_type<S: AsRef<str>>(
     specifier: &ModuleSpecifier,
@@ -109,6 +129,7 @@ impl MediaType {
       | "application/node" => {
         map_js_like_extension(specifier, Self::JavaScript)
       }
+      "text/jscript" => map_js_like_extension(specifier, Self::Jsx),
       "text/jsx" => Self::Jsx,
       "text/tsx" => Self::Tsx,
       "application/json" | "text/json" => Self::Json,
@@ -553,6 +574,11 @@ mod tests {
         "https://deno.land/x/mod.wasm",
         "text/plain",
         MediaType::Wasm,
+      ),
+      (
+        "https://deno.land/x/mod.jsx",
+        "text/jscript",
+        MediaType::Jsx,
       ),
     ];
 
