@@ -129,6 +129,7 @@ impl MediaType {
       | "application/node" => {
         map_js_like_extension(specifier, Self::JavaScript)
       }
+      "text/jscript" => map_js_like_extension(specifier, Self::Jsx),
       "text/jsx" => Self::Jsx,
       "text/tsx" => Self::Tsx,
       "application/json" | "text/json" => Self::Json,
@@ -573,6 +574,11 @@ mod tests {
         "https://deno.land/x/mod.wasm",
         "text/plain",
         MediaType::Wasm,
+      ),
+      (
+        "https://deno.land/x/mod.jsx",
+        "text/jscript",
+        MediaType::Jsx,
       ),
     ];
 
