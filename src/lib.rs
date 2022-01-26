@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#[cfg(feature = "view")]
+#[cfg(feature = "cjs")]
 mod cjs_parse;
 mod comments;
 mod lexing;

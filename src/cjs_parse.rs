@@ -1,150 +1,458 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::parsing::parse_script;
-use crate::Diagnostic;
-use crate::MediaType;
-use crate::ParseParams;
-use crate::SourceTextInfo;
-use swc_ecmascript::ast;
-use swc_ecmascript::utils::ExprExt;
-use swc_ecmascript::visit::{noop_visit_type, Visit, VisitWith};
+use std::collections::HashSet;
+
+use crate::swc::ast::*;
+use crate::swc::utils::ExprExt;
+use crate::swc::visit::{noop_visit_type, Visit, VisitWith};
+use crate::ParsedSource;
+use anyhow::bail;
+use anyhow::Result;
+use swc_common::SyntaxContext;
 
 #[derive(Debug, Default)]
-struct CjsAnalysis {
-  exports: Vec<String>,
-  reexports: Vec<String>,
+pub struct CjsAnalysis {
+  pub exports: Vec<String>,
+  pub reexports: Vec<String>,
 }
 
-fn parse_cjs(source: &str) -> Result<CjsAnalysis, Diagnostic> {
-  let parsed_source = parse_script(ParseParams {
-    specifier: "".to_string(),
-    source: SourceTextInfo::from_string(source.to_string()),
-    media_type: MediaType::Cjs,
-    capture_tokens: true,
-    scope_analysis: false,
-    maybe_syntax: None,
-  })?;
-
+pub fn analyze_script(script: &ParsedSource) -> Result<CjsAnalysis> {
+  if !matches!(script.program_ref(), Program::Script(_)) {
+    bail!("Cannot cjs analyze non-script: {}", script.specifier())
+  }
   let mut visitor = CjsVisitor {
-    analysis: CjsAnalysis::default(),
+    exports: Default::default(),
+    reexports: Default::default(),
+    unsafe_getters: Default::default(),
   };
-  visitor.visit_program(&parsed_source.program());
+  visitor.visit_script(&script.script());
 
-  // parsed_source.with_view(|program| {
-  // ..
-  // });
-
-  Ok(visitor.analysis)
+  Ok(visitor.take_result())
 }
 
 struct CjsVisitor {
-  analysis: CjsAnalysis,
+  exports: HashSet<String>,
+  reexports: HashSet<String>,
+  unsafe_getters: HashSet<String>,
 }
 
 impl CjsVisitor {
+  fn take_result(self) -> CjsAnalysis {
+    let unsafe_getters = self.unsafe_getters;
+    let mut exports = self
+      .exports
+      .into_iter()
+      .filter(|n| !unsafe_getters.contains(n))
+      .collect::<Vec<_>>();
+    exports.sort();
+    let mut reexports = self
+      .reexports
+      .into_iter()
+      .filter(|n| !unsafe_getters.contains(n))
+      .collect::<Vec<_>>();
+    reexports.sort();
+    CjsAnalysis { exports, reexports }
+  }
+
   fn add_export(&mut self, export: &str) {
-    // TODO(bartlomieju): should be a HashSet?
-    self.analysis.exports.push(export.to_string());
+    self.exports.insert(export.to_string());
   }
 
   fn add_reexport(&mut self, reexport: &str) {
-    // TODO(bartlomieju): should be a HashSet?
-    self.analysis.reexports.push(reexport.to_string());
+    self.reexports.insert(reexport.to_string());
   }
 
-  fn is_module_exports_or_exports(&self, expr: &ast::Expr) -> bool {
-    if let Some(member_expr) = expr.as_member() {
-      if let Some(ident) = member_expr.obj.as_ident() {
-        if ident.sym == *"module" {
-          if let Some(prop_ident) = member_expr.prop.as_ident() {
-            if prop_ident.sym == *"exports" {
-              return true;
-            }
-          }
-        }
-      }
-    } else if let Some(ident) = expr.as_ident() {
-      if ident.sym == *"exports" {
-        return true;
-      }
-    }
-
-    false
+  fn add_unsafe_getter(&mut self, name: &str) {
+    self.unsafe_getters.insert(name.to_string());
   }
 }
 
 impl Visit for CjsVisitor {
-  fn visit_assign_expr(&mut self, assign_expr: &ast::AssignExpr) {
-    // TODO(bartlomieju): use `if_chain` crate
+  fn visit_call_expr(&mut self, call_expr: &CallExpr) {
+    // Object.defineProperty(exports, "someExport", { ... });
+    if is_object_define_callee(&call_expr.callee)
+      && call_expr.args.len() >= 3
+      && is_module_exports_or_exports(&call_expr.args[0].expr)
+      && call_expr.args[0].spread.is_none()
+      && call_expr.args[1].spread.is_none()
+      && call_expr.args[2].spread.is_none()
+    {
+      if let Expr::Lit(Lit::Str(str)) = &*call_expr.args[1].expr {
+        let lit_value = &*str.value;
+        if is_valid_object_define_obj_lit(&call_expr.args[2].expr) {
+          self.add_export(lit_value);
+        } else {
+          self.add_unsafe_getter(lit_value);
+        }
+      }
+    }
+  }
+
+  fn visit_assign_expr(&mut self, assign_expr: &AssignExpr) {
     // check if left hand side is "module.exports = " or "exports ="
-    eprintln!("assign_expr {:#?}", assign_expr);
-    if assign_expr.op == ast::AssignOp::Assign {
-      if let Some(pat) = assign_expr.left.as_pat() {
-        if let Some(inner_expr) = pat.as_expr() {
-          if self.is_module_exports_or_exports(inner_expr) {
-            eprintln!("is_module_export_or_exports true");
-            match &*assign_expr.right {
-              ast::Expr::Object(object_lit) => {
-                for prop in &object_lit.props {
-                  if let Some(prop) = prop.as_prop() {
-                    if let Some(assign_prop) = prop.as_assign() {
-                      self.add_export(&assign_prop.key.sym);
+    if assign_expr.op != AssignOp::Assign {
+      return;
+    }
+    let left_expr =
+      match assign_expr.left.as_pat().and_then(|pat| pat.as_expr()) {
+        Some(expr) => expr,
+        _ => return,
+      };
+
+    if is_module_exports_or_exports(left_expr) {
+      match &*assign_expr.right {
+        Expr::Object(object_lit) => {
+          for prop in &object_lit.props {
+            if let Some(prop) = prop.as_prop() {
+              if let Some(prop_name) = get_prop_name(prop) {
+                if let Some(require_value) = get_prop_require_value(prop) {
+                  self.add_reexport(require_value);
+                } else {
+                  if is_supported_object_prop(prop) {
+                    self.add_export(prop_name);
+                  } else {
+                    self.add_unsafe_getter(prop_name);
+                  }
+                }
+              }
+            }
+          }
+        }
+        Expr::Call(call_expr) => {
+          if let Some(callee_expr) = call_expr.callee.as_expr() {
+            if let Some(ident) = callee_expr.as_ident() {
+              if ident.sym == *"require" {
+                if let Some(arg) = call_expr.args.get(0) {
+                  if let Some(lit) = arg.expr.as_lit() {
+                    if let Lit::Str(str_) = lit {
+                      self.add_reexport(&str_.value);
                     }
                   }
                 }
               }
-              ast::Expr::Call(call_expr) => {
-                if let Some(callee_expr) = call_expr.callee.as_expr() {
-                  if let Some(ident) = callee_expr.as_ident() {
-                    if ident.sym == *"require" {
-                      if let Some(arg) = call_expr.args.get(0) {
-                        if let Some(lit) = arg.expr.as_lit() {
-                          if let ast::Lit::Str(str_) = lit {
-                            self.add_reexport(&str_.value);
-                          }
-                        }
-                      }
-                    }
-                  }
+            }
+          }
+        }
+        _ => {}
+      };
+    } else if let Some(prop_name) =
+      get_module_exports_or_exports_prop(&left_expr)
+    {
+      if let Some(require_value) = get_expr_require_value(&*assign_expr.right) {
+        self.add_reexport(require_value);
+      } else {
+        self.add_export(prop_name);
+      }
+    }
+  }
+}
+
+fn get_module_exports_or_exports_prop(expr: &Expr) -> Option<&str> {
+  if let Some(member_expr) = expr.as_member() {
+    if is_module_exports_or_exports(&*member_expr.obj) {
+      return get_member_prop_text(&member_expr.prop);
+    }
+  }
+  None
+}
+
+fn is_module_exports_or_exports(expr: &Expr) -> bool {
+  is_module_exports_expr(expr) || is_exports_expr(expr)
+}
+
+fn is_module_exports_expr(expr: &Expr) -> bool {
+  if let Some(member_expr) = expr.as_member() {
+    if let Some(obj_ident) = member_expr.obj.as_ident() {
+      if obj_ident.sym == *"module" {
+        return get_member_prop_text(&member_expr.prop) == Some("exports");
+      }
+    }
+  }
+  false
+}
+
+fn is_object_define_callee(callee: &Callee) -> bool {
+  if let Some(member) = get_callee_member_expr(callee) {
+    if expr_has_ident_text(&member.obj, "Object") {
+      return member_prop_has_ident_text(&member.prop, "defineProperty");
+    }
+  }
+  false
+}
+
+fn is_exports_expr(expr: &Expr) -> bool {
+  expr
+    .as_ident()
+    .map(|i| is_exports_ident(i))
+    .unwrap_or(false)
+}
+
+fn is_exports_ident(ident: &Ident) -> bool {
+  &ident.sym == "exports"
+}
+
+fn get_prop_require_value(prop: &Prop) -> Option<&str> {
+  match prop {
+    Prop::KeyValue(prop) => get_expr_require_value(&*prop.value),
+    _ => None,
+  }
+}
+
+fn get_expr_require_value(expr: &Expr) -> Option<&str> {
+  match expr {
+    Expr::Call(call_expr) => {
+      if let Some(callee_expr) = call_expr.callee.as_expr() {
+        if let Some(ident) = callee_expr.as_ident() {
+          if ident.sym == *"require" {
+            if let Some(arg) = call_expr.args.get(0) {
+              if let Some(lit) = arg.expr.as_lit() {
+                if let Lit::Str(str) = lit {
+                  return Some(&*str.value);
                 }
               }
-              _ => todo!(),
-            };
-          } else if let Some(ident) = assign_expr.left.as_ident() {
-            if ident.sym == *"exports" {
-              todo!()
             }
           }
         }
       }
     }
+    _ => {}
+  }
+  None
+}
+
+fn get_callee_member_expr(callee: &Callee) -> Option<&MemberExpr> {
+  if let Callee::Expr(expr) = callee {
+    if let Expr::Member(member) = &**expr {
+      return Some(member);
+    }
+  }
+  None
+}
+
+fn is_valid_object_define_obj_lit(expr: &Expr) -> bool {
+  let obj = match expr.as_object() {
+    Some(obj) => obj,
+    None => return false,
+  };
+
+  has_supported_get_prop(obj)
+}
+
+// todo: extract out and unit test
+fn has_supported_get_prop(obj: &ObjectLit) -> bool {
+  let get_prop = match obj
+    .props
+    .iter()
+    .filter_map(|p| {
+      if let PropOrSpread::Prop(prop) = p {
+        if get_prop_name(&prop) == Some("get") {
+          return Some(prop);
+        }
+      }
+      None
+    })
+    .next()
+  {
+    Some(prop) => prop,
+    None => return true,
+  };
+  is_supported_get_prop(&**get_prop)
+}
+
+fn is_supported_object_prop(prop: &Prop) -> bool {
+  match prop {
+    Prop::Method(_) | Prop::KeyValue(_) | Prop::Shorthand(_) => true,
+    Prop::Getter(getter) => match &getter.body {
+      Some(stmt) => is_non_side_effect_block_stmt(stmt),
+      _ => false,
+    },
+    Prop::Assign(_) | Prop::Setter(_) => false,
+  }
+}
+
+fn is_supported_get_prop(prop: &Prop) -> bool {
+  match prop {
+    Prop::Method(method) => is_non_side_effect_function(&method.function),
+    Prop::KeyValue(key_value) => match &*key_value.value {
+      Expr::Fn(expr) => is_non_side_effect_function(&expr.function),
+      Expr::Arrow(expr) => is_non_side_effect_block_stmt_or_expr(&expr.body),
+      _ => false,
+    },
+    _ => false,
+  }
+}
+
+fn is_non_side_effect_function(function: &Function) -> bool {
+  function
+    .body
+    .as_ref()
+    .map(|b| is_non_side_effect_block_stmt(b))
+    .unwrap_or(false)
+}
+
+fn is_non_side_effect_block_stmt_or_expr(node: &BlockStmtOrExpr) -> bool {
+  match node {
+    BlockStmtOrExpr::BlockStmt(stmt) => is_non_side_effect_block_stmt(stmt),
+    BlockStmtOrExpr::Expr(expr) => is_non_side_effect_expr(expr),
+  }
+}
+
+fn is_non_side_effect_block_stmt(stmt: &BlockStmt) -> bool {
+  if stmt.stmts.len() > 1 || stmt.stmts.is_empty() {
+    return false;
+  }
+  match stmt.stmts.get(0).unwrap() {
+    Stmt::Return(stmt) => match &stmt.arg {
+      Some(expr) => is_non_side_effect_expr(&expr),
+      _ => false,
+    },
+    _ => false,
+  }
+}
+
+fn is_non_side_effect_expr(expr: &Expr) -> bool {
+  match expr {
+    Expr::Member(member) => {
+      is_non_side_effect_expr(&member.obj)
+        && is_non_side_effect_member_prop(&member.prop)
+    }
+    Expr::Ident(_) | Expr::Lit(_) | Expr::Object(_) => true,
+    _ => false,
+  }
+}
+
+fn is_non_side_effect_member_prop(member_prop: &MemberProp) -> bool {
+  match member_prop {
+    MemberProp::PrivateName(_) | MemberProp::Ident(_) => true,
+    MemberProp::Computed(computed) => is_non_side_effect_expr(&computed.expr),
+  }
+}
+
+fn expr_has_ident_text<'a>(expr: &'a Expr, text: &str) -> bool {
+  match expr {
+    Expr::Ident(ident) => &ident.sym == text,
+    _ => false,
+  }
+}
+
+fn member_prop_has_ident_text(member_prop: &MemberProp, text: &str) -> bool {
+  match member_prop {
+    MemberProp::Ident(ident) => &ident.sym == text,
+    _ => false,
+  }
+}
+
+fn get_member_prop_text(member_prop: &MemberProp) -> Option<&str> {
+  match member_prop {
+    MemberProp::Ident(ident) => Some(&ident.sym),
+    MemberProp::Computed(computed) => match &*computed.expr {
+      Expr::Lit(Lit::Str(str)) => Some(&str.value),
+      _ => None,
+    },
+    _ => None,
+  }
+}
+
+fn get_prop_name(prop: &Prop) -> Option<&str> {
+  match prop {
+    Prop::KeyValue(prop) => prop_name_from_key(&prop.key),
+    Prop::Shorthand(ident) => Some(&*ident.sym),
+    Prop::Getter(prop) => prop_name_from_key(&prop.key),
+    Prop::Setter(prop) => prop_name_from_key(&prop.key),
+    Prop::Method(prop) => prop_name_from_key(&prop.key),
+    // invalid for object literal, so ignore
+    Prop::Assign(_) => None,
+  }
+}
+
+fn prop_name_from_key(prop: &PropName) -> Option<&str> {
+  match prop {
+    PropName::Ident(ident) => Some(&*ident.sym),
+    PropName::Str(str) => Some(&*str.value),
+    PropName::BigInt(_) | PropName::Computed(_) | PropName::Num(_) => None,
   }
 }
 
 #[cfg(test)]
 mod test {
+  use std::cell::RefCell;
+
+  use crate::parse_script;
+  use crate::MediaType;
+  use crate::ParseParams;
+  use crate::SourceTextInfo;
+
   use super::*;
+
+  struct CjsAnalysisTester {
+    analysis: RefCell<CjsAnalysis>,
+  }
+
+  impl CjsAnalysisTester {
+    pub fn assert_exports(&self, mut values: Vec<&str>) {
+      values.sort();
+      let mut analysis = self.analysis.borrow_mut();
+      assert_eq!(analysis.exports, values);
+      analysis.exports.clear();
+    }
+
+    pub fn assert_reexports(&self, mut values: Vec<&str>) {
+      values.sort();
+      let mut analysis = self.analysis.borrow_mut();
+      assert_eq!(analysis.reexports, values);
+      analysis.reexports.clear();
+    }
+
+    pub fn assert_empty(&self) {
+      let analysis = self.analysis.borrow();
+      if !analysis.exports.is_empty() {
+        panic!("Had exports: {}", analysis.exports.join(", "))
+      }
+      if !analysis.reexports.is_empty() {
+        panic!("Had reexports: {}", analysis.reexports.join(", "))
+      }
+    }
+  }
+
+  impl Drop for CjsAnalysisTester {
+    fn drop(&mut self) {
+      if !std::thread::panicking() {
+        self.assert_empty();
+      }
+    }
+  }
+
+  fn parse_cjs(source: &str) -> CjsAnalysisTester {
+    let parsed_source = parse_script(ParseParams {
+      specifier: "".to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Cjs,
+      capture_tokens: true,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap();
+    let analysis = analyze_script(&parsed_source).unwrap();
+    CjsAnalysisTester {
+      analysis: RefCell::new(analysis),
+    }
+  }
 
   // Tests ported from https://github.com/nodejs/cjs-module-lexer/blob/main/test/_unit.js
 
   #[test]
   fn esbuild_hint_style() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       "0 && (module.exports = {a, b, c}) && __exportStar(require('fs'));",
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 3);
-    assert_eq!(exports[0], "a");
-    assert_eq!(exports[1], "b");
-    assert_eq!(exports[2], "c");
-    assert_eq!(reexports.len(), 1);
-    assert_eq!(reexports[0], "fs");
+    tester.assert_exports(vec!["a", "b", "c"]);
+    tester.assert_reexports(vec!["fs"]);
   }
 
   #[test]
   fn getter_opt_outs() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
     Object.defineProperty(exports, 'a', {
         enumerable: true,
@@ -160,16 +468,14 @@ mod test {
           }
         });
       }"#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 0);
-    assert_eq!(reexports.len(), 0);
+    tester.assert_empty();
   }
 
   #[test]
   fn typescript_reexports() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
     "use strict";
       function __export(m) {
@@ -185,23 +491,22 @@ mod test {
       var color_factory_1 = require("./color-factory");
       Object.defineProperty(exports, "colorFactory", { enumerable: true, get: function () { return color_factory_1.colorFactory; }, });
     "#,
-    ).unwrap();
+    );
 
-    assert_eq!(exports.len(), 2);
-    assert_eq!(exports[0], "__esModule");
-    assert_eq!(exports[1], "colorFactory");
-    assert_eq!(reexports.len(), 4);
-    assert_eq!(reexports[0], "external1");
-    assert_eq!(reexports[1], "external2");
-    assert_eq!(reexports[2], "external3");
-    assert_eq!(reexports[3], "external4");
+    tester.assert_exports(vec!["__esModule", "colorFactory"]);
+    tester.assert_reexports(vec![
+      "external1",
+      "external2",
+      "external3",
+      "external4",
+    ]);
   }
 
   #[test]
   fn rollup_babel_reexport_getter() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
-    Object.defineProperty(exports, 'a', {
+      Object.defineProperty(exports, 'a', {
         enumerable: true,
         get: function () {
           return q.p;
@@ -229,25 +534,24 @@ mod test {
         }
       });
       Object.defineProperty(exports, "f", {
-        get: functionget () {
+        get: function get () {
           return q['p' ];
         }
       });
     "#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 4);
-    assert_eq!(exports[0], "a");
-    assert_eq!(exports[1], "c");
-    assert_eq!(exports[2], "d");
-    assert_eq!(exports[3], "e");
-    assert_eq!(reexports.len(), 0);
+    tester.assert_exports(vec![
+      "a",
+      "b", // added support -- we does cjs-module-lexer match c and d and not b?
+      "c", "d", "e",
+      "f", // changed code from cjs-module-lexer tests so it parses
+    ]);
   }
 
   #[test]
   fn rollup_babel_reexports() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
     "use strict";
       exports.__esModule = true;
@@ -458,31 +762,31 @@ mod test {
         });
       });
     "#,
-    ).unwrap();
+    );
 
-    assert_eq!(exports.len(), 1);
-    assert_eq!(exports[0], "__esModule");
-    assert_eq!(reexports.len(), 15);
-    assert_eq!(reexports[0], "external");
-    assert_eq!(reexports[1], "external2");
-    assert_eq!(reexports[2], "external001");
-    assert_eq!(reexports[3], "external003");
-    assert_eq!(reexports[4], "external002");
-    assert_eq!(reexports[5], "external004");
-    assert_eq!(reexports[6], "external3");
-    assert_eq!(reexports[7], "external4");
-    assert_eq!(reexports[8], "external😃");
-    assert_eq!(reexports[9], "e5");
-    assert_eq!(reexports[10], "e6");
-    assert_eq!(reexports[11], "external𤭢");
-    assert_eq!(reexports[12], "./styles");
-    assert_eq!(reexports[13], "./styles2");
-    assert_eq!(reexports[14], "./Accordion");
+    tester.assert_exports(vec!["__esModule"]);
+    tester.assert_reexports(vec![
+      "external",
+      "external2",
+      "external001",
+      "external003",
+      "external002",
+      "external004",
+      "external3",
+      "external4",
+      "external😃",
+      "e5",
+      "e6",
+      "external𤭢",
+      "./styles",
+      "./styles2",
+      "./Accordion",
+    ]);
   }
 
   #[test]
   fn module_exports_reexport_spread() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
     module.exports = {
         ...a,
@@ -493,100 +797,32 @@ mod test {
         name
       };
     "#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 2);
-    assert_eq!(exports[0], "c");
-    assert_eq!(exports[1], "name");
-    assert_eq!(reexports.len(), 2);
-    assert_eq!(reexports[0], "dep1");
-    assert_eq!(reexports[1], "dep2");
-  }
-
-  #[test]
-  fn regexp_case() {
-    parse_cjs(
-      r#"
-        class Number {
-        }
-        
-        /("|')(?<value>(\\\\(\\1)|[^\\1])*)?(\\1)/.exec(\`'\\\\"\\\\'aa'\`);
-        
-        const x = \`"\${label.replace(/"/g, "\\\\\\"")}"\`
-    "#,
-    )
-    .unwrap();
-  }
-
-  #[test]
-  fn regexp_division() {
-    parse_cjs(r#"\nconst x = num / /'/.exec(l)[0].slice(1, -1)//'""#).unwrap();
-  }
-
-  #[test]
-  fn multiline_string_escapes() {
-    parse_cjs(
-      r#"const str = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeCAYAAAA7MK6iAAAABmJLR0QA/wAAAAAzJ3zzAAAGTElEQV\\\r\n\t\tRIx+VXe1BU1xn/zjn7ugvL4sIuQnll5U0ELAQxig7WiQYz6NRHa6O206qdSXXSxs60dTK200zNY9q0dcRpMs1jkrRNWmaijCVoaU';\r\n"#,
-    ).unwrap();
-  }
-
-  #[test]
-  fn dotted_number() {
-    parse_cjs(r#"const x = 5. / 10"#).unwrap();
-  }
-
-  #[test]
-  fn division_operator_case() {
-    parse_cjs(
-      r#"
-    function log(r){
-        if(g>=0){u[g++]=m;g>=n.logSz&&(g=0)}else{u.push(m);u.length>=n.logSz&&(g=0)}/^(DBG|TICK): /.test(r)||t.Ticker.tick(454,o.slice(0,200));
-      }
-      
-      (function(n){
-      })();
-    "#,
-    ).unwrap();
-  }
-
-  #[test]
-  fn single_parse_cases() {
-    parse_cjs(r#"'asdf'"#).unwrap();
-    parse_cjs(r#"/asdf/"#).unwrap();
-    parse_cjs(r#"\`asdf\`"#).unwrap();
-    parse_cjs(r#"/**/"#).unwrap();
-    parse_cjs(r#"//"#).unwrap();
+    tester.assert_exports(vec!["c", "name"]);
+    tester.assert_reexports(vec!["dep1", "dep2"]);
   }
 
   #[test]
   fn shebang() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(r#"#!"#).unwrap();
+    parse_cjs(r#"#!"#);
 
-    assert_eq!(exports.len(), 0);
-    assert_eq!(reexports.len(), 0);
-
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"#! (  {
         exports.asdf = 'asdf';
       "#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 1);
-    assert_eq!(exports[0], "asdf");
-    assert_eq!(reexports.len(), 0);
+    tester.assert_exports(vec!["asdf"]);
   }
 
   #[test]
   fn non_identifiers() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
       module.exports = { 'ab cd': foo };
       exports['not identifier'] = 'asdf';
-      exports['\\u{D83C}\\u{DF10}'] = 1;
-      exports['\\u{D83C}'] = 1;
-      exports['\\''] = 1;
+      exports['\''] = 1;
       exports['@notidentifier'] = 'asdf';
       Object.defineProperty(exports, "%notidentifier", { value: x });
       Object.defineProperty(exports, 'hm🤔', { value: x });
@@ -595,83 +831,58 @@ mod test {
       exports.package = 'STRICT RESERVED!';
       exports.var = 'RESERVED';
     "#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 11);
-    assert_eq!(exports[0], "ab cd");
-    assert_eq!(exports[1], "not identifier");
-    // assert_eq!(exports[2], "\u{D83C}\u{DF10}");
-    assert_eq!(exports[3], "\'");
-    assert_eq!(exports[4], "@notidentifier");
-    assert_eq!(exports[5], "%notidentifier");
-    assert_eq!(exports[6], "hm🤔");
-    assert_eq!(exports[7], "⨉");
-    assert_eq!(exports[8], "α");
-    assert_eq!(exports[9], "package");
-    assert_eq!(exports[10], "var");
-    assert_eq!(reexports.len(), 0);
+    tester.assert_exports(vec![
+      "%notidentifier",
+      "ab cd",
+      "not identifier",
+      "\'",
+      "@notidentifier",
+      "hm🤔",
+      "⨉",
+      "α",
+      "package",
+      "var",
+    ]);
   }
 
   #[test]
   fn literal_exports() {
-    let CjsAnalysis { exports, reexports } =
-      parse_cjs(r#"module.exports = { a, b: c, d, 'e': f };"#).unwrap();
+    let tester = parse_cjs(r#"module.exports = { a, b: c, d, 'e': f };"#);
 
-    assert_eq!(exports.len(), 4);
-    assert_eq!(exports[0], "a");
-    assert_eq!(exports[1], "b");
-    assert_eq!(exports[2], "d");
-    assert_eq!(exports[3], "e");
-    assert_eq!(reexports.len(), 0);
-  }
-
-  #[test]
-  fn literal_exports_unsupported() {
-    let CjsAnalysis { exports, reexports } =
-      parse_cjs(r#"module.exports = { a = 5, b };"#).unwrap();
-
-    assert_eq!(exports.len(), 1);
-    assert_eq!(exports[0], "a");
-    assert_eq!(reexports.len(), 0);
+    tester.assert_exports(vec!["a", "b", "d", "e"]);
   }
 
   #[test]
   fn literal_exports_example() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
       module.exports = {
-        // These WILL be detected as exports
         a: a,
         b: b,
-        
-        // This WILL be detected as an export
+        // cjs-module-lexer has "e" as an export and then bails
+        // on the object literal because it encounters require
         e: require('d'),
-      
-        // These WONT be detected as exports
-        // because the object parser stops on the non-identifier
-        // expression "require('d')"
         f: 'f'
       }
     "#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 3);
-    assert_eq!(exports[2], "e");
-    assert_eq!(reexports.len(), 0);
+    tester.assert_exports(vec!["a", "b", "f"]);
+    tester.assert_reexports(vec!["d"]);
   }
 
   #[test]
   fn literal_exports_complex() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
       function defineProp(name, value) {
         delete module.exports[name];
         module.exports[name] = value;
         return value;
       }
-    
+
       module.exports = {
         Parser: Parser,
         Tokenizer: require("./Tokenizer.js"),
@@ -736,18 +947,30 @@ mod test {
         }
       };
     "#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 2);
-    assert_eq!(exports[0], "Parser");
-    assert_eq!(exports[1], "Tokenizer");
-    assert_eq!(reexports.len(), 0);
+    #[rustfmt::skip]
+    tester.assert_exports(
+      vec![
+        "DefaultHandler", // added support
+        "DomHandler", // added support
+        "EVENTS", // added support
+        "Parser",
+        "createDomStream", // add support
+        "parseDOM", // add support
+        "parseFeed", // add support
+        // "Tokenizer", // now classified as reexport, but exports in cjs-module-lexer
+      ]
+    );
+    tester.assert_reexports(vec![
+      "./Tokenizer.js", // added support
+      "domelementtype", // added support
+    ]);
   }
 
   #[test]
   fn define_property_value() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
       Object.defineProperty(exports, 'namedExport', { enumerable: false, value: true });
       Object.defineProperty(exports, 'namedExport', { configurable: false, value: true });
@@ -782,18 +1005,23 @@ mod test {
       Object.defineProperty(exports, "other", { enumerable: true, value: true });
       Object.defineProperty(exports, "__esModule", { value: true });
     "#,
-    ).unwrap();
+    );
 
-    assert_eq!(exports.len(), 3);
-    assert_eq!(exports[0], "thing");
-    assert_eq!(exports[1], "other");
-    assert_eq!(exports[2], "__esModule");
-    assert_eq!(reexports.len(), 0);
+    tester.assert_exports(vec![
+      "__esModule",
+      "a",           // added support
+      "b",           // added support
+      "c",           // added support
+      "e",           // added support
+      "namedExport", // added support
+      "other",
+      "thing",
+    ]);
   }
 
   #[test]
   fn module_assign() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
       module.exports.asdf = 'asdf';
       exports = 'asdf';
@@ -801,211 +1029,113 @@ mod test {
       if (maybe)
         module.exports = require("./another");
     "#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 1);
-    assert_eq!(exports[0], "asdf");
-    assert_eq!(reexports.len(), 1);
-    assert_eq!(reexports[0], "./another");
+    tester.assert_exports(vec!["asdf"]);
+    tester.assert_reexports(vec!["./another"]);
   }
 
-  #[test]
-  fn simple_export_with_unicode_conversions() {
-    parse_cjs(
-      r#"
-        export var p𓀀s,q
-    "#,
-    )
-    .unwrap_err();
-  }
+  // #[test]
+  // fn simple_export_with_unicode_conversions() {
+  //   parse_cjs(
+  //     r#"
+  //       export var p𓀀s,q
+  //   "#,
+  //   )
+  //   .unwrap_err();
+  // }
 
-  #[test]
-  fn simple_import() {
-    parse_cjs(
-      r#"
-      import test from "test";
-      console.log(test);
-    "#,
-    )
-    .unwrap_err();
-  }
+  // #[test]
+  // fn simple_import() {
+  //   parse_cjs(
+  //     r#"
+  //     import test from "test";
+  //     console.log(test);
+  //   "#,
+  //   )
+  //   .unwrap_err();
+  // }
 
-  #[test]
-  fn exported_function() {
-    parse_cjs(
-      r#"
-    export function a𓀀 () {
-    }
-    export class Q{
-    }
-    "#,
-    )
-    .unwrap_err();
-  }
+  // #[test]
+  // fn exported_function() {
+  //   parse_cjs(
+  //     r#"
+  //   export function a𓀀 () {
+  //   }
+  //   export class Q{
+  //   }
+  //   "#,
+  //   )
+  //   .unwrap_err();
+  // }
 
-  #[test]
-  fn export_destructuring() {
-    parse_cjs(
-      r#"
-    export const { a, b } = foo;
-    export { ok };
-    "#,
-    )
-    .unwrap_err();
-  }
+  // #[test]
+  // fn import_dot_meta() {
+  //   parse_cjs(
+  //     r#"
+  //     export var hello = 'world';
+  //     console.log(import.meta.url);
+  //   "#,
+  //   )
+  //   .unwrap_err();
+  // }
 
-  #[test]
-  fn minified_import_syntax() {
-    parse_cjs(r#"
-    import{TemplateResult as t}from"lit-html";import{a as e}from"./chunk-4be41b30.js";export{j as SVGTemplateResult,i as TemplateResult,g as html,h as svg}from"./chunk-4be41b30.js";window.JSCompiler_renameProperty='asdf';
-    "#).unwrap_err();
-  }
+  // #[test]
+  // fn import_meta_edge_cases() {
+  //   parse_cjs(
+  //     r#"
+  //   // Import meta
+  //   import.
+  //    meta
+  //   // Not import meta
+  //   a.
+  //   import.
+  //     meta
+  //   "#,
+  //   )
+  //   .unwrap_err();
+  // }
 
-  #[test]
-  fn plus_plus_division() {
-    parse_cjs(r#"tick++/fetti;f=(1)+")";"#).unwrap();
-  }
+  //   #[test]
+  //   fn comments() {
+  //     parse_cjs(
+  //       r#"
+  //     /*
+  //     VERSION
+  //   */import util from 'util';
+  // //
+  // function x() {
+  // }
+  //       /**/
+  //       // '
+  //       /* / */
+  //       /*
+  //          * export { b }
+  //       \\*/export { a }
+  //       function () {
+  //         /***/
+  //       }
 
-  #[test]
-  fn return_bracket_division() {
-    parse_cjs(r#"function variance(){return s/(a-1)}"#).unwrap();
-  }
-
-  #[test]
-  fn import_dot_meta() {
-    parse_cjs(
-      r#"
-      export var hello = 'world';
-      console.log(import.meta.url);
-    "#,
-    )
-    .unwrap_err();
-  }
-
-  #[test]
-  fn import_meta_edge_cases() {
-    parse_cjs(
-      r#"
-    // Import meta
-    import.
-     meta
-    // Not import meta
-    a.
-    import.
-      meta
-    "#,
-    )
-    .unwrap_err();
-  }
-
-  #[test]
-  fn dynamic_import_method() {
-    parse_cjs(
-      r#"
-      class A {
-        import() {
-        }
-      }
-    "#,
-    )
-    .unwrap();
-  }
-
-  #[test]
-  fn comments() {
-    parse_cjs(
-      r#"
-    /*
-    VERSION
-  */import util from 'util';
-//
-function x() {
-}
-      /**/
-      // '
-      /* / */
-      /*
-         * export { b }
-      \\*/export { a }
-      function () {
-        /***/
-      }
-    
-    "#,
-    )
-    .unwrap_err();
-  }
-
-  #[test]
-  fn bracket_matching() {
-    parse_cjs(
-      r#"
-      instance.extend('parseExprAtom', function (nextMethod) {
-        return function () {
-          function parseExprAtom(refDestructuringErrors) {
-            if (this.type === tt._import) {
-              return parseDynamicImport.call(this);
-            }
-            return c(refDestructuringErrors);
-          }
-        }();
-      });
-    "#,
-    )
-    .unwrap();
-  }
-
-  #[test]
-  fn division_regex_ambiguity() {
-    parse_cjs(
-      r#"
-    /as)df/; x();
-      a / 2; '  /  '
-      while (true)
-        /test'/
-      x-/a'/g
-      try {}
-      finally{}/a'/g
-      (x);{f()}/d'export { b }/g
-      ;{}/e'/g;
-      {}/f'/g
-      a / 'b' / c;
-      /a'/ - /b'/;
-      +{} /g -'/g'
-      ('a')/h -'/g'
-      if //x
-      ('a')/i'/g;
-      /asdf/ / /as'df/; // '
-      p = \`\${/test/ + 5}\`;
-      /regex/ / x;
-      function m() {
-        return /*asdf8*// 5/;
-      }
-    "#,
-    )
-    .unwrap();
-  }
+  //     "#,
+  //     )
+  //     .unwrap_err();
+  //   }
 
   #[test]
   fn template_string_expression_ambiguity() {
-    let CjsAnalysis { exports, reexports } = parse_cjs(
+    let tester = parse_cjs(
       r#"
-      \`$\`
+      `$`
       import('a');
-      \`\`
+      ``
       exports.a = 'a';
-      \`a$b\`
+      `a$b`
       exports['b'] = 'b';
-      \`{$}\`
+      `{$}`
       exports['b'].b;
     "#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(exports.len(), 2);
-    assert_eq!(exports[0], "a");
-    assert_eq!(exports[1], "b");
-    assert_eq!(reexports.len(), 0);
+    tester.assert_exports(vec!["a", "b"]);
   }
 }
