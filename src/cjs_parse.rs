@@ -1,39 +1,38 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::swc::ast::*;
-use crate::swc::utils::ExprExt;
-use crate::swc::visit::{noop_visit_type, Visit, VisitWith};
+use crate::swc::visit::Visit;
 use crate::ParsedSource;
 use anyhow::bail;
 use anyhow::Result;
-use swc_common::SyntaxContext;
+use swc_atoms::JsWord;
+use swc_ecmascript::visit::VisitWith;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct CjsAnalysis {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
 }
 
-pub fn analyze_script(script: &ParsedSource) -> Result<CjsAnalysis> {
+pub fn analyze_cjs(script: &ParsedSource) -> Result<CjsAnalysis> {
   if !matches!(script.program_ref(), Program::Script(_)) {
     bail!("Cannot cjs analyze non-script: {}", script.specifier())
   }
-  let mut visitor = CjsVisitor {
-    exports: Default::default(),
-    reexports: Default::default(),
-    unsafe_getters: Default::default(),
-  };
+  let mut visitor = CjsVisitor::default();
   visitor.visit_script(&script.script());
 
   Ok(visitor.take_result())
 }
 
+#[derive(Default)]
 struct CjsVisitor {
   exports: HashSet<String>,
   reexports: HashSet<String>,
   unsafe_getters: HashSet<String>,
+  var_assignments: HashMap<String, String>,
 }
 
 impl CjsVisitor {
@@ -62,14 +61,55 @@ impl CjsVisitor {
     self.reexports.insert(reexport.to_string());
   }
 
+  fn set_reexport_assignment_value(&mut self, value: &str) {
+    self.reexports.clear();
+    self.add_reexport(value);
+  }
+
   fn add_unsafe_getter(&mut self, name: &str) {
     self.unsafe_getters.insert(name.to_string());
+  }
+
+  /// This will take `_external003[key]` and the symbol for `key` and return "external003"
+  /// ```js
+  /// var _external003 = require("external003");
+  /// Object.keys(_external003).forEach(function (key) {
+  ///   exports[key] = _external003[key];
+  /// });
+  /// ```
+  fn get_member_require_value(
+    &self,
+    member: &MemberExpr,
+    key: &JsWord,
+  ) -> Option<String> {
+    let obj_ident = member.obj.as_ident()?;
+    let require_value = self.var_assignments.get(&*obj_ident.sym).cloned()?;
+    let prop_ident = member.prop.as_computed()?.expr.as_ident()?;
+    if &prop_ident.sym == key {
+      Some(require_value)
+    } else {
+      None
+    }
   }
 }
 
 impl Visit for CjsVisitor {
+  fn visit_var_decl(&mut self, stmt: &VarDecl) {
+    for decl in &stmt.decls {
+      if let Some(id) = decl.name.as_ident() {
+        if let Some(init) = &decl.init {
+          if let Some(require_value) = get_expr_require_value(init) {
+            self
+              .var_assignments
+              .insert(id.id.sym.to_string(), require_value.to_string());
+          }
+        }
+      }
+    }
+  }
+
   fn visit_call_expr(&mut self, call_expr: &CallExpr) {
-    // Object.defineProperty(exports, "someExport", { ... });
+    // Object.defineProperty(exports, ..., { ... });
     if is_object_define_callee(&call_expr.callee)
       && call_expr.args.len() >= 3
       && is_module_exports_or_exports(&call_expr.args[0].expr)
@@ -77,83 +117,153 @@ impl Visit for CjsVisitor {
       && call_expr.args[1].spread.is_none()
       && call_expr.args[2].spread.is_none()
     {
-      if let Expr::Lit(Lit::Str(str)) = &*call_expr.args[1].expr {
-        let lit_value = &*str.value;
-        if is_valid_object_define_obj_lit(&call_expr.args[2].expr) {
-          self.add_export(lit_value);
-        } else {
-          self.add_unsafe_getter(lit_value);
-        }
-      }
-    }
-  }
-
-  fn visit_assign_expr(&mut self, assign_expr: &AssignExpr) {
-    // check if left hand side is "module.exports = " or "exports ="
-    if assign_expr.op != AssignOp::Assign {
-      return;
-    }
-    let left_expr =
-      match assign_expr.left.as_pat().and_then(|pat| pat.as_expr()) {
-        Some(expr) => expr,
-        _ => return,
-      };
-
-    if is_module_exports_or_exports(left_expr) {
-      match &*assign_expr.right {
-        Expr::Object(object_lit) => {
-          for prop in &object_lit.props {
-            if let Some(prop) = prop.as_prop() {
-              if let Some(prop_name) = get_prop_name(prop) {
-                if let Some(require_value) = get_prop_require_value(prop) {
-                  self.add_reexport(require_value);
-                } else {
-                  if is_supported_object_prop(prop) {
-                    self.add_export(prop_name);
-                  } else {
-                    self.add_unsafe_getter(prop_name);
-                  }
-                }
-              }
-            }
+      match &*call_expr.args[1].expr {
+        // Object.defineProperty(exports, "someExport", { ... });
+        Expr::Lit(Lit::Str(str)) => {
+          let lit_value = &*str.value;
+          if is_valid_object_define_obj_lit(&call_expr.args[2].expr) {
+            self.add_export(lit_value);
+          } else {
+            self.add_unsafe_getter(lit_value);
           }
         }
-        Expr::Call(call_expr) => {
-          if let Some(callee_expr) = call_expr.callee.as_expr() {
-            if let Some(ident) = callee_expr.as_ident() {
-              if ident.sym == *"require" {
-                if let Some(arg) = call_expr.args.get(0) {
-                  if let Some(lit) = arg.expr.as_lit() {
-                    if let Lit::Str(str_) = lit {
-                      self.add_reexport(&str_.value);
-                    }
-                  }
+        // Object.defineProperty(exports, key, { ... });
+        Expr::Ident(object_define_prop_ident) => {
+          if let Some(obj_lit) = call_expr.args[2].expr.as_object() {
+            if let Some(get_prop) = get_object_define_get_prop(obj_lit) {
+              // get: function () {
+              //   return _external002[key];
+              // }
+              if let Some(Expr::Member(member)) =
+                get_prop_return_expr(&get_prop)
+              {
+                if let Some(require_value) = self.get_member_require_value(
+                  member,
+                  &object_define_prop_ident.sym,
+                ) {
+                  self.add_reexport(&require_value);
                 }
               }
             }
           }
         }
         _ => {}
-      };
-    } else if let Some(prop_name) =
-      get_module_exports_or_exports_prop(&left_expr)
+      }
+    }
+
+    // __export, __exportStar, tslib.__export, etc...
+    if call_expr.args.len() == 1
+      && call_expr.args[0].spread.is_none()
+      && is_export_callee(&call_expr.callee)
     {
-      if let Some(require_value) = get_expr_require_value(&*assign_expr.right) {
-        self.add_reexport(require_value);
-      } else {
-        self.add_export(prop_name);
+      if let Some(name) = get_expr_require_value(&call_expr.args[0].expr) {
+        self.add_reexport(name);
+      }
+    }
+
+    call_expr.visit_children_with(self);
+
+    fn is_object_define_callee(callee: &Callee) -> bool {
+      let member = match get_callee_member_expr(callee) {
+        Some(member) => member,
+        None => return false,
+      };
+      get_expr_ident_text(&member.obj) == Some("Object")
+        && get_member_prop_ident_text(&member.prop) == Some("defineProperty")
+    }
+
+    fn is_export_callee(callee: &Callee) -> bool {
+      if let Some(member) = get_callee_member_expr(callee) {
+        // ex. tslib.__exportStar
+        if matches!(&*member.obj, Expr::Ident(_)) {
+          if let Some(right_side) = get_member_prop_ident_text(&member.prop) {
+            return matches!(right_side, "__exportStar" | "__export");
+          }
+        }
+      } else if let Some(ident) = get_callee_ident(callee) {
+        return matches!(&*ident.sym, "__exportStar" | "__export");
+      }
+      false
+    }
+  }
+
+  fn visit_assign_expr(&mut self, assign_expr: &AssignExpr) {
+    if assign_expr.op != AssignOp::Assign {
+      return;
+    }
+
+    let left_expr =
+      match assign_expr.left.as_pat().and_then(|pat| pat.as_expr()) {
+        Some(expr) => expr,
+        _ => return,
+      };
+
+    // check if left hand side is "module.exports = " or "exports ="
+    if is_module_exports_or_exports(left_expr) {
+      match &*assign_expr.right {
+        Expr::Object(object_lit) => {
+          for prop in &object_lit.props {
+            match prop {
+              PropOrSpread::Prop(prop) => {
+                if let Some(prop_name) = get_prop_name(prop) {
+                  if let Some(require_value) = get_prop_require_value(prop) {
+                    self.add_reexport(require_value);
+                  } else {
+                    if is_supported_object_prop(prop) {
+                      self.add_export(prop_name);
+                    } else {
+                      self.add_unsafe_getter(prop_name);
+                    }
+                  }
+                }
+              }
+              PropOrSpread::Spread(spread) => {
+                if let Some(require_value) =
+                  get_expr_require_value(&spread.expr)
+                {
+                  self.add_reexport(require_value);
+                }
+              }
+            }
+          }
+        }
+        Expr::Call(call_expr) => {
+          // module.exports = require(...);
+          if let Some(require_value) = get_call_expr_require_value(call_expr) {
+            self.set_reexport_assignment_value(require_value);
+          }
+        }
+        _ => {}
+      };
+    } else if let Some(left_member) = left_expr.as_member() {
+      if is_module_exports_or_exports(&*left_member.obj) {
+        // check for:
+        // * `exports["something"] = other`
+        // * `exports.something = other`
+        if let Some(prop_name) = get_member_prop_text(&left_member.prop) {
+          if let Some(require_value) =
+            get_expr_require_value(&*assign_expr.right)
+          {
+            self.add_reexport(require_value);
+          } else {
+            self.add_export(prop_name);
+          }
+        } else if let Some(right_member) = assign_expr.right.as_member() {
+          // check for:
+          // * `exports[key] = _something[key];
+          if let MemberProp::Computed(computed) = &left_member.prop {
+            if let Some(computed_ident) = computed.expr.as_ident() {
+              if let Some(require_value) =
+                self.get_member_require_value(right_member, &computed_ident.sym)
+              {
+                self.add_reexport(&require_value);
+              }
+            }
+          }
+        }
       }
     }
   }
-}
-
-fn get_module_exports_or_exports_prop(expr: &Expr) -> Option<&str> {
-  if let Some(member_expr) = expr.as_member() {
-    if is_module_exports_or_exports(&*member_expr.obj) {
-      return get_member_prop_text(&member_expr.prop);
-    }
-  }
-  None
 }
 
 fn is_module_exports_or_exports(expr: &Expr) -> bool {
@@ -171,24 +281,11 @@ fn is_module_exports_expr(expr: &Expr) -> bool {
   false
 }
 
-fn is_object_define_callee(callee: &Callee) -> bool {
-  if let Some(member) = get_callee_member_expr(callee) {
-    if expr_has_ident_text(&member.obj, "Object") {
-      return member_prop_has_ident_text(&member.prop, "defineProperty");
-    }
-  }
-  false
-}
-
 fn is_exports_expr(expr: &Expr) -> bool {
   expr
     .as_ident()
-    .map(|i| is_exports_ident(i))
+    .map(|i| &i.sym == "exports")
     .unwrap_or(false)
-}
-
-fn is_exports_ident(ident: &Ident) -> bool {
-  &ident.sym == "exports"
 }
 
 fn get_prop_require_value(prop: &Prop) -> Option<&str> {
@@ -200,20 +297,27 @@ fn get_prop_require_value(prop: &Prop) -> Option<&str> {
 
 fn get_expr_require_value(expr: &Expr) -> Option<&str> {
   match expr {
-    Expr::Call(call_expr) => {
-      if let Some(callee_expr) = call_expr.callee.as_expr() {
-        if let Some(ident) = callee_expr.as_ident() {
-          if ident.sym == *"require" {
-            if let Some(arg) = call_expr.args.get(0) {
-              if let Some(lit) = arg.expr.as_lit() {
-                if let Lit::Str(str) = lit {
-                  return Some(&*str.value);
-                }
-              }
-            }
-          }
-        }
+    Expr::Call(call_expr) => get_call_expr_require_value(call_expr),
+    _ => None,
+  }
+}
+
+fn get_call_expr_require_value(call_expr: &CallExpr) -> Option<&str> {
+  let callee_expr = call_expr.callee.as_expr()?;
+  let ident = callee_expr.as_ident()?;
+  match &*ident.sym {
+    "require" => {
+      let arg = call_expr.args.get(0)?;
+      let lit = arg.expr.as_lit()?;
+      if let Lit::Str(str) = lit {
+        return Some(&*str.value);
       }
+    }
+    // _interopRequireWildcard(require(...))
+    "_interopRequireWildcard" => {
+      let arg = call_expr.args.get(0)?;
+      let call_expr = arg.expr.as_call()?;
+      return get_call_expr_require_value(call_expr);
     }
     _ => {}
   }
@@ -224,6 +328,15 @@ fn get_callee_member_expr(callee: &Callee) -> Option<&MemberExpr> {
   if let Callee::Expr(expr) = callee {
     if let Expr::Member(member) = &**expr {
       return Some(member);
+    }
+  }
+  None
+}
+
+fn get_callee_ident(callee: &Callee) -> Option<&Ident> {
+  if let Callee::Expr(expr) = callee {
+    if let Expr::Ident(ident) = &**expr {
+      return Some(ident);
     }
   }
   None
@@ -240,7 +353,15 @@ fn is_valid_object_define_obj_lit(expr: &Expr) -> bool {
 
 // todo: extract out and unit test
 fn has_supported_get_prop(obj: &ObjectLit) -> bool {
-  let get_prop = match obj
+  let get_prop = match get_object_define_get_prop(obj) {
+    Some(prop) => prop,
+    None => return true,
+  };
+  is_supported_get_prop(get_prop)
+}
+
+fn get_object_define_get_prop(obj: &ObjectLit) -> Option<&Prop> {
+  obj
     .props
     .iter()
     .filter_map(|p| {
@@ -252,11 +373,7 @@ fn has_supported_get_prop(obj: &ObjectLit) -> bool {
       None
     })
     .next()
-  {
-    Some(prop) => prop,
-    None => return true,
-  };
-  is_supported_get_prop(&**get_prop)
+    .map(|p| &**p)
 }
 
 fn is_supported_object_prop(prop: &Prop) -> bool {
@@ -282,6 +399,21 @@ fn is_supported_get_prop(prop: &Prop) -> bool {
   }
 }
 
+fn get_prop_return_expr(prop: &Prop) -> Option<&Expr> {
+  match prop {
+    Prop::Method(method) => get_function_return_expr(&method.function),
+    Prop::KeyValue(key_value) => match &*key_value.value {
+      Expr::Fn(expr) => get_function_return_expr(&expr.function),
+      Expr::Arrow(expr) => match &expr.body {
+        BlockStmtOrExpr::BlockStmt(stmt) => get_block_stmt_return_expr(stmt),
+        BlockStmtOrExpr::Expr(expr) => Some(expr),
+      },
+      _ => None,
+    },
+    _ => None,
+  }
+}
+
 fn is_non_side_effect_function(function: &Function) -> bool {
   function
     .body
@@ -298,15 +430,30 @@ fn is_non_side_effect_block_stmt_or_expr(node: &BlockStmtOrExpr) -> bool {
 }
 
 fn is_non_side_effect_block_stmt(stmt: &BlockStmt) -> bool {
-  if stmt.stmts.len() > 1 || stmt.stmts.is_empty() {
-    return false;
+  match get_block_stmt_return_expr(stmt) {
+    Some(expr) => is_non_side_effect_expr(expr),
+    None => false,
   }
-  match stmt.stmts.get(0).unwrap() {
+}
+
+fn get_function_return_expr(function: &Function) -> Option<&Expr> {
+  function
+    .body
+    .as_ref()
+    .map(|b| get_block_stmt_return_expr(b))
+    .flatten()
+}
+
+fn get_block_stmt_return_expr(stmt: &BlockStmt) -> Option<&Expr> {
+  if stmt.stmts.len() > 1 || stmt.stmts.is_empty() {
+    return None;
+  }
+  match stmt.stmts.get(0)? {
     Stmt::Return(stmt) => match &stmt.arg {
-      Some(expr) => is_non_side_effect_expr(&expr),
-      _ => false,
+      Some(expr) => Some(&expr),
+      _ => None,
     },
-    _ => false,
+    _ => None,
   }
 }
 
@@ -328,17 +475,17 @@ fn is_non_side_effect_member_prop(member_prop: &MemberProp) -> bool {
   }
 }
 
-fn expr_has_ident_text<'a>(expr: &'a Expr, text: &str) -> bool {
+fn get_expr_ident_text<'a>(expr: &'a Expr) -> Option<&str> {
   match expr {
-    Expr::Ident(ident) => &ident.sym == text,
-    _ => false,
+    Expr::Ident(ident) => Some(&ident.sym),
+    _ => None,
   }
 }
 
-fn member_prop_has_ident_text(member_prop: &MemberProp, text: &str) -> bool {
+fn get_member_prop_ident_text(member_prop: &MemberProp) -> Option<&str> {
   match member_prop {
-    MemberProp::Ident(ident) => &ident.sym == text,
-    _ => false,
+    MemberProp::Ident(ident) => Some(&ident.sym),
+    _ => None,
   }
 }
 
@@ -375,6 +522,7 @@ fn prop_name_from_key(prop: &PropName) -> Option<&str> {
 
 #[cfg(test)]
 mod test {
+  use pretty_assertions::assert_eq;
   use std::cell::RefCell;
 
   use crate::parse_script;
@@ -432,7 +580,7 @@ mod test {
       maybe_syntax: None,
     })
     .unwrap();
-    let analysis = analyze_script(&parsed_source).unwrap();
+    let analysis = analyze_cjs(&parsed_source).unwrap();
     CjsAnalysisTester {
       analysis: RefCell::new(analysis),
     }
@@ -542,10 +690,10 @@ mod test {
     );
 
     tester.assert_exports(vec![
-      "a",
-      "b", // added support -- we does cjs-module-lexer match c and d and not b?
-      "c", "d", "e",
+      "a", "c", "d", "e",
       "f", // changed code from cjs-module-lexer tests so it parses
+      // added support -- why does cjs-module-lexer match c and d and not b?
+      "b",
     ]);
   }
 
@@ -688,7 +836,7 @@ mod test {
       const notexternal12 = require('notexternal12');
       Object.keys(notexternal12).forEach(function(x){
         if (x ==='default'||x==='__esModule') return
-        export[y] = notexternal12[y];
+        exports[y] = notexternal12[y];
       });
       const notexternal13 = require('notexternal13');
       Object.keys(notexternal13).forEach(function(x){
@@ -781,6 +929,12 @@ mod test {
       "./styles",
       "./styles2",
       "./Accordion",
+      // extra values not matched in cjs-module-lexer
+      "not",           // why not?
+      "notexternal12", // seems like an unrealistic test?
+      "notexternal13", // seems like an unrealistic test?
+      "notexternal16", // might as well match
+      "notexternal17", // might as well match
     ]);
   }
 
@@ -952,19 +1106,22 @@ mod test {
     #[rustfmt::skip]
     tester.assert_exports(
       vec![
-        "DefaultHandler", // added support
-        "DomHandler", // added support
-        "EVENTS", // added support
         "Parser",
-        "createDomStream", // add support
-        "parseDOM", // add support
-        "parseFeed", // add support
-        // "Tokenizer", // now classified as reexport, but exports in cjs-module-lexer
+        // added support for below - cjs-module-lexer bails early for object literals, but we can understand this
+        "DefaultHandler",
+        "DomHandler",
+        "EVENTS",
+        "createDomStream",
+        "parseDOM",
+        "parseFeed",
+        // now classified as reexport, but exports in cjs-module-lexer
+        // "Tokenizer",
       ]
     );
     tester.assert_reexports(vec![
-      "./Tokenizer.js", // added support
-      "domelementtype", // added support
+      // added support for below
+      "./Tokenizer.js",
+      "domelementtype",
     ]);
   }
 
@@ -1009,13 +1166,14 @@ mod test {
 
     tester.assert_exports(vec![
       "__esModule",
-      "a",           // added support
-      "b",           // added support
-      "c",           // added support
-      "e",           // added support
-      "namedExport", // added support
       "other",
       "thing",
+      // added support for below
+      "a",
+      "b",
+      "c",
+      "e",
+      "namedExport",
     ]);
   }
 
@@ -1034,92 +1192,6 @@ mod test {
     tester.assert_exports(vec!["asdf"]);
     tester.assert_reexports(vec!["./another"]);
   }
-
-  // #[test]
-  // fn simple_export_with_unicode_conversions() {
-  //   parse_cjs(
-  //     r#"
-  //       export var p𓀀s,q
-  //   "#,
-  //   )
-  //   .unwrap_err();
-  // }
-
-  // #[test]
-  // fn simple_import() {
-  //   parse_cjs(
-  //     r#"
-  //     import test from "test";
-  //     console.log(test);
-  //   "#,
-  //   )
-  //   .unwrap_err();
-  // }
-
-  // #[test]
-  // fn exported_function() {
-  //   parse_cjs(
-  //     r#"
-  //   export function a𓀀 () {
-  //   }
-  //   export class Q{
-  //   }
-  //   "#,
-  //   )
-  //   .unwrap_err();
-  // }
-
-  // #[test]
-  // fn import_dot_meta() {
-  //   parse_cjs(
-  //     r#"
-  //     export var hello = 'world';
-  //     console.log(import.meta.url);
-  //   "#,
-  //   )
-  //   .unwrap_err();
-  // }
-
-  // #[test]
-  // fn import_meta_edge_cases() {
-  //   parse_cjs(
-  //     r#"
-  //   // Import meta
-  //   import.
-  //    meta
-  //   // Not import meta
-  //   a.
-  //   import.
-  //     meta
-  //   "#,
-  //   )
-  //   .unwrap_err();
-  // }
-
-  //   #[test]
-  //   fn comments() {
-  //     parse_cjs(
-  //       r#"
-  //     /*
-  //     VERSION
-  //   */import util from 'util';
-  // //
-  // function x() {
-  // }
-  //       /**/
-  //       // '
-  //       /* / */
-  //       /*
-  //          * export { b }
-  //       \\*/export { a }
-  //       function () {
-  //         /***/
-  //       }
-
-  //     "#,
-  //     )
-  //     .unwrap_err();
-  //   }
 
   #[test]
   fn template_string_expression_ambiguity() {

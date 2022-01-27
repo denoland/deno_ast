@@ -18,6 +18,8 @@ mod types;
 #[cfg(feature = "view")]
 pub use dprint_swc_ecma_ast_view as view;
 
+#[cfg(feature = "cjs")]
+pub use cjs_parse::*;
 pub use comments::*;
 pub use lexing::*;
 pub use media_type::*;
