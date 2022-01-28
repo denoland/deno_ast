@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::swc::ast::*;
+use crate::swc::atoms::JsWord;
+use crate::swc::visit::noop_visit_type;
 use crate::swc::visit::Visit;
+use crate::swc::visit::VisitWith;
 use crate::ParsedSource;
-use swc_atoms::JsWord;
-use swc_ecmascript::visit::noop_visit_type;
-use swc_ecmascript::visit::VisitWith;
 
 #[derive(Debug, Clone)]
 pub struct CjsAnalysis {
