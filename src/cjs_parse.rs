@@ -23,7 +23,7 @@ impl ParsedSource {
   /// Note: This will panic if called on a non-script.
   pub fn analyze_cjs(&self) -> CjsAnalysis {
     if !self.is_script() {
-      panic!("Cannot cjs analyze non-script: {}", self.specifier())
+      panic!("Cannot analyze non-script: {}", self.specifier())
     }
 
     let mut visitor = CjsVisitor::default();
@@ -48,13 +48,13 @@ impl CjsVisitor {
       .into_iter()
       .filter(|n| !unsafe_getters.contains(n))
       .collect::<Vec<_>>();
-    exports.sort();
+    exports.sort_unstable();
     let mut reexports = self
       .reexports
       .into_iter()
       .filter(|n| !unsafe_getters.contains(n))
       .collect::<Vec<_>>();
-    reexports.sort();
+    reexports.sort_unstable();
     CjsAnalysis { exports, reexports }
   }
 
@@ -580,6 +580,7 @@ mod test {
 
   impl Drop for CjsAnalysisTester {
     fn drop(&mut self) {
+      // ensures that all values have been asserted for
       if !std::thread::panicking() {
         self.assert_empty();
       }
