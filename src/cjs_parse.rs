@@ -554,14 +554,14 @@ mod test {
 
   impl CjsAnalysisTester {
     pub fn assert_exports(&self, mut values: Vec<&str>) {
-      values.sort();
+      values.sort_unstable();
       let mut analysis = self.analysis.borrow_mut();
       assert_eq!(analysis.exports, values);
       analysis.exports.clear();
     }
 
     pub fn assert_reexports(&self, mut values: Vec<&str>) {
-      values.sort();
+      values.sort_unstable();
       let mut analysis = self.analysis.borrow_mut();
       assert_eq!(analysis.reexports, values);
       analysis.reexports.clear();
