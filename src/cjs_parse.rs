@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -6,9 +6,8 @@ use std::collections::HashSet;
 use crate::swc::ast::*;
 use crate::swc::visit::Visit;
 use crate::ParsedSource;
-use anyhow::bail;
-use anyhow::Result;
 use swc_atoms::JsWord;
+use swc_ecmascript::visit::noop_visit_type;
 use swc_ecmascript::visit::VisitWith;
 
 #[derive(Debug, Clone)]
@@ -17,14 +16,20 @@ pub struct CjsAnalysis {
   pub reexports: Vec<String>,
 }
 
-pub fn analyze_cjs(script: &ParsedSource) -> Result<CjsAnalysis> {
-  if !matches!(script.program_ref(), Program::Script(_)) {
-    bail!("Cannot cjs analyze non-script: {}", script.specifier())
-  }
-  let mut visitor = CjsVisitor::default();
-  visitor.visit_script(&script.script());
+impl ParsedSource {
+  /// Analyzes the script for CommonJS exports and re-exports based on similar
+  /// functionality to cjs-module-lexer (https://github.com/nodejs/cjs-module-lexer).
+  ///
+  /// Note: This will panic if called on a non-script.
+  pub fn analyze_cjs(&self) -> CjsAnalysis {
+    if !self.is_script() {
+      panic!("Cannot cjs analyze non-script: {}", self.specifier())
+    }
 
-  Ok(visitor.take_result())
+    let mut visitor = CjsVisitor::default();
+    visitor.visit_script(self.script());
+    visitor.take_result()
+  }
 }
 
 #[derive(Default)]
@@ -94,6 +99,8 @@ impl CjsVisitor {
 }
 
 impl Visit for CjsVisitor {
+  noop_visit_type!();
+
   fn visit_var_decl(&mut self, stmt: &VarDecl) {
     for decl in &stmt.decls {
       if let Some(id) = decl.name.as_ident() {
@@ -106,6 +113,7 @@ impl Visit for CjsVisitor {
         }
       }
     }
+    stmt.visit_children_with(self);
   }
 
   fn visit_call_expr(&mut self, call_expr: &CallExpr) {
@@ -134,8 +142,7 @@ impl Visit for CjsVisitor {
               // get: function () {
               //   return _external002[key];
               // }
-              if let Some(Expr::Member(member)) =
-                get_prop_return_expr(&get_prop)
+              if let Some(Expr::Member(member)) = get_prop_return_expr(get_prop)
               {
                 if let Some(require_value) = self.get_member_require_value(
                   member,
@@ -152,11 +159,8 @@ impl Visit for CjsVisitor {
     }
 
     // __export, __exportStar, tslib.__export, etc...
-    if call_expr.args.len() == 1
-      && call_expr.args[0].spread.is_none()
-      && is_export_callee(&call_expr.callee)
-    {
-      if let Some(name) = get_expr_require_value(&call_expr.args[0].expr) {
+    if is_export_callee(&call_expr.callee) {
+      if let Some(name) = get_export_require_arg(call_expr) {
         self.add_reexport(name);
       }
     }
@@ -185,6 +189,22 @@ impl Visit for CjsVisitor {
       }
       false
     }
+
+    fn get_export_require_arg(call_expr: &CallExpr) -> Option<&str> {
+      if call_expr.args.iter().any(|a| a.spread.is_some()) {
+        return None;
+      }
+
+      // tslib.__exportStar(require("./file"))
+      if call_expr.args.len() == 1
+        // (0, tslib_1.__exportStar)(require("./file"), exports);
+        || call_expr.args.len() == 2 && is_exports_expr(&call_expr.args[1].expr)
+      {
+        get_expr_require_value(&call_expr.args[0].expr)
+      } else {
+        None
+      }
+    }
   }
 
   fn visit_assign_expr(&mut self, assign_expr: &AssignExpr) {
@@ -208,12 +228,10 @@ impl Visit for CjsVisitor {
                 if let Some(prop_name) = get_prop_name(prop) {
                   if let Some(require_value) = get_prop_require_value(prop) {
                     self.add_reexport(require_value);
+                  } else if is_supported_object_prop(prop) {
+                    self.add_export(prop_name);
                   } else {
-                    if is_supported_object_prop(prop) {
-                      self.add_export(prop_name);
-                    } else {
-                      self.add_unsafe_getter(prop_name);
-                    }
+                    self.add_unsafe_getter(prop_name);
                   }
                 }
               }
@@ -325,12 +343,28 @@ fn get_call_expr_require_value(call_expr: &CallExpr) -> Option<&str> {
 }
 
 fn get_callee_member_expr(callee: &Callee) -> Option<&MemberExpr> {
-  if let Callee::Expr(expr) = callee {
-    if let Expr::Member(member) = &**expr {
-      return Some(member);
+  let expr = callee.as_expr()?;
+  match &**expr {
+    // Object.define(...)
+    // tslib.__exportStar(require("./file"))
+    Expr::Member(member) => Some(member),
+    // (0, tslib_1.__exportStar)(require("./file"), exports);
+    Expr::Paren(paren) => {
+      let seq = paren.expr.as_seq()?;
+      if seq.exprs.len() != 2 {
+        return None;
+      }
+      let first_expr = seq.exprs.get(0)?.as_lit()?;
+      let is_first_expr_zero =
+        matches!(first_expr, Lit::Num(num) if num.value == 0f64);
+      if !is_first_expr_zero {
+        return None;
+      }
+      let second_expr = seq.exprs.get(1)?.as_member()?;
+      Some(second_expr)
     }
+    _ => None,
   }
-  None
 }
 
 fn get_callee_ident(callee: &Callee) -> Option<&Ident> {
@@ -366,7 +400,7 @@ fn get_object_define_get_prop(obj: &ObjectLit) -> Option<&Prop> {
     .iter()
     .filter_map(|p| {
       if let PropOrSpread::Prop(prop) = p {
-        if get_prop_name(&prop) == Some("get") {
+        if get_prop_name(prop) == Some("get") {
           return Some(prop);
         }
       }
@@ -418,7 +452,7 @@ fn is_non_side_effect_function(function: &Function) -> bool {
   function
     .body
     .as_ref()
-    .map(|b| is_non_side_effect_block_stmt(b))
+    .map(is_non_side_effect_block_stmt)
     .unwrap_or(false)
 }
 
@@ -440,7 +474,7 @@ fn get_function_return_expr(function: &Function) -> Option<&Expr> {
   function
     .body
     .as_ref()
-    .map(|b| get_block_stmt_return_expr(b))
+    .map(get_block_stmt_return_expr)
     .flatten()
 }
 
@@ -450,7 +484,7 @@ fn get_block_stmt_return_expr(stmt: &BlockStmt) -> Option<&Expr> {
   }
   match stmt.stmts.get(0)? {
     Stmt::Return(stmt) => match &stmt.arg {
-      Some(expr) => Some(&expr),
+      Some(expr) => Some(expr),
       _ => None,
     },
     _ => None,
@@ -475,7 +509,7 @@ fn is_non_side_effect_member_prop(member_prop: &MemberProp) -> bool {
   }
 }
 
-fn get_expr_ident_text<'a>(expr: &'a Expr) -> Option<&str> {
+fn get_expr_ident_text(expr: &Expr) -> Option<&str> {
   match expr {
     Expr::Ident(ident) => Some(&ident.sym),
     _ => None,
@@ -580,13 +614,14 @@ mod test {
       maybe_syntax: None,
     })
     .unwrap();
-    let analysis = analyze_cjs(&parsed_source).unwrap();
+    let analysis = parsed_source.analyze_cjs();
     CjsAnalysisTester {
       analysis: RefCell::new(analysis),
     }
   }
 
   // Tests ported from https://github.com/nodejs/cjs-module-lexer/blob/main/test/_unit.js
+  // MIT License - Copyright (C) 2018-2020 Guy Bedford
 
   #[test]
   fn esbuild_hint_style() {
@@ -1209,5 +1244,18 @@ mod test {
     );
 
     tester.assert_exports(vec!["a", "b"]);
+  }
+
+  #[test]
+  fn ts_4_4() {
+    // cjs-module-lexer does not support this, but we might as well
+    // This is how TS 4.4 started outputting, but was fixed in TS 4.6.
+    let tester = parse_cjs(
+      r#"
+      (0, tslib_1.__exportStar)(require("./foo"), exports);
+      "#,
+    );
+
+    tester.assert_reexports(vec!["./foo"]);
   }
 }

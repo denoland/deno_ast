@@ -374,7 +374,7 @@ fn format_swc_diagnostic(
     format!(
       "{} at {}:{}:{}",
       diagnostic.message(),
-      file_name.to_string(),
+      file_name,
       loc.line,
       loc.col_display + 1,
     )

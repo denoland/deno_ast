@@ -143,6 +143,16 @@ impl ParsedSource {
   pub fn diagnostics(&self) -> &Vec<Diagnostic> {
     &self.inner.diagnostics
   }
+
+  /// Gets if this source is a module.
+  pub fn is_module(&self) -> bool {
+    matches!(self.program_ref(), Program::Module(_))
+  }
+
+  /// Gets if this source is a script.
+  pub fn is_script(&self) -> bool {
+    matches!(self.program_ref(), Program::Script(_))
+  }
 }
 
 impl fmt::Debug for ParsedSource {
