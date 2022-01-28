@@ -96,6 +96,38 @@ impl CjsVisitor {
       None
     }
   }
+
+  fn visit_object_define(&mut self, call_expr: &CallExpr) {
+    match &*call_expr.args[1].expr {
+      // Object.defineProperty(exports, "someExport", { ... });
+      Expr::Lit(Lit::Str(str)) => {
+        let lit_value = &*str.value;
+        if is_valid_object_define_obj_lit(&call_expr.args[2].expr) {
+          self.add_export(lit_value);
+        } else {
+          self.add_unsafe_getter(lit_value);
+        }
+      }
+      // Object.defineProperty(exports, key, { ... });
+      Expr::Ident(object_define_prop_ident) => {
+        if let Some(obj_lit) = call_expr.args[2].expr.as_object() {
+          if let Some(get_prop) = get_object_define_get_prop(obj_lit) {
+            // get: function () {
+            //   return _external002[key];
+            // }
+            if let Some(Expr::Member(member)) = get_prop_return_expr(get_prop) {
+              if let Some(require_value) = self
+                .get_member_require_value(member, &object_define_prop_ident.sym)
+              {
+                self.add_reexport(&require_value);
+              }
+            }
+          }
+        }
+      }
+      _ => {}
+    }
+  }
 }
 
 impl Visit for CjsVisitor {
@@ -118,54 +150,25 @@ impl Visit for CjsVisitor {
 
   fn visit_call_expr(&mut self, call_expr: &CallExpr) {
     // Object.defineProperty(exports, ..., { ... });
-    if is_object_define_callee(&call_expr.callee)
-      && call_expr.args.len() >= 3
-      && is_module_exports_or_exports(&call_expr.args[0].expr)
-      && call_expr.args[0].spread.is_none()
-      && call_expr.args[1].spread.is_none()
-      && call_expr.args[2].spread.is_none()
-    {
-      match &*call_expr.args[1].expr {
-        // Object.defineProperty(exports, "someExport", { ... });
-        Expr::Lit(Lit::Str(str)) => {
-          let lit_value = &*str.value;
-          if is_valid_object_define_obj_lit(&call_expr.args[2].expr) {
-            self.add_export(lit_value);
-          } else {
-            self.add_unsafe_getter(lit_value);
-          }
-        }
-        // Object.defineProperty(exports, key, { ... });
-        Expr::Ident(object_define_prop_ident) => {
-          if let Some(obj_lit) = call_expr.args[2].expr.as_object() {
-            if let Some(get_prop) = get_object_define_get_prop(obj_lit) {
-              // get: function () {
-              //   return _external002[key];
-              // }
-              if let Some(Expr::Member(member)) = get_prop_return_expr(get_prop)
-              {
-                if let Some(require_value) = self.get_member_require_value(
-                  member,
-                  &object_define_prop_ident.sym,
-                ) {
-                  self.add_reexport(&require_value);
-                }
-              }
-            }
-          }
-        }
-        _ => {}
-      }
-    }
-
-    // __export, __exportStar, tslib.__export, etc...
-    if is_export_callee(&call_expr.callee) {
+    if is_object_define(call_expr) {
+      self.visit_object_define(call_expr)
+    } else if is_export_callee(&call_expr.callee) {
+      // __export, __exportStar, tslib.__export, etc...
       if let Some(name) = get_export_require_arg(call_expr) {
         self.add_reexport(name);
       }
     }
 
     call_expr.visit_children_with(self);
+
+    fn is_object_define(call_expr: &CallExpr) -> bool {
+      is_object_define_callee(&call_expr.callee)
+        && call_expr.args.len() >= 3
+        && is_module_exports_or_exports(&call_expr.args[0].expr)
+        && call_expr.args[0].spread.is_none()
+        && call_expr.args[1].spread.is_none()
+        && call_expr.args[2].spread.is_none()
+    }
 
     fn is_object_define_callee(callee: &Callee) -> bool {
       let member = match get_callee_member_expr(callee) {
@@ -179,7 +182,7 @@ impl Visit for CjsVisitor {
     fn is_export_callee(callee: &Callee) -> bool {
       if let Some(member) = get_callee_member_expr(callee) {
         // ex. tslib.__exportStar
-        if matches!(&*member.obj, Expr::Ident(_)) {
+        if member.obj.as_ident().is_some() {
           if let Some(right_side) = get_member_prop_ident_text(&member.prop) {
             return matches!(right_side, "__exportStar" | "__export");
           }
@@ -261,13 +264,13 @@ impl Visit for CjsVisitor {
         } else if let Some(right_member) = assign_expr.right.as_member() {
           // check for:
           // * `exports[key] = _something[key];
-          if let MemberProp::Computed(computed) = &left_member.prop {
-            if let Some(computed_ident) = computed.expr.as_ident() {
-              if let Some(require_value) =
-                self.get_member_require_value(right_member, &computed_ident.sym)
-              {
-                self.add_reexport(&require_value);
-              }
+          let computed = left_member.prop.as_computed();
+          let computed_ident = computed.map(|c| c.expr.as_ident()).flatten();
+          if let Some(computed_ident) = computed_ident {
+            if let Some(require_value) =
+              self.get_member_require_value(right_member, &computed_ident.sym)
+            {
+              self.add_reexport(&require_value);
             }
           }
         }
@@ -353,12 +356,7 @@ fn get_callee_member_expr(callee: &Callee) -> Option<&MemberExpr> {
 }
 
 fn get_callee_ident(callee: &Callee) -> Option<&Ident> {
-  if let Callee::Expr(expr) = callee {
-    if let Expr::Ident(ident) = &**expr {
-      return Some(ident);
-    }
-  }
-  None
+  callee.as_expr()?.as_ident()
 }
 
 fn is_valid_object_define_obj_lit(expr: &Expr) -> bool {
@@ -370,7 +368,6 @@ fn is_valid_object_define_obj_lit(expr: &Expr) -> bool {
   has_supported_get_prop(obj)
 }
 
-// todo: extract out and unit test
 fn has_supported_get_prop(obj: &ObjectLit) -> bool {
   let get_prop = match get_object_define_get_prop(obj) {
     Some(prop) => prop,
@@ -384,12 +381,12 @@ fn get_object_define_get_prop(obj: &ObjectLit) -> Option<&Prop> {
     .props
     .iter()
     .filter_map(|p| {
-      if let PropOrSpread::Prop(prop) = p {
-        if get_prop_name(prop) == Some("get") {
-          return Some(prop);
-        }
+      let prop = p.as_prop()?;
+      if get_prop_name(prop) == Some("get") {
+        Some(prop)
+      } else {
+        None
       }
-      None
     })
     .next()
     .map(|p| &**p)
