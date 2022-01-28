@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+#[cfg(feature = "cjs")]
+mod cjs_parse;
 mod comments;
 mod lexing;
 mod media_type;
@@ -16,6 +18,8 @@ mod types;
 #[cfg(feature = "view")]
 pub use dprint_swc_ecma_ast_view as view;
 
+#[cfg(feature = "cjs")]
+pub use cjs_parse::*;
 pub use comments::*;
 pub use lexing::*;
 pub use media_type::*;
