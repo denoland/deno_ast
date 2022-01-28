@@ -226,9 +226,7 @@ impl Visit for CjsVisitor {
             match prop {
               PropOrSpread::Prop(prop) => {
                 if let Some(prop_name) = get_prop_name(prop) {
-                  if let Some(require_value) = get_prop_require_value(prop) {
-                    self.add_reexport(require_value);
-                  } else if is_supported_object_prop(prop) {
+                  if is_supported_object_prop(prop) {
                     self.add_export(prop_name);
                   } else {
                     self.add_unsafe_getter(prop_name);
@@ -259,13 +257,7 @@ impl Visit for CjsVisitor {
         // * `exports["something"] = other`
         // * `exports.something = other`
         if let Some(prop_name) = get_member_prop_text(&left_member.prop) {
-          if let Some(require_value) =
-            get_expr_require_value(&*assign_expr.right)
-          {
-            self.add_reexport(require_value);
-          } else {
-            self.add_export(prop_name);
-          }
+          self.add_export(prop_name);
         } else if let Some(right_member) = assign_expr.right.as_member() {
           // check for:
           // * `exports[key] = _something[key];
@@ -304,13 +296,6 @@ fn is_exports_expr(expr: &Expr) -> bool {
     .as_ident()
     .map(|i| &i.sym == "exports")
     .unwrap_or(false)
-}
-
-fn get_prop_require_value(prop: &Prop) -> Option<&str> {
-  match prop {
-    Prop::KeyValue(prop) => get_expr_require_value(&*prop.value),
-    _ => None,
-  }
 }
 
 fn get_expr_require_value(expr: &Expr) -> Option<&str> {
@@ -1050,16 +1035,15 @@ mod test {
       module.exports = {
         a: a,
         b: b,
-        // cjs-module-lexer has "e" as an export and then bails
-        // on the object literal because it encounters require
+        // cjs-module-lexer bails on the object literal
+        // after this property because it encounters require
         e: require('d'),
         f: 'f'
       }
     "#,
     );
 
-    tester.assert_exports(vec!["a", "b", "f"]);
-    tester.assert_reexports(vec!["d"]);
+    tester.assert_exports(vec!["a", "b", "e", "f"]);
   }
 
   #[test]
@@ -1142,22 +1126,18 @@ mod test {
     tester.assert_exports(
       vec![
         "Parser",
-        // added support for below - cjs-module-lexer bails early for object literals, but we can understand this
+        "Tokenizer",
+        // added support for below - cjs-module-lexer bails early because it encountered,
+        // a require expression, but we can understand this
+        "ElementType",
         "DefaultHandler",
         "DomHandler",
         "EVENTS",
         "createDomStream",
         "parseDOM",
         "parseFeed",
-        // now classified as reexport, but exports in cjs-module-lexer
-        // "Tokenizer",
       ]
     );
-    tester.assert_reexports(vec![
-      // added support for below
-      "./Tokenizer.js",
-      "domelementtype",
-    ]);
   }
 
   #[test]
