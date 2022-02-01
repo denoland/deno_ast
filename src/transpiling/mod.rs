@@ -4,7 +4,6 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use swc_ecmascript::transforms::resolver::ts_resolver;
 
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
@@ -23,6 +22,7 @@ use crate::swc::transforms::hygiene;
 use crate::swc::transforms::pass::Optional;
 use crate::swc::transforms::proposals;
 use crate::swc::transforms::react;
+use crate::swc::transforms::resolver::ts_resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
 use crate::Diagnostic;
