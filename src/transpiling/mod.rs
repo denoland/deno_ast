@@ -22,7 +22,7 @@ use crate::swc::transforms::hygiene;
 use crate::swc::transforms::pass::Optional;
 use crate::swc::transforms::proposals;
 use crate::swc::transforms::react;
-use crate::swc::transforms::resolver_with_mark;
+use crate::swc::transforms::resolver::ts_resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
 use crate::Diagnostic;
@@ -289,12 +289,12 @@ pub fn fold_program(
       options.var_decl_imports
     ),
     Optional::new(transforms::StripExportsFolder, options.var_decl_imports),
+    ts_resolver(top_level_mark),
     proposals::decorators::decorators(proposals::decorators::Config {
       legacy: true,
       emit_metadata: options.emit_metadata
     }),
     helpers::inject_helpers(),
-    resolver_with_mark(top_level_mark),
     Optional::new(
       typescript::strip::strip_with_config(
         options.as_typescript_strip_config(),
