@@ -9,6 +9,7 @@ mod parsed_source;
 mod parsing;
 #[cfg(feature = "scopes")]
 mod scopes;
+mod text_changes;
 mod text_encoding;
 mod text_info;
 #[cfg(feature = "transpiling")]
@@ -27,6 +28,7 @@ pub use parsed_source::*;
 pub use parsing::*;
 #[cfg(feature = "scopes")]
 pub use scopes::*;
+pub use text_changes::*;
 pub use text_info::*;
 #[cfg(feature = "transpiling")]
 pub use transpiling::*;
