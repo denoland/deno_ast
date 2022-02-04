@@ -28,7 +28,11 @@ impl TextChange {
 
   /// Gets an swc span for the provided text change.
   pub fn as_span(&self) -> Span {
-    Span::new(BytePos(self.start as u32), BytePos(self.end as u32), Default::default())
+    Span::new(
+      BytePos(self.start as u32),
+      BytePos(self.end as u32),
+      Default::default(),
+    )
   }
 }
 
@@ -44,12 +48,17 @@ pub fn apply_text_changes(
 
   for change in changes {
     if change.start > change.end {
-      panic!("Text change had start index {} greater than end index {}.", change.start, change.end)
+      panic!(
+        "Text change had start index {} greater than end index {}.",
+        change.start, change.end
+      )
     }
     if change.start < last_index {
       panic!("Text changes were overlapping. Past index was {}, but new change had index {}.", last_index, change.start);
     } else if change.start > last_index && last_index < source.len() {
-      final_text.push_str(&source[last_index..std::cmp::min(source.len(), change.start)]);
+      final_text.push_str(
+        &source[last_index..std::cmp::min(source.len(), change.start)],
+      );
     }
     final_text.push_str(&change.new_text);
     last_index = change.end;
@@ -70,88 +79,112 @@ mod test {
   fn applies_text_changes() {
     // replacing text
     assert_eq!(
-      apply_text_changes("0123456789", vec![
-        TextChange::new(9, 10, "z".to_string()),
-        TextChange::new(4, 6, "y".to_string()),
-        TextChange::new(1, 2, "x".to_string()),
-      ]),
+      apply_text_changes(
+        "0123456789",
+        vec![
+          TextChange::new(9, 10, "z".to_string()),
+          TextChange::new(4, 6, "y".to_string()),
+          TextChange::new(1, 2, "x".to_string()),
+        ]
+      ),
       "0x23y678z".to_string(),
     );
 
     // replacing beside
     assert_eq!(
-      apply_text_changes("0123456789", vec![
-        TextChange::new(0, 5, "a".to_string()),
-        TextChange::new(5, 7, "b".to_string()),
-        TextChange::new(7, 10, "c".to_string()),
-      ]),
+      apply_text_changes(
+        "0123456789",
+        vec![
+          TextChange::new(0, 5, "a".to_string()),
+          TextChange::new(5, 7, "b".to_string()),
+          TextChange::new(7, 10, "c".to_string()),
+        ]
+      ),
       "abc".to_string(),
     );
 
     // full replace
     assert_eq!(
-      apply_text_changes("0123456789", vec![
-        TextChange::new(0, 10, "x".to_string()),
-      ]),
+      apply_text_changes(
+        "0123456789",
+        vec![TextChange::new(0, 10, "x".to_string()),]
+      ),
       "x".to_string(),
     );
 
     // 1 over
     assert_eq!(
-      apply_text_changes("0123456789", vec![
-        TextChange::new(0, 11, "x".to_string()),
-      ]),
+      apply_text_changes(
+        "0123456789",
+        vec![TextChange::new(0, 11, "x".to_string()),]
+      ),
       "x".to_string(),
     );
 
     // prepend
     assert_eq!(
-      apply_text_changes("0123456789", vec![
-        TextChange::new(0, 0, "x".to_string()),
-      ]),
+      apply_text_changes(
+        "0123456789",
+        vec![TextChange::new(0, 0, "x".to_string()),]
+      ),
       "x0123456789".to_string(),
     );
 
     // append
     assert_eq!(
-      apply_text_changes("0123456789", vec![
-        TextChange::new(10, 10, "x".to_string()),
-      ]),
+      apply_text_changes(
+        "0123456789",
+        vec![TextChange::new(10, 10, "x".to_string()),]
+      ),
       "0123456789x".to_string(),
     );
 
     // append over
     assert_eq!(
-      apply_text_changes("0123456789", vec![
-        TextChange::new(11, 11, "x".to_string()),
-      ]),
+      apply_text_changes(
+        "0123456789",
+        vec![TextChange::new(11, 11, "x".to_string()),]
+      ),
       "0123456789x".to_string(),
     );
   }
 
   #[test]
-  #[should_panic(expected = "Text changes were overlapping. Past index was 10, but new change had index 5.")]
+  #[should_panic(
+    expected = "Text changes were overlapping. Past index was 10, but new change had index 5."
+  )]
   fn panics_text_change_within() {
-    apply_text_changes("0123456789", vec![
-      TextChange::new(3, 10, "x".to_string()),
-      TextChange::new(5, 7, "x".to_string()),
-    ]);
+    apply_text_changes(
+      "0123456789",
+      vec![
+        TextChange::new(3, 10, "x".to_string()),
+        TextChange::new(5, 7, "x".to_string()),
+      ],
+    );
   }
 
   #[test]
-  #[should_panic(expected = "Text changes were overlapping. Past index was 4, but new change had index 3.")]
+  #[should_panic(
+    expected = "Text changes were overlapping. Past index was 4, but new change had index 3."
+  )]
   fn panics_text_change_overlap() {
-    apply_text_changes("0123456789", vec![
-      TextChange::new(2, 4, "x".to_string()),
-      TextChange::new(3, 5, "x".to_string()),
-    ]);
+    apply_text_changes(
+      "0123456789",
+      vec![
+        TextChange::new(2, 4, "x".to_string()),
+        TextChange::new(3, 5, "x".to_string()),
+      ],
+    );
   }
 
   #[test]
-  #[should_panic(expected = "Text change had start index 2 greater than end index 1.")]
+  #[should_panic(
+    expected = "Text change had start index 2 greater than end index 1."
+  )]
   fn panics_start_greater_end() {
-    apply_text_changes("0123456789", vec![
-      TextChange::new(2, 1, "x".to_string()),
-    ]);
+    apply_text_changes(
+      "0123456789",
+      vec![TextChange::new(2, 1, "x".to_string())],
+    );
   }
 }
