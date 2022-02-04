@@ -9,6 +9,9 @@ license = "MIT"
 repository = "https://github.com/denoland/deno_ast"
 description = "Source text parsing, lexing, and AST related functionality for Deno"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 bundler = ["swc_bundler"]
 cjs = ["utils", "visit"]
