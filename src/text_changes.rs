@@ -1,23 +1,22 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::ops::Range;
+
 use crate::swc::common::BytePos;
 use crate::swc::common::Span;
 
 #[derive(Clone, Debug)]
 pub struct TextChange {
-  /// Start byte index.
-  pub start: usize,
-  /// End byte index.
-  pub end: usize,
-  /// New text.
+  /// Range start to end byte index.
+  pub range: Range<usize>,
+  /// New text to insert or replace at the provided range.
   pub new_text: String,
 }
 
 impl TextChange {
   pub fn new(start: usize, end: usize, new_text: String) -> Self {
     Self {
-      start,
-      end,
+      range: start..end,
       new_text,
     }
   }
@@ -29,8 +28,8 @@ impl TextChange {
   /// Gets an swc span for the provided text change.
   pub fn as_span(&self) -> Span {
     Span::new(
-      BytePos(self.start as u32),
-      BytePos(self.end as u32),
+      BytePos(self.range.start as u32),
+      BytePos(self.range.end as u32),
       Default::default(),
     )
   }
@@ -41,27 +40,27 @@ pub fn apply_text_changes(
   source: &str,
   mut changes: Vec<TextChange>,
 ) -> String {
-  changes.sort_by(|a, b| a.start.cmp(&b.start));
+  changes.sort_by(|a, b| a.range.start.cmp(&b.range.start));
 
   let mut last_index = 0;
   let mut final_text = String::new();
 
   for change in changes {
-    if change.start > change.end {
+    if change.range.start > change.range.end {
       panic!(
         "Text change had start index {} greater than end index {}.",
-        change.start, change.end
+        change.range.start, change.range.end
       )
     }
-    if change.start < last_index {
-      panic!("Text changes were overlapping. Past index was {}, but new change had index {}.", last_index, change.start);
-    } else if change.start > last_index && last_index < source.len() {
+    if change.range.start < last_index {
+      panic!("Text changes were overlapping. Past index was {}, but new change had index {}.", last_index, change.range.start);
+    } else if change.range.start > last_index && last_index < source.len() {
       final_text.push_str(
-        &source[last_index..std::cmp::min(source.len(), change.start)],
+        &source[last_index..std::cmp::min(source.len(), change.range.start)],
       );
     }
     final_text.push_str(&change.new_text);
-    last_index = change.end;
+    last_index = change.range.end;
   }
 
   if last_index < source.len() {
@@ -119,6 +118,15 @@ mod test {
         vec![TextChange::new(0, 11, "x".to_string()),]
       ),
       "x".to_string(),
+    );
+
+    // insert
+    assert_eq!(
+      apply_text_changes(
+        "0123456789",
+        vec![TextChange::new(5, 5, "x".to_string()),]
+      ),
+      "01234x56789".to_string(),
     );
 
     // prepend
