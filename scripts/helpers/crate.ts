@@ -191,6 +191,7 @@ export class Crates {
       createCrate("deno_ast"),
       createCrate("deno_graph"),
       createCrate("deno_doc"),
+      createCrate("eszip"),
       createCrate("deno_lint"),
       createCrate("dprint-plugin-typescript"),
       new Crate("deno", path.join(rootDir, "deno", "cli")),
@@ -199,6 +200,10 @@ export class Crates {
     function createCrate(name: string) {
       return new Crate(name, path.join(rootDir, name));
     }
+  }
+
+  nonDenoAstCrates() {
+    return this.crates.filter((c) => c.name !== "deno_ast");
   }
 
   get(name: string) {
@@ -232,17 +237,21 @@ export class Crates {
     const deno_lint = this.get("deno_lint");
     const dprint_plugin_typescript = this.get("dprint-plugin-typescript");
     const deno = this.get("deno");
+    const eszip = this.get("eszip");
 
     return [
       [deno_graph, deno_ast],
       [deno_doc, deno_ast],
       [deno_doc, deno_graph],
+      [eszip, deno_ast],
+      [eszip, deno_graph],
       [deno_lint, deno_ast],
       [dprint_plugin_typescript, deno_ast],
       [deno, deno_ast],
       [deno, deno_graph],
       [deno, deno_doc],
       [deno, deno_lint],
+      [deno, eszip],
       [deno, dprint_plugin_typescript],
     ] as [Crate, Crate][];
   }
