@@ -191,6 +191,7 @@ export class Crates {
       createCrate("deno_ast"),
       createCrate("deno_graph"),
       createCrate("deno_doc"),
+      createCrate("eszip"),
       createCrate("deno_lint"),
       createCrate("dprint-plugin-typescript"),
       new Crate("deno", path.join(rootDir, "deno", "cli")),

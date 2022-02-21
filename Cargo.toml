@@ -1,6 +1,6 @@
 [package]
 name = "deno_ast"
-version = "0.11.0"
+version = "0.12.0"
 authors = ["the Deno authors"]
 documentation = "https://docs.rs/deno_ast"
 edition = "2018"

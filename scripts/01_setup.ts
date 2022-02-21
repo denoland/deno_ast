@@ -7,6 +7,7 @@ const deno_graph = crates.get("deno_graph");
 const deno_doc = crates.get("deno_doc");
 const deno_lint = crates.get("deno_lint");
 const dprint_plugin_typescript = crates.get("dprint-plugin-typescript");
+const eszip = crates.get("eszip");
 const deno = crates.get("deno");
 
 // Ensure repos are latest main
@@ -15,6 +16,7 @@ for (
     deno_graph,
     deno_doc,
     deno_lint,
+    eszip,
     dprint_plugin_typescript,
     deno,
   ]
