@@ -14,6 +14,7 @@ export class Crate {
   constructor(
     public readonly name: string,
     public readonly folderPath: string,
+    public readonly repo: Repo,
   ) {
     if (!existsSync(folderPath)) {
       throw new Error(`Could not find crate ${name} at ${folderPath}`);
@@ -41,24 +42,6 @@ export class Crate {
         `version = "${version.toString()}"`,
       );
     });
-  }
-
-  async hasLocalChanges() {
-    const output = await this.#runCommand([
-      "git",
-      "status",
-      "--porcelain",
-      "--untracked-files=no",
-    ]);
-    return output.trim().length > 0;
-  }
-
-  switchMain() {
-    return this.#runCommand(["git", "switch", "main"]);
-  }
-
-  pullUpstreamMain() {
-    return this.#runCommand(["git", "pull", "upstream", "main"]);
   }
 
   toLocalSource(crate: Crate) {
@@ -118,36 +101,30 @@ export class Crate {
     });
   }
 
-  resetHard() {
-    return this.#runCommand(["git", "reset", "--hard"]);
-  }
-
-  branch(name: string) {
-    return this.#runCommandWithOutput(["git", "checkout", "-b", name]);
-  }
-
-  gitAdd() {
-    return this.#runCommandWithOutput(["git", "add", "."]);
-  }
-
-  commit(message: string) {
-    return this.#runCommandWithOutput(["git", "commit", "-m", message]);
-  }
-
-  push() {
-    return this.#runCommandWithOutput(["git", "push"]);
-  }
-
   build() {
-    return this.#runCommandWithOutput(["cargo", "build", "--all-features"]);
+    return this.runCommandWithOutput(["cargo", "build", "--all-features"]);
   }
 
   cargoCheck() {
-    return this.#runCommandWithOutput(["cargo", "check"]);
+    return this.runCommandWithOutput(["cargo", "check"]);
   }
 
   test() {
-    return this.#runCommandWithOutput(["cargo", "test", "--all-features"]);
+    return this.runCommandWithOutput(["cargo", "test", "--all-features"]);
+  }
+
+  runCommand(cmd: string[]) {
+    return runCommand({
+      cwd: this.folderPath,
+      cmd,
+    });
+  }
+
+  runCommandWithOutput(cmd: string[]) {
+    return runCommandWithOutput({
+      cwd: this.folderPath,
+      cmd,
+    });
   }
 
   async #updateManifestFile(action: (fileText: string) => string) {
@@ -166,15 +143,85 @@ export class Crate {
       this.#isUpdatingManifest = false;
     }
   }
+}
 
-  #runCommand(cmd: string[]) {
+export class Repo {
+  #crates: Crate[] = [];
+
+  constructor(
+    public readonly name: string,
+    public readonly folderPath: string,
+  ) {
+  }
+
+  async hasLocalChanges() {
+    const output = await this.runCommand([
+      "git",
+      "status",
+      "--porcelain",
+      "--untracked-files=no",
+    ]);
+    return output.trim().length > 0;
+  }
+
+  switchMain() {
+    return this.runCommand(["git", "switch", "main"]);
+  }
+
+  pullUpstreamMain() {
+    return this.runCommand(["git", "pull", "upstream", "main"]);
+  }
+
+  addSelfCrate() {
+    this.#crates.push(new Crate(this.name, this.folderPath, this));
+  }
+
+  addCrate(name: string, subDirPath: string) {
+    this.#crates.push(
+      new Crate(name, path.join(this.folderPath, subDirPath), this),
+    );
+  }
+
+  getCrate(name: string) {
+    const crate = this.#crates.find((c) => c.name === name);
+    if (crate == null) {
+      throw new Error(`Could not find crate with name: ${crate}`);
+    }
+    return crate;
+  }
+
+  getCrates() {
+    return [...this.#crates];
+  }
+
+  resetHard() {
+    return this.runCommand(["git", "reset", "--hard"]);
+  }
+
+  branch(name: string) {
+    return this.runCommandWithOutput(["git", "checkout", "-b", name]);
+  }
+
+  gitAdd() {
+    return this.runCommandWithOutput(["git", "add", "."]);
+  }
+
+  commit(message: string) {
+    return this.runCommandWithOutput(["git", "commit", "-m", message]);
+  }
+
+  push() {
+    return this.runCommandWithOutput(["git", "push"]);
+  }
+
+  runCommand(cmd: string[]) {
     return runCommand({
       cwd: this.folderPath,
       cmd,
     });
   }
 
-  #runCommandWithOutput(cmd: string[]) {
+  runCommandWithOutput(cmd: string[]) {
     return runCommandWithOutput({
       cwd: this.folderPath,
       cmd,
@@ -182,36 +229,72 @@ export class Crate {
   }
 }
 
-export class Crates {
-  crates: readonly Crate[];
+export class Repos {
+  #repos: readonly Repo[];
 
   constructor() {
-    this.crates = [
-      // list in build order
-      createCrate("deno_ast"),
-      createCrate("deno_graph"),
-      createCrate("deno_doc"),
-      createCrate("eszip"),
-      createCrate("deno_lint"),
-      createCrate("dprint-plugin-typescript"),
-      new Crate("deno", path.join(rootDir, "deno", "cli")),
+    const esZip = createRepo("eszip");
+    esZip.addCrate("eszip", ".");
+    esZip.addCrate("eszip_wasm", "lib");
+    const deno = createRepo("deno");
+    deno.addCrate("deno_core", "core");
+    deno.addCrate("deno", "cli");
+
+    this.#repos = [
+      createRepoWithSelfCrate("deno_ast"),
+      createRepoWithSelfCrate("deno_graph"),
+      createRepoWithSelfCrate("deno_doc"),
+      esZip,
+      createRepoWithSelfCrate("deno_lint"),
+      createRepoWithSelfCrate("dprint-plugin-typescript"),
+      deno,
     ];
 
-    function createCrate(name: string) {
-      return new Crate(name, path.join(rootDir, name));
+    function createRepo(name: string) {
+      return new Repo(name, path.join(rootDir, name));
+    }
+
+    function createRepoWithSelfCrate(name: string) {
+      const repo = createRepo(name);
+      repo.addSelfCrate(); // this repo has the crate as the root
+      return repo;
     }
   }
 
-  nonDenoAstCrates() {
-    return this.crates.filter((c) => c.name !== "deno_ast");
+  getRepos() {
+    return [...this.#repos];
+  }
+
+  getCrates() {
+    const crates = [];
+    for (const repo of this.#repos) {
+      crates.push(...repo.getCrates());
+    }
+    return crates;
+  }
+
+  nonDenoAstRepos() {
+    return this.#repos.filter((c) => c.name !== "deno_ast");
   }
 
   get(name: string) {
-    const crate = this.crates.find((c) => c.name === name);
-    if (crate == null) {
-      throw new Error(`Could not find crate with name ${name}.`);
+    const repo = this.#repos.find((c) => c.name === name);
+    if (repo == null) {
+      throw new Error(`Could not find repo with name ${name}.`);
     }
-    return crate;
+    return repo;
+  }
+
+  getCrate(name: string) {
+    for (const repo of this.#repos) {
+      for (const crate of repo.getCrates()) {
+        if (crate.name === name) {
+          return crate;
+        }
+      }
+    }
+
+    throw new Error(`Could not find crate: ${name}`);
   }
 
   async toLocalSource() {
@@ -231,13 +314,15 @@ export class Crates {
   }
 
   #getLocalSourceRelationships() {
-    const deno_ast = this.get("deno_ast");
-    const deno_graph = this.get("deno_graph");
-    const deno_doc = this.get("deno_doc");
-    const deno_lint = this.get("deno_lint");
-    const dprint_plugin_typescript = this.get("dprint-plugin-typescript");
-    const deno = this.get("deno");
-    const eszip = this.get("eszip");
+    const deno_ast = this.getCrate("deno_ast");
+    const deno_graph = this.getCrate("deno_graph");
+    const deno_doc = this.getCrate("deno_doc");
+    const deno_lint = this.getCrate("deno_lint");
+    const dprint_plugin_typescript = this.getCrate("dprint-plugin-typescript");
+    const deno_cli = this.getCrate("deno");
+    const deno_core = this.getCrate("deno_core");
+    const eszip = this.getCrate("eszip");
+    const eszipWasm = this.getCrate("eszip_wasm");
 
     return [
       [deno_graph, deno_ast],
@@ -245,14 +330,16 @@ export class Crates {
       [deno_doc, deno_graph],
       [eszip, deno_ast],
       [eszip, deno_graph],
+      [eszipWasm, deno_graph],
       [deno_lint, deno_ast],
       [dprint_plugin_typescript, deno_ast],
-      [deno, deno_ast],
-      [deno, deno_graph],
-      [deno, deno_doc],
-      [deno, deno_lint],
-      [deno, eszip],
-      [deno, dprint_plugin_typescript],
+      [deno_core, deno_ast],
+      [deno_cli, deno_ast],
+      [deno_cli, deno_graph],
+      [deno_cli, deno_doc],
+      [deno_cli, deno_lint],
+      [deno_cli, eszip],
+      [deno_cli, dprint_plugin_typescript],
     ] as [Crate, Crate][];
   }
 }

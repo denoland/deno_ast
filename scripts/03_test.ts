@@ -1,11 +1,15 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Crates } from "./helpers/mod.ts";
+import { Repos } from "./helpers/mod.ts";
 
-const crates = new Crates();
+const repos = new Repos();
 let hadConfirmed = false;
 
-for (const crate of crates.crates) {
+for (const crate of repos.getCrates()) {
+  if (crate.name === "eszip_wasm") {
+    continue;
+  }
+
   if (hadConfirmed || confirm(`Do you want to run tests for ${crate.name}?`)) {
     hadConfirmed = true;
     console.log(`Running tests for ${crate.name}...`);

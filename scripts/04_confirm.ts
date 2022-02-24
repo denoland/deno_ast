@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Crate, Crates } from "./helpers/mod.ts";
+import { Crate, Repos } from "./helpers/mod.ts";
 
-const crates = new Crates();
-const nonDenoCrates = crates.crates.filter((c) => c.name !== "deno");
+const repos = new Repos();
+const nonDenoCrates = repos.getCrates().filter((c) => c.name !== "deno");
 
 // bump the version numbers
 for (const crate of nonDenoCrates) {
@@ -11,7 +11,7 @@ for (const crate of nonDenoCrates) {
 }
 
 // set the dependencies back to not being pointed at local copies
-await crates.revertLocalSource();
+await repos.revertLocalSource();
 
 async function incrementVersion(crate: Crate) {
   console.log(`${crate.name} is on ${crate.version}`);

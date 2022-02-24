@@ -1,24 +1,22 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Crates } from "./helpers/mod.ts";
+import { Repos } from "./helpers/mod.ts";
 
-const crates = new Crates();
+const repos = new Repos();
 
 // Ensure repos are latest main
-for (
-  const crate of crates.nonDenoAstCrates()
-) {
-  console.log(`Setting up ${crate.name}...`);
-  if (await crate.hasLocalChanges()) {
+for (const repo of repos.nonDenoAstRepos()) {
+  console.log(`Setting up ${repo.name}...`);
+  if (await repo.hasLocalChanges()) {
     throw new Error(
-      `Repo ${crate.name} had local changes. Please resolve this.`,
+      `Repo ${repo.name} had local changes. Please resolve this.`,
     );
   }
   console.log(`  Switching to main...`);
-  await crate.switchMain();
+  await repo.switchMain();
   console.log(`  Pulling upstream main...`);
-  await crate.pullUpstreamMain();
+  await repo.pullUpstreamMain();
 }
 
 // Update the repos to refer to local versions of each other
-await crates.toLocalSource();
+await repos.toLocalSource();
