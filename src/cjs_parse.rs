@@ -265,7 +265,7 @@ impl Visit for CjsVisitor {
           // check for:
           // * `exports[key] = _something[key];
           let computed = left_member.prop.as_computed();
-          let computed_ident = computed.map(|c| c.expr.as_ident()).flatten();
+          let computed_ident = computed.and_then(|c| c.expr.as_ident());
           if let Some(computed_ident) = computed_ident {
             if let Some(require_value) =
               self.get_member_require_value(right_member, &computed_ident.sym)
@@ -453,11 +453,7 @@ fn is_non_side_effect_block_stmt(stmt: &BlockStmt) -> bool {
 }
 
 fn get_function_return_expr(function: &Function) -> Option<&Expr> {
-  function
-    .body
-    .as_ref()
-    .map(get_block_stmt_return_expr)
-    .flatten()
+  function.body.as_ref().and_then(get_block_stmt_return_expr)
 }
 
 fn get_block_stmt_return_expr(stmt: &BlockStmt) -> Option<&Expr> {
