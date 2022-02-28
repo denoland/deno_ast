@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Repos } from "./helpers/mod.ts";
+import { Repos } from "./repos.ts";
 
-const repos = new Repos();
+const repos = await Repos.load();
 
 for (const crate of repos.getCrates()) {
   if (crate.name === "eszip_wasm") {
