@@ -1,6 +1,10 @@
 name: ci
 
-on: [push, pull_request]
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
 
 jobs:
   rust:
@@ -37,11 +41,11 @@ jobs:
       - name: Test
         run: cargo test --all-targets --all-features --release
 
-      - name: Publish
+      - name: Publish on version change
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         if: |
           github.repository == 'denoland/deno_ast' &&
-          startsWith(github.ref, 'refs/tags/')
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          cargo publish -vv
+          github.ref == 'refs/heads/main'
+        run: deno run -A --no-check https://raw.githubusercontent.com/denoland/automation/0.2.0/tasks/release_on_crate_version_change.ts --publish
