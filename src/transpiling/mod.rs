@@ -405,6 +405,10 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
     SyntaxError::TS1003 |
         // expected semi-colon
         SyntaxError::TS1005 |
+        // octal literals not allowed
+        SyntaxError::TS1085 |
+        SyntaxError::LegacyOctal |
+        SyntaxError::LegacyDecimal |
         // expected expression
         SyntaxError::TS1109 |
         // unterminated string literal
@@ -750,5 +754,34 @@ export function g() {
     let err = parsed_source.transpile(&Default::default()).err().unwrap();
 
     assert_eq!(err.to_string(), "Spread children are not supported in React. at https://deno.land/x/mod.ts:2:15");
+  }
+
+  #[test]
+  fn diagnostic_octal_and_leading_zero_num_literals() {
+    assert_eq!(get_diagnostic("077"), concat!(
+      "Legacy octal literals are not available when targeting ECMAScript 5 and higher ",
+      "at https://deno.land/x/mod.ts:1:1\n\nLegacy octal escape is not permitted in ",
+      "strict mode at https://deno.land/x/mod.ts:1:1",
+    ));
+    assert_eq!(get_diagnostic("099"), "Legacy decimal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1");
+  }
+
+  fn get_diagnostic(source: &str) -> String {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let parsed_source = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    parsed_source
+      .transpile(&Default::default())
+      .err()
+      .unwrap()
+      .to_string()
   }
 }
