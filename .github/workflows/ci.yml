@@ -25,6 +25,10 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v2
 
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: 1.x
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Cache
