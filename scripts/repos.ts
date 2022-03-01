@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { path, Repo, Crate } from "./deps.ts";
+import { Crate, path, Repo } from "./deps.ts";
 
 export const rootDir = path.resolve(
   path.join(path.fromFileUrl(import.meta.url), "../../../../"),
@@ -25,7 +25,7 @@ export class Repos {
     ]);
     return new Repos(repos);
 
-    async function loadRepo(name: string) {
+    function loadRepo(name: string) {
       return Repo.load(name, path.join(rootDir, name));
     }
   }
