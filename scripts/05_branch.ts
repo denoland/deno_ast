@@ -16,10 +16,10 @@ for (const repo of nonDenoRepos) {
     for (const crate of repo.crates) {
       await crate.cargoCheck();
     }
-    await repo.branch("release_" + version.toString());
+    await repo.gitBranch("release_" + version.toString());
     await repo.gitAdd();
-    await repo.commit(version.toString());
-    await repo.push();
+    await repo.gitCommit(version.toString());
+    await repo.gitPush();
   }
 }
 
@@ -28,12 +28,12 @@ if (confirm(`Branch for deno?`)) {
   for (const crate of denoRepo.crates) {
     await crate.cargoCheck();
   }
-  await denoRepo.branch("deno_ast_" + deno_ast.version.toString());
+  await denoRepo.gitBranch("deno_ast_" + deno_ast.version.toString());
   await denoRepo.gitAdd();
-  await denoRepo.commit(
+  await denoRepo.gitCommit(
     `chore: upgrade to deno_ast ${deno_ast.version.toString()}`,
   );
-  await denoRepo.push();
+  await denoRepo.gitPush();
 }
 
 async function preAction(repo: Repo) {

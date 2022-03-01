@@ -7,6 +7,6 @@ const repos = await Repos.load();
 if (confirm("Are you sure you want to git reset --hard all the repos?")) {
   await Promise.all(
     repos.nonDenoAstRepos()
-      .map((c) => c.resetHard()),
+      .map((c) => c.gitResetHard()),
   );
 }

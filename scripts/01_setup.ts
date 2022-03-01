@@ -13,9 +13,9 @@ for (const repo of repos.nonDenoAstRepos()) {
     );
   }
   console.log(`  Switching to main...`);
-  await repo.switchMain();
+  await repo.gitSwitchMain();
   console.log(`  Pulling upstream main...`);
-  await repo.pullUpstreamMain();
+  await repo.gitPullMain("upstream");
 }
 
 // Update the repos to refer to local versions of each other
