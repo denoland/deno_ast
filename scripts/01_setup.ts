@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Repos } from "./helpers/mod.ts";
+import { Repos } from "./repos.ts";
 
-const repos = new Repos();
+const repos = await Repos.load();
 
 // Ensure repos are latest main
 for (const repo of repos.nonDenoAstRepos()) {
@@ -13,9 +13,9 @@ for (const repo of repos.nonDenoAstRepos()) {
     );
   }
   console.log(`  Switching to main...`);
-  await repo.switchMain();
+  await repo.gitSwitchMain();
   console.log(`  Pulling upstream main...`);
-  await repo.pullUpstreamMain();
+  await repo.gitPullMain("upstream");
 }
 
 // Update the repos to refer to local versions of each other

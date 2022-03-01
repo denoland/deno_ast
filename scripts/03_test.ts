@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Repos } from "./helpers/mod.ts";
+import { Repos } from "./repos.ts";
 
-const repos = new Repos();
+const repos = await Repos.load();
 let hadConfirmed = false;
 
 for (const crate of repos.getCrates()) {
@@ -13,6 +13,6 @@ for (const crate of repos.getCrates()) {
   if (hadConfirmed || confirm(`Do you want to run tests for ${crate.name}?`)) {
     hadConfirmed = true;
     console.log(`Running tests for ${crate.name}...`);
-    await crate.test();
+    await crate.test({ allFeatures: true });
   }
 }

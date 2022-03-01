@@ -1,12 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Repos } from "./helpers/mod.ts";
+import { Repos } from "./repos.ts";
 
-const repos = new Repos();
+const repos = await Repos.load();
 
 if (confirm("Are you sure you want to git reset --hard all the repos?")) {
   await Promise.all(
     repos.nonDenoAstRepos()
-      .map((c) => c.resetHard()),
+      .map((c) => c.gitResetHard()),
   );
 }

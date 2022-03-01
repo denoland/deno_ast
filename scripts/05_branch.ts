@@ -1,8 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Repo, Repos } from "./helpers/mod.ts";
+import { Repo } from "./deps.ts";
+import { Repos } from "./repos.ts";
 
-const repos = new Repos();
+const repos = await Repos.load();
 const denoRepo = repos.get("deno");
 const deno_ast = repos.getCrate("deno_ast");
 const nonDenoRepos = repos.getRepos().filter((c) => c.name !== "deno");
@@ -11,28 +12,28 @@ const nonDenoRepos = repos.getRepos().filter((c) => c.name !== "deno");
 for (const repo of nonDenoRepos) {
   if (confirm(`Branch for ${repo.name}?`)) {
     await preAction(repo);
-    const version = repo.getCrates()[0].version;
-    for (const crate of repo.getCrates()) {
+    const version = repo.crates[0].version;
+    for (const crate of repo.crates) {
       await crate.cargoCheck();
     }
-    await repo.branch("release_" + version.toString());
+    await repo.gitBranch("release_" + version.toString());
     await repo.gitAdd();
-    await repo.commit(version.toString());
-    await repo.push();
+    await repo.gitCommit(version.toString());
+    await repo.gitPush();
   }
 }
 
 // now branch, commit, and push for the deno repo
 if (confirm(`Branch for deno?`)) {
-  for (const crate of denoRepo.getCrates()) {
+  for (const crate of denoRepo.crates) {
     await crate.cargoCheck();
   }
-  await denoRepo.branch("deno_ast_" + deno_ast.version.toString());
+  await denoRepo.gitBranch("deno_ast_" + deno_ast.version.toString());
   await denoRepo.gitAdd();
-  await denoRepo.commit(
+  await denoRepo.gitCommit(
     `chore: upgrade to deno_ast ${deno_ast.version.toString()}`,
   );
-  await denoRepo.push();
+  await denoRepo.gitPush();
 }
 
 async function preAction(repo: Repo) {
