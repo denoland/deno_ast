@@ -10,5 +10,5 @@ for (const crate of repos.getCrates()) {
   }
 
   console.log(`Building ${crate.name}...`);
-  await crate.build();
+  await crate.build({ allFeatures: true });
 }

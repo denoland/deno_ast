@@ -37,7 +37,11 @@ export class Repos {
   getCrates() {
     const crates = [];
     for (const repo of this.#repos) {
-      crates.push(...repo.crates);
+      if (repo.name === "deno") {
+        crates.push(repo.getCrate("deno"));
+      } else {
+        crates.push(...repo.crates);
+      }
     }
     return crates;
   }
