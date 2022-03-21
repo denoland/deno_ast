@@ -53,4 +53,4 @@ jobs:
         if: |
           github.repository == 'denoland/deno_ast' &&
           github.ref == 'refs/heads/main'
-        run: deno run -A --no-check https://raw.githubusercontent.com/denoland/automation/0.7.0/tasks/release_on_crate_version_change.ts --publish
+        run: deno run -A --no-check https://raw.githubusercontent.com/denoland/automation/0.7.1/tasks/release_on_crate_version_change.ts --publish
