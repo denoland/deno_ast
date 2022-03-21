@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use swc_ecmascript::transforms::typescript::TSEnumConfig;
 
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
@@ -124,6 +125,10 @@ impl EmitOptions {
       // TODO(bartlomieju): this could be changed to `false` to provide `export {}`
       // in Typescript files without manual changes
       no_empty_export: true,
+      ts_enum_config: TSEnumConfig {
+        treat_const_enum_as_enum: false,
+        ts_enum_is_readonly: false,
+      },
     }
   }
 }
@@ -479,16 +484,17 @@ var N;
     var Value = N1.Value = 5;
 })(N || (N = {}));
 export class A {
-    d;
     b;
-    c = 1;
+    c;
     e;
     constructor(d = D.A){
         this.d = d;
+        this.c = 1;
         const e = "foo";
         this.e = e;
         console.log(N.Value);
     }
+    d;
 }
 "#;
     assert_eq!(
@@ -553,7 +559,7 @@ function App() {
     let code = module.transpile(&EmitOptions::default()).unwrap().text;
     let expected = r#"/** @jsx h */ /** @jsxFrag Fragment */ import { h, Fragment } from "https://deno.land/x/mod.ts";
 function App() {
-    return(/*#__PURE__*/ h("div", null, /*#__PURE__*/ h(Fragment, null)));
+    return /*#__PURE__*/ h("div", null, /*#__PURE__*/ h(Fragment, null));
 }"#;
     assert_eq!(&code[..expected.len()], expected);
   }
@@ -582,9 +588,9 @@ function App() {
     let code = module.transpile(&EmitOptions::default()).unwrap().text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 /** @jsxImportSource jsx_lib */ function App() {
-    return(/*#__PURE__*/ _jsx("div", {
+    return /*#__PURE__*/ _jsx("div", {
         children: /*#__PURE__*/ _jsx(_Fragment, {})
-    }));
+    });
 "#;
     assert_eq!(&code[..expected.len()], expected);
   }
@@ -616,9 +622,9 @@ function App() {
     let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
-    return(/*#__PURE__*/ _jsx("div", {
+    return /*#__PURE__*/ _jsx("div", {
         children: /*#__PURE__*/ _jsx(_Fragment, {})
-    }));
+    });
 }
 "#;
     assert_eq!(&code[..expected.len()], expected);
@@ -651,13 +657,13 @@ function App() {
     let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
 function App() {
-    return(/*#__PURE__*/ _jsxDEV("div", {
+    return /*#__PURE__*/ _jsxDEV("div", {
         children: /*#__PURE__*/ _jsxDEV(_Fragment, {}, void 0, false)
     }, void 0, false, {
         fileName: "https://deno.land/x/mod.tsx",
         lineNumber: 3,
         columnNumber: 5
-    }, this));
+    }, this);
 }
 "#;
     assert_eq!(&code[..expected.len()], expected);

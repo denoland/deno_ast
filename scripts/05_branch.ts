@@ -3,8 +3,13 @@
 import { Repo } from "./deps.ts";
 import { Repos } from "./repos.ts";
 
-const repos = await Repos.load();
+const repos = await Repos.load({
+  // Delay loading crates until they're ready to be branched because
+  // they may have dependencies that aren't published yet.
+  skipLoadingCrates: true,
+});
 const denoRepo = repos.get("deno");
+await repos.get("deno_ast").loadCrates();
 const deno_ast = repos.getCrate("deno_ast");
 const nonDenoRepos = repos.getRepos().filter((c) => c.name !== "deno");
 
@@ -12,6 +17,7 @@ const nonDenoRepos = repos.getRepos().filter((c) => c.name !== "deno");
 for (const repo of nonDenoRepos) {
   if (confirm(`Branch for ${repo.name}?`)) {
     await preAction(repo);
+    await repo.loadCrates();
     const version = repo.crates[0].version;
     for (const crate of repo.crates) {
       await crate.cargoCheck();

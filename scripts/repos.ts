@@ -6,6 +6,16 @@ export const rootDir = path.resolve(
   path.join(path.fromFileUrl(import.meta.url), "../../../../"),
 );
 
+const repoNames = [
+  "deno_ast",
+  "deno_graph",
+  "deno_doc",
+  "eszip",
+  "deno_lint",
+  "dprint-plugin-typescript",
+  "deno",
+];
+
 export class Repos {
   #repos: readonly Repo[];
 
@@ -13,20 +23,23 @@ export class Repos {
     this.#repos = repos;
   }
 
-  static async load() {
-    const repos = await Promise.all([
-      loadRepo("deno_ast"),
-      loadRepo("deno_graph"),
-      loadRepo("deno_doc"),
-      loadRepo("eszip"),
-      loadRepo("deno_lint"),
-      loadRepo("dprint-plugin-typescript"),
-      loadRepo("deno"),
-    ]);
+  static createWithoutLoading() {
+    return;
+  }
+
+  static async load({ skipLoadingCrates = false } = {}) {
+    const repos = await Promise.all(repoNames.map((n) => loadRepo(n)));
     return new Repos(repos);
 
     function loadRepo(name: string) {
-      return Repo.load(name, path.join(rootDir, name));
+      return Repo.load({
+        name,
+        path: path.join(rootDir, name),
+        skipLoadingCrates,
+      }).catch((err) => {
+        console.error(`Error loading: ${name}`);
+        throw err;
+      });
     }
   }
 
@@ -37,7 +50,10 @@ export class Repos {
   getCrates() {
     const crates = [];
     for (const repo of this.#repos) {
-      if (repo.name === "deno") {
+      if (repo.name === "eszip_wasm") {
+        // skip
+        continue;
+      } else if (repo.name === "deno") {
         crates.push(repo.getCrate("deno"));
       } else {
         crates.push(...repo.crates);

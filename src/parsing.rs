@@ -461,7 +461,10 @@ mod test {
   fn should_diagnostic_for_no_equals_sign_in_var_decl() {
     let diagnostic =
       parse_for_diagnostic("const Methods {\nf: (x, y) => x + y,\n};");
-    assert_eq!(diagnostic.message(), "Expected a semicolon");
+    assert_eq!(
+      diagnostic.message(),
+      "'const' declarations must be initialized"
+    );
   }
 
   #[test]

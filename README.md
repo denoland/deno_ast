@@ -1,8 +1,10 @@
 # deno_ast
 
-[![](https://img.shields.io/crates/v/deno_ast.svg)](https://crates.io/crates/deno_ast) [![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
+[![](https://img.shields.io/crates/v/deno_ast.svg)](https://crates.io/crates/deno_ast)
+[![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
 
-Source text parsing, lexing, and AST related functionality for [Deno](https://deno.land).
+Source text parsing, lexing, and AST related functionality for
+[Deno](https://deno.land).
 
 ```rust
 use deno_ast::parse_module;
