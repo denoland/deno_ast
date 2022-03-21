@@ -3,8 +3,9 @@
 import { Repo } from "./deps.ts";
 import { Repos } from "./repos.ts";
 
-const repos = await Repos.load();
+const repos = await Repos.load({ skipLoadingCrates: true });
 const denoRepo = repos.get("deno");
+await repos.get("deno_ast").loadCrates();
 const deno_ast = repos.getCrate("deno_ast");
 const nonDenoRepos = repos.getRepos().filter((c) => c.name !== "deno");
 
