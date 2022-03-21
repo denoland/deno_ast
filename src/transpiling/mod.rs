@@ -128,7 +128,7 @@ impl EmitOptions {
       ts_enum_config: TSEnumConfig {
         treat_const_enum_as_enum: false,
         ts_enum_is_readonly: false,
-      }
+      },
     }
   }
 }

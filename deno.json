@@ -1,0 +1,17 @@
+{
+  "fmt": {
+    "files": {
+      "include": [
+        "./README.md",
+        "./scripts"
+      ]
+    }
+  },
+  "lint": {
+    "files": {
+      "include": [
+        "./scripts"
+      ]
+    }
+  }
+}
