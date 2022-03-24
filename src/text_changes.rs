@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::cmp::Ordering;
 use std::ops::Range;
 
 use crate::swc::common::BytePos;
@@ -40,7 +41,10 @@ pub fn apply_text_changes(
   source: &str,
   mut changes: Vec<TextChange>,
 ) -> String {
-  changes.sort_by(|a, b| a.range.start.cmp(&b.range.start));
+  changes.sort_by(|a, b| match a.range.start.cmp(&b.range.start) {
+    Ordering::Equal => a.range.end.cmp(&b.range.end),
+    ordering => ordering,
+  });
 
   let mut last_index = 0;
   let mut final_text = String::new();
@@ -154,6 +158,20 @@ mod test {
         vec![TextChange::new(11, 11, "x".to_string()),]
       ),
       "0123456789x".to_string(),
+    );
+
+    // multiple at start
+    assert_eq!(
+      apply_text_changes(
+        "0123456789",
+        vec![
+          TextChange::new(0, 7, "a".to_string()),
+          TextChange::new(0, 0, "b".to_string()),
+          TextChange::new(0, 0, "c".to_string()),
+          TextChange::new(7, 10, "d".to_string()),
+        ]
+      ),
+      "bcad".to_string(),
     );
   }
 
