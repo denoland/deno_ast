@@ -41,11 +41,9 @@ pub fn apply_text_changes(
   source: &str,
   mut changes: Vec<TextChange>,
 ) -> String {
-  changes.sort_by(|a, b| {
-    match a.range.start.cmp(&b.range.start) {
-      Ordering::Equal => a.range.end.cmp(&b.range.end),
-      ordering => ordering,
-    }
+  changes.sort_by(|a, b| match a.range.start.cmp(&b.range.start) {
+    Ordering::Equal => a.range.end.cmp(&b.range.end),
+    ordering => ordering,
   });
 
   let mut last_index = 0;
