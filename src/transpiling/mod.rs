@@ -776,7 +776,10 @@ export function g() {
 
   #[test]
   fn diagnostic_missing_brace() {
-    assert_eq!(get_diagnostic("function test() {"), "Expected '}', got '<eof>' at https://deno.land/x/mod.ts:1:17");
+    assert_eq!(
+      get_diagnostic("function test() {"),
+      "Expected '}', got '<eof>' at https://deno.land/x/mod.ts:1:17"
+    );
   }
 
   fn get_diagnostic(source: &str) -> String {
