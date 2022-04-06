@@ -211,8 +211,7 @@ fn create_key_value(key: String, value: String) -> swc_ast::ObjectPatProp {
     key: swc_ast::PropName::Str(swc_ast::Str {
       span: DUMMY_SP,
       value: key.into(),
-      has_escape: false,
-      kind: swc_ast::StrKind::Synthesized,
+      raw: None,
     }),
     value: Box::new(swc_ast::Pat::Ident(swc_ast::BindingIdent {
       id: swc_ast::Ident {
@@ -234,10 +233,7 @@ fn create_await_import_expr(
     spread: None,
     expr: Box::new(Expr::Lit(Lit::Str(Str {
       span: DUMMY_SP,
-      has_escape: false,
-      kind: StrKind::Normal {
-        contains_quote: false,
-      },
+      raw: None,
       value: module_specifier.into(),
     }))),
   }];
