@@ -53,7 +53,7 @@ export class Repos {
       if (repo.name === "deno") {
         crates.push(repo.getCrate("deno"));
       } else {
-        crates.push(...repo.crates.filter(c => c.name !== "eszip_wasm"));
+        crates.push(...repo.crates.filter((c) => c.name !== "eszip_wasm"));
       }
     }
     return crates;
