@@ -417,7 +417,9 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
         // expected expression
         SyntaxError::TS1109 |
         // unterminated string literal
-        SyntaxError::UnterminatedStrLit
+        SyntaxError::UnterminatedStrLit |
+        // missing a token
+        SyntaxError::Expected(_, _)
   )
 }
 
@@ -770,6 +772,14 @@ export function g() {
       "strict mode at https://deno.land/x/mod.ts:1:1",
     ));
     assert_eq!(get_diagnostic("099"), "Legacy decimal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1");
+  }
+
+  #[test]
+  fn diagnostic_missing_brace() {
+    assert_eq!(
+      get_diagnostic("function test() {"),
+      "Expected '}', got '<eof>' at https://deno.land/x/mod.ts:1:17"
+    );
   }
 
   fn get_diagnostic(source: &str) -> String {

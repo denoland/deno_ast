@@ -50,13 +50,10 @@ export class Repos {
   getCrates() {
     const crates = [];
     for (const repo of this.#repos) {
-      if (repo.name === "eszip_wasm") {
-        // skip
-        continue;
-      } else if (repo.name === "deno") {
+      if (repo.name === "deno") {
         crates.push(repo.getCrate("deno"));
       } else {
-        crates.push(...repo.crates);
+        crates.push(...repo.crates.filter((c) => c.name !== "eszip_wasm"));
       }
     }
     return crates;

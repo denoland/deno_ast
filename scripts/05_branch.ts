@@ -17,7 +17,9 @@ const nonDenoRepos = repos.getRepos().filter((c) => c.name !== "deno");
 for (const repo of nonDenoRepos) {
   if (confirm(`Branch for ${repo.name}?`)) {
     await preAction(repo);
-    await repo.loadCrates();
+    if (repo.name !== "deno_ast") {
+      await repo.loadCrates();
+    }
     const version = repo.crates[0].version;
     for (const crate of repo.crates) {
       await crate.cargoCheck();
