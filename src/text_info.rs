@@ -7,7 +7,6 @@ use super::types::LineAndColumnDisplay;
 use super::types::LineAndColumnIndex;
 use crate::swc::common::BytePos;
 use crate::swc::common::Span;
-use crate::text_encoding::strip_bom_mut;
 use crate::text_encoding::BOM_CHAR;
 
 /// Stores the source text along with other data such as where all the lines
@@ -18,13 +17,13 @@ use crate::text_encoding::BOM_CHAR;
 pub struct SourceTextInfo {
   // keep this struct cheap to clone
   start_pos: BytePos,
-  text: Arc<String>,
+  text: Arc<str>,
   text_lines: Arc<TextLines>,
 }
 
 impl SourceTextInfo {
   /// Creates a new `SourceTextInfo` from the provided source text.
-  pub fn new(text: Arc<String>) -> Self {
+  pub fn new(text: Arc<str>) -> Self {
     Self::new_with_pos(BytePos(0), text)
   }
 
@@ -34,23 +33,11 @@ impl SourceTextInfo {
   /// Generally, most files will have a start position of `BytePos(0)`
   /// and when in doubt provide that, but SWC will not necessarily
   /// start files with `BytePos(0)` when bundling.
-  pub fn new_with_pos(start_pos: BytePos, text: Arc<String>) -> Self {
+  pub fn new_with_pos(start_pos: BytePos, text: Arc<str>) -> Self {
     // The BOM should be stripped before it gets passed here
     // because it's a text encoding concern that should be
     // stripped when the file is read.
-    // todo(dsherret): re-enable once stripped in deno_graph
-    // debug_assert!(!text.starts_with(BOM_CHAR));
-
-    let text = if text.starts_with(BOM_CHAR) {
-      let mut text = match Arc::try_unwrap(text) {
-        Ok(text) => text,
-        Err(text) => text.to_string(),
-      };
-      strip_bom_mut(&mut text);
-      Arc::new(text)
-    } else {
-      text
-    };
+    debug_assert!(!text.starts_with(BOM_CHAR));
 
     Self::new_with_indent_width(start_pos, text, 2)
   }
@@ -65,7 +52,7 @@ impl SourceTextInfo {
   /// to match the default indentation used by `deno fmt`.
   pub fn new_with_indent_width(
     start_pos: BytePos,
-    text: Arc<String>,
+    text: Arc<str>,
     indent_width: usize,
   ) -> Self {
     Self {
@@ -79,19 +66,18 @@ impl SourceTextInfo {
   ///
   /// Generally, prefer using `SourceTextInfo::new` to provide a
   /// string already in an `std::sync::Arc`.
-  pub fn from_string(mut text: String) -> Self {
-    strip_bom_mut(&mut text);
-    Self::new(Arc::new(text))
+  pub fn from_string(text: String) -> Self {
+    Self::new(text.into())
   }
 
   /// Gets the source text.
-  pub fn text(&self) -> Arc<String> {
+  pub fn text(&self) -> Arc<str> {
     self.text.clone()
   }
 
   /// Gets a reference to the source text.
   pub fn text_str(&self) -> &str {
-    self.text.as_str()
+    &self.text
   }
 
   /// Gets the range—start and end byte position—of the source text.
@@ -298,7 +284,7 @@ mod test {
     let text = "12\n3\r\nβ\n5";
     for i in 0..10 {
       let source_file =
-        SourceTextInfo::new_with_pos(BytePos(i), Arc::new(text.to_string()));
+        SourceTextInfo::new_with_pos(BytePos(i), text.to_owned().into());
       assert_pos_line_and_col(&source_file, i, 0, 0); // 1
       assert_pos_line_and_col(&source_file, 1 + i, 0, 1); // 2
       assert_pos_line_and_col(&source_file, 2 + i, 0, 2); // \n
@@ -334,7 +320,7 @@ mod test {
   )]
   fn line_and_column_index_panic_less_than() {
     let info =
-      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+      SourceTextInfo::new_with_pos(BytePos(1), "test".to_owned().into());
     info.line_and_column_index(BytePos(0));
   }
 
@@ -344,7 +330,7 @@ mod test {
   )]
   fn line_and_column_index_panic_greater_than() {
     let info =
-      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+      SourceTextInfo::new_with_pos(BytePos(1), "test".to_owned().into());
     info.line_and_column_index(BytePos(6));
   }
 
@@ -353,7 +339,7 @@ mod test {
     let text = "12\n3\r\nβ\n5";
     for i in 0..10 {
       let source_file =
-        SourceTextInfo::new_with_pos(BytePos(i), Arc::new(text.to_string()));
+        SourceTextInfo::new_with_pos(BytePos(i), text.to_owned().into());
       assert_byte_index(&source_file, 0, 0, i); // 1
       assert_byte_index(&source_file, 0, 1, 1 + i); // 2
       assert_byte_index(&source_file, 0, 2, 2 + i); // \n
@@ -391,7 +377,7 @@ mod test {
   )]
   fn byte_index_panic_greater_than_lines() {
     let info =
-      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+      SourceTextInfo::new_with_pos(BytePos(1), "test".to_owned().into());
     info.byte_index(LineAndColumnIndex {
       line_index: 1,
       column_index: 0,
@@ -403,7 +389,7 @@ mod test {
     let text = "12\n3\r\n4\n5";
     for i in 0..10 {
       let source_file =
-        SourceTextInfo::new_with_pos(BytePos(i), Arc::new(text.to_string()));
+        SourceTextInfo::new_with_pos(BytePos(i), text.to_owned().into());
       assert_line_start(&source_file, 0, BytePos(i));
       assert_line_start(&source_file, 1, BytePos(3 + i));
       assert_line_start(&source_file, 2, BytePos(6 + i));
@@ -425,7 +411,7 @@ mod test {
   )]
   fn line_start_equal_number_lines() {
     let info =
-      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+      SourceTextInfo::new_with_pos(BytePos(1), "test".to_owned().into());
     info.line_start(1);
   }
 
@@ -434,7 +420,7 @@ mod test {
     let text = "12\n3\r\n4\n5";
     for i in 0..10 {
       let source_file =
-        SourceTextInfo::new_with_pos(BytePos(i), Arc::new(text.to_string()));
+        SourceTextInfo::new_with_pos(BytePos(i), text.to_owned().into());
       assert_line_end(&source_file, 0, BytePos(2 + i));
       assert_line_end(&source_file, 1, BytePos(4 + i));
       assert_line_end(&source_file, 2, BytePos(7 + i));
@@ -456,14 +442,14 @@ mod test {
   )]
   fn line_end_equal_number_lines() {
     let info =
-      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("test".to_string()));
+      SourceTextInfo::new_with_pos(BytePos(1), "test".to_owned().into());
     info.line_end(1);
   }
 
   #[test]
   fn span_text() {
     let info =
-      SourceTextInfo::new_with_pos(BytePos(1), Arc::new("abcd".to_string()));
+      SourceTextInfo::new_with_pos(BytePos(1), "abcd".to_owned().into());
     assert_eq!(
       info.span_text(&Span::new(BytePos(1), BytePos(2), Default::default())),
       "a"
