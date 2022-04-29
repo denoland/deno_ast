@@ -144,8 +144,7 @@ impl crate::swc::common::source_map::SourceMapGenConfig for SourceMapConfig {
       FileName::Url(specifier) => self
         .maybe_base
         .as_ref()
-        .map(|base| base.make_relative(specifier))
-        .flatten()
+        .and_then(|base| base.make_relative(specifier))
         .unwrap_or_else(|| f.to_string()),
       _ => f.to_string(),
     }

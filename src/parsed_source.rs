@@ -118,7 +118,7 @@ impl ParsedSource {
       .inner
       .comments
       .get_leading(self.inner.program.span().lo)
-      .unwrap_or_else(Vec::new)
+      .unwrap_or_default()
   }
 
   /// Gets the tokens found in the source file.
