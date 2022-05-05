@@ -233,8 +233,11 @@ impl ParsedSource {
 
         if options.inline_source_map {
           src.push_str("//# sourceMappingURL=data:application/json;base64,");
-          let encoded_map = base64::encode(buf);
-          src.push_str(&encoded_map);
+          base64::encode_config_buf(
+            buf,
+            base64::Config::new(base64::CharacterSet::Standard, true),
+            &mut src,
+          );
         } else {
           map = Some(String::from_utf8(buf)?);
         }
@@ -811,5 +814,33 @@ export function g() {
       .err()
       .unwrap()
       .to_string()
+  }
+
+  #[test]
+  fn source_map_properly_encoded() {
+    // Ref https://github.com/denoland/deno/issues/10936
+    // Ref https://github.com/swc-project/swc/issues/3288#issuecomment-1117252904
+
+    let p = parse_module(ParseParams {
+      specifier: "file:///Users/ib/dev/deno/foo.ts".to_string(),
+      source: SourceTextInfo::from_string(
+        r#"export default function () {
+    return "📣❓";
+}"#
+          .to_string(),
+      ),
+      media_type: MediaType::TypeScript,
+      capture_tokens: true,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap();
+
+    let transpiled = p.transpile(&Default::default()).unwrap();
+    let lines: Vec<&str> = transpiled.text.split('\n').collect();
+    let last_line = lines.last().unwrap();
+    let input = last_line
+      .trim_start_matches("//# sourceMappingURL=data:application/json;base64,");
+    base64::decode(input).unwrap();
   }
 }
