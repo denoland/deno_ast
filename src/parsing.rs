@@ -2,8 +2,7 @@
 
 use std::sync::Arc;
 
-use dprint_swc_ext::common::TokenAndRange;
-
+use crate::swc::parser::token::TokenAndSpan;
 use crate::comments::MultiThreadedComments;
 use crate::swc::ast::EsVersion;
 use crate::swc::ast::Module;
@@ -185,7 +184,7 @@ fn parse_string_input(
   (
     SingleThreadedComments,
     Program,
-    Option<Vec<TokenAndRange>>,
+    Option<Vec<TokenAndSpan>>,
     Vec<SwcError>,
   ),
   SwcError,
@@ -201,7 +200,7 @@ fn parse_string_input(
       ParseMode::Module => Program::Module(parser.parse_module()?),
       ParseMode::Script => Program::Script(parser.parse_script()?),
     };
-    let tokens = parser.input().take().into_iter().map(|t| t.into()).collect();
+    let tokens = parser.input().take();
     let errors = parser.take_errors();
 
     Ok((comments, program, Some(tokens), errors))

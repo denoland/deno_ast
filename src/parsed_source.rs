@@ -13,7 +13,7 @@ use crate::swc::common::SyntaxContext;
 use crate::Diagnostic;
 use crate::MediaType;
 use crate::SourceTextInfo;
-use crate::TokenAndRange;
+use crate::swc::parser::token::TokenAndSpan;
 
 pub(crate) struct SyntaxContexts {
   pub unresolved: SyntaxContext,
@@ -26,7 +26,7 @@ struct ParsedSourceInner {
   text_info: SourceTextInfo,
   comments: MultiThreadedComments,
   program: Arc<Program>,
-  tokens: Option<Arc<Vec<TokenAndRange>>>,
+  tokens: Option<Arc<Vec<TokenAndSpan>>>,
   syntax_contexts: Option<SyntaxContexts>,
   diagnostics: Vec<Diagnostic>,
 }
@@ -47,7 +47,7 @@ impl ParsedSource {
     text_info: SourceTextInfo,
     comments: MultiThreadedComments,
     program: Arc<Program>,
-    tokens: Option<Arc<Vec<TokenAndRange>>>,
+    tokens: Option<Arc<Vec<TokenAndSpan>>>,
     syntax_contexts: Option<SyntaxContexts>,
     diagnostics: Vec<Diagnostic>,
   ) -> Self {
@@ -128,7 +128,7 @@ impl ParsedSource {
   /// Gets the tokens found in the source file.
   ///
   /// This will panic if tokens were not captured during parsing.
-  pub fn tokens(&self) -> &[TokenAndRange] {
+  pub fn tokens(&self) -> &[TokenAndSpan] {
     self
       .inner
       .tokens
@@ -198,7 +198,7 @@ impl ParsedSource {
         Program::Script(script) => crate::view::ProgramRef::Script(script),
       },
       text_info: Some(self.text_info()),
-      tokens: self.inner.tokens.as_ref().map(|t| t as &[TokenAndRange]),
+      tokens: self.inner.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
       comments: Some(crate::view::Comments {
         leading: self.comments().leading_map(),
         trailing: self.comments().trailing_map(),

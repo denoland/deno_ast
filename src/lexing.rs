@@ -3,7 +3,6 @@
 use std::rc::Rc;
 
 use crate::SwcSourceRanged;
-use crate::SourceRange;
 use crate::get_syntax;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::CommentKind;
@@ -24,7 +23,7 @@ pub enum TokenOrComment {
 #[derive(Debug)]
 pub struct LexedItem {
   /// Range of the token or comment.
-  pub range: SourceRange,
+  pub range: std::ops::Range<usize>,
   /// Token or comment.
   pub inner: TokenOrComment,
 }
@@ -33,22 +32,23 @@ pub struct LexedItem {
 /// text to a collection of tokens and comments.
 pub fn lex(source: &str, media_type: MediaType) -> Vec<LexedItem> {
   let comments = SingleThreadedComments::default();
+  let start_pos = StartSourcePos::START_SOURCE_POS;
   let lexer = Lexer::new(
     get_syntax(media_type),
     ES_VERSION,
-    StringInput::new(source, StartSourcePos::START_SOURCE_POS.as_byte_pos(), (StartSourcePos::START_SOURCE_POS + source.len()).as_byte_pos()),
+    StringInput::new(source, start_pos.as_byte_pos(), (start_pos + source.len()).as_byte_pos()),
     Some(&comments),
   );
 
   let mut tokens: Vec<LexedItem> = lexer
     .map(|token| LexedItem {
-      range: token.range(),
+      range: token.range().as_std_range(start_pos),
       inner: TokenOrComment::Token(token.token),
     })
     .collect();
 
   tokens.extend(flatten_comments(comments).map(|comment| LexedItem {
-    range: comment.range(),
+    range: comment.range().as_std_range(start_pos),
     inner: TokenOrComment::Comment {
       kind: comment.kind,
       text: comment.text,
@@ -98,6 +98,6 @@ mod test {
     const BOM_CHAR: char = '\u{FEFF}';
     let items = lex(&format!("{}1", BOM_CHAR), MediaType::JavaScript);
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].range.start, StartSourcePos::START_SOURCE_POS + BOM_CHAR.len_utf8());
+    assert_eq!(items[0].range.start, BOM_CHAR.len_utf8());
   }
 }
