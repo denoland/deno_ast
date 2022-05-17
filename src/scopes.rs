@@ -1,4 +1,6 @@
 // Copyright 2020-2022 the Deno authors. All rights reserved. MIT license.
+
+use crate::swc::ast::Id;
 use crate::swc::ast::{
   ArrowExpr, BlockStmt, BlockStmtOrExpr, CatchClause, ClassDecl, ClassExpr,
   DoWhileStmt, Expr, FnDecl, FnExpr, ForInStmt, ForOfStmt, ForStmt, Function,
@@ -6,24 +8,28 @@ use crate::swc::ast::{
   Param, Pat, SwitchStmt, TsInterfaceDecl, TsTypeAliasDecl, VarDecl,
   VarDeclKind, WhileStmt, WithStmt,
 };
+use crate::swc::common::SyntaxContext;
 use crate::swc::atoms::JsWord;
-use crate::swc::utils::find_ids;
-use crate::swc::utils::ident::IdentLike;
-use crate::swc::utils::Id;
+use crate::swc::utils::find_pat_ids;
 use crate::swc::visit::Visit;
 use crate::swc::visit::VisitWith;
 use crate::view;
 use std::collections::HashMap;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Scope {
   vars: HashMap<Id, Var>,
   symbols: HashMap<JsWord, Vec<Id>>,
+  unresolved_context: SyntaxContext,
 }
 
 impl Scope {
-  pub fn analyze(program: view::Program) -> Self {
-    let mut scope = Self::default();
+  pub fn analyze(program: view::Program, unresolved_context: SyntaxContext) -> Self {
+    let mut scope = Self {
+      vars: Default::default(),
+      symbols: Default::default(),
+      unresolved_context,
+    };
     let mut path = vec![];
 
     match program {
@@ -54,7 +60,7 @@ impl Scope {
   }
 
   pub fn var_by_ident(&self, ident: &view::Ident) -> Option<&Var> {
-    self.vars.get(&ident.inner.to_id())
+    self.var(&ident.inner.to_id())
   }
 
   pub fn is_global(&self, id: &Id) -> bool {
@@ -148,7 +154,7 @@ impl Analyzer<'_> {
   }
 
   fn declare_pat(&mut self, kind: BindingKind, pat: &Pat) {
-    let ids: Vec<Id> = find_ids(pat);
+    let ids: Vec<Id> = find_pat_ids(pat);
 
     for id in ids {
       self.declare_id(kind, id);
@@ -352,7 +358,7 @@ impl Visit for Analyzer<'_> {
 mod tests {
   use super::{BindingKind, Scope, ScopeKind, Var};
   use crate::parse_module;
-  use crate::swc::utils::Id;
+  use crate::swc::ast::Id;
   use crate::MediaType;
   use crate::ParseParams;
   use crate::SourceTextInfo;
@@ -360,7 +366,7 @@ mod tests {
   fn test_scope(source_code: &str, test: impl Fn(Scope)) {
     let parsed_source = parse_module(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string(source_code.to_string()),
+      text_info: SourceTextInfo::from_string(source_code.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -369,7 +375,7 @@ mod tests {
     .unwrap();
 
     parsed_source.with_view(|view| {
-      let scope = Scope::analyze(view);
+      let scope = Scope::analyze(view, parsed_source.unresolved_context());
       test(scope);
     });
   }

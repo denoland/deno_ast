@@ -2,17 +2,18 @@
 
 use std::rc::Rc;
 
+use crate::SwcSourceRanged;
+use crate::SourceRange;
 use crate::get_syntax;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::CommentKind;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
-use crate::swc::common::BytePos;
-use crate::swc::common::Span;
 use crate::swc::parser::lexer::Lexer;
 use crate::swc::parser::token::Token;
 use crate::MediaType;
 use crate::ES_VERSION;
+use crate::StartSourcePos;
 
 #[derive(Debug)]
 pub enum TokenOrComment {
@@ -23,7 +24,7 @@ pub enum TokenOrComment {
 #[derive(Debug)]
 pub struct LexedItem {
   /// Range of the token or comment.
-  pub span: Span,
+  pub range: SourceRange,
   /// Token or comment.
   pub inner: TokenOrComment,
 }
@@ -35,26 +36,26 @@ pub fn lex(source: &str, media_type: MediaType) -> Vec<LexedItem> {
   let lexer = Lexer::new(
     get_syntax(media_type),
     ES_VERSION,
-    StringInput::new(source, BytePos(0), BytePos(source.len() as u32)),
+    StringInput::new(source, StartSourcePos::START_SOURCE_POS.as_byte_pos(), (StartSourcePos::START_SOURCE_POS + source.len()).as_byte_pos()),
     Some(&comments),
   );
 
   let mut tokens: Vec<LexedItem> = lexer
     .map(|token| LexedItem {
-      span: token.span,
+      range: token.range(),
       inner: TokenOrComment::Token(token.token),
     })
     .collect();
 
   tokens.extend(flatten_comments(comments).map(|comment| LexedItem {
-    span: comment.span,
+    range: comment.range(),
     inner: TokenOrComment::Comment {
       kind: comment.kind,
       text: comment.text,
     },
   }));
 
-  tokens.sort_by_key(|item| item.span.lo.0);
+  tokens.sort_by_key(|item| item.range.start);
 
   tokens
 }
@@ -73,7 +74,6 @@ fn flatten_comments(
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::text_encoding::BOM_CHAR;
   use crate::MediaType;
 
   #[test]
@@ -95,8 +95,9 @@ mod test {
 
   #[test]
   fn handle_bom() {
+    const BOM_CHAR: char = '\u{FEFF}';
     let items = lex(&format!("{}1", BOM_CHAR), MediaType::JavaScript);
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].span.lo, BytePos(BOM_CHAR.len_utf8() as u32));
+    assert_eq!(items[0].range.start, StartSourcePos::START_SOURCE_POS + BOM_CHAR.len_utf8());
   }
 }

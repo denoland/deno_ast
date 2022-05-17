@@ -14,11 +14,11 @@ use deno_ast::SourceTextInfo;
 use std::sync::Arc;
 
 let source_text = Arc::new("class MyClass {}");
-let source_text_info = SourceTextInfo::new(source_text);
+let text_info = SourceTextInfo::new(source_text);
 let parsed_source = parse_module(ParseParams {
   specifier: "file:///my_file.ts".to_string(),
   media_type: MediaType::TypeScript,
-  source: source_text_info,
+  text_info,
   capture_tokens: true,
   maybe_syntax: None,
   scope_analysis: false,
