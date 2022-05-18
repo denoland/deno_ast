@@ -4,6 +4,8 @@ use crate::SourcePos;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::comments::SingleThreadedCommentsMapInner;
+use crate::swc::common::comments::Comments as SwcComments;
+use crate::swc::common::BytePos as SwcBytePos;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -73,17 +75,83 @@ impl MultiThreadedComments {
     self.inner.leading.contains_key(&pos.as_byte_pos())
   }
 
-  pub fn get_leading(&self, pos: SourcePos) -> Option<Vec<Comment>> {
-    self.inner.leading.get(&pos.as_byte_pos()).cloned()
+  pub fn get_leading(&self, pos: SourcePos) -> Option<&Vec<Comment>> {
+    self.inner.leading.get(&pos.as_byte_pos())
   }
 
   pub fn has_trailing(&self, pos: SourcePos) -> bool {
     self.inner.trailing.contains_key(&pos.as_byte_pos())
   }
 
-  pub fn get_trailing(&self, pos: SourcePos) -> Option<Vec<Comment>> {
-    self.inner.trailing.get(&pos.as_byte_pos()).cloned()
+  pub fn get_trailing(&self, pos: SourcePos) -> Option<&Vec<Comment>> {
+    self.inner.trailing.get(&pos.as_byte_pos())
   }
+
+  pub fn as_swc_comments(&self) -> Box<dyn SwcComments> {
+    Box::new(SwcMultiThreadedComments(self.clone()))
+  }
+}
+
+// Don't want to expose this API easily, so someone should
+// use the `.as_swc_comments()` above to access it.
+struct SwcMultiThreadedComments(MultiThreadedComments);
+
+impl SwcComments for SwcMultiThreadedComments {
+  fn has_leading(&self, pos: SwcBytePos) -> bool {
+    self.0.has_leading(pos.into())
+  }
+
+  fn get_leading(&self, pos: SwcBytePos) -> Option<Vec<Comment>> {
+    self.0.get_leading(pos.into()).cloned()
+  }
+
+  fn has_trailing(&self, pos: SwcBytePos) -> bool {
+    self.0.has_trailing(pos.into())
+  }
+
+  fn get_trailing(&self, pos: SwcBytePos) -> Option<Vec<Comment>> {
+    self.0.get_trailing(pos.into()).cloned()
+  }
+
+  fn add_leading(&self, _pos: SwcBytePos, _cmt: Comment) {
+    panic_readonly();
+  }
+
+  fn add_leading_comments(&self, _pos: SwcBytePos, _comments: Vec<Comment>) {
+    panic_readonly();
+  }
+
+  fn move_leading(&self, _from: SwcBytePos, _to: SwcBytePos) {
+    panic_readonly();
+  }
+
+  fn take_leading(&self, _pos: SwcBytePos) -> Option<Vec<Comment>> {
+    panic_readonly();
+  }
+
+  fn add_trailing(&self, _pos: SwcBytePos, _cmt: Comment) {
+    panic_readonly();
+  }
+
+  fn add_trailing_comments(&self, _pos: SwcBytePos, _comments: Vec<Comment>) {
+    panic_readonly();
+  }
+
+  fn move_trailing(&self, _from: SwcBytePos, _to: SwcBytePos) {
+    panic_readonly();
+  }
+
+  fn take_trailing(&self, _pos: SwcBytePos) -> Option<Vec<Comment>> {
+    panic_readonly();
+  }
+
+  fn add_pure_comment(&self, _pos: SwcBytePos) {
+    panic_readonly();
+  }
+}
+
+fn panic_readonly() -> ! {
+  panic!("MultiThreadedComments do not support write operations")
 }
 
 #[cfg(test)]

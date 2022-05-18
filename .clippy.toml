@@ -1,3 +1,5 @@
+# Prefer using `SourcePos` from because it abstracts
+# away swc's non-zero-indexed based positioning
 disallowed-methods = [
   "swc_common::Spanned::span",
 ]

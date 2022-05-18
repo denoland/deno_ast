@@ -122,6 +122,7 @@ impl ParsedSource {
       .inner
       .comments
       .get_leading(self.inner.program.range().start)
+      .cloned()
       .unwrap_or_default()
   }
 

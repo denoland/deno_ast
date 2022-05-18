@@ -8,7 +8,6 @@ use crate::swc::ast::{
   Param, Pat, SwitchStmt, TsInterfaceDecl, TsTypeAliasDecl, VarDecl,
   VarDeclKind, WhileStmt, WithStmt,
 };
-use crate::swc::common::SyntaxContext;
 use crate::swc::atoms::JsWord;
 use crate::swc::utils::find_pat_ids;
 use crate::swc::visit::Visit;
@@ -20,15 +19,13 @@ use std::collections::HashMap;
 pub struct Scope {
   vars: HashMap<Id, Var>,
   symbols: HashMap<JsWord, Vec<Id>>,
-  unresolved_context: SyntaxContext,
 }
 
 impl Scope {
-  pub fn analyze(program: view::Program, unresolved_context: SyntaxContext) -> Self {
+  pub fn analyze(program: view::Program) -> Self {
     let mut scope = Self {
       vars: Default::default(),
       symbols: Default::default(),
-      unresolved_context,
     };
     let mut path = vec![];
 
@@ -375,7 +372,7 @@ mod tests {
     .unwrap();
 
     parsed_source.with_view(|view| {
-      let scope = Scope::analyze(view, parsed_source.unresolved_context());
+      let scope = Scope::analyze(view);
       test(scope);
     });
   }
