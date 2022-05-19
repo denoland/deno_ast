@@ -138,21 +138,11 @@ impl EmitOptions {
 #[derive(Debug)]
 pub struct SourceMapConfig {
   pub inline_sources: bool,
-  /// When a base is provided, when mapping source names in the source map, the
-  /// name will be relative to the base.
-  pub maybe_base: Option<ModuleSpecifier>,
 }
 
 impl crate::swc::common::source_map::SourceMapGenConfig for SourceMapConfig {
   fn file_name_to_source(&self, f: &FileName) -> String {
-    match f {
-      FileName::Url(specifier) => self
-        .maybe_base
-        .as_ref()
-        .and_then(|base| base.make_relative(specifier))
-        .unwrap_or_else(|| f.to_string()),
-      _ => f.to_string(),
-    }
+    f.to_string()
   }
 
   fn inline_sources_content(&self, f: &FileName) -> bool {
@@ -177,14 +167,12 @@ impl ParsedSource {
   pub fn transpile(&self, options: &EmitOptions) -> Result<TranspiledSource> {
     let program = (*self.program()).clone();
     let source_map = Rc::new(SourceMap::default());
-    let (file_name, maybe_base) = match ModuleSpecifier::parse(self.specifier())
-    {
-      Ok(specifier) => (FileName::Url(specifier.clone()), Some(specifier)),
-      Err(_) => (FileName::Custom(self.specifier().to_string()), None),
-    };
     let source_map_config = SourceMapConfig {
       inline_sources: options.inline_sources,
-      maybe_base,
+    };
+    let file_name = match ModuleSpecifier::parse(self.specifier()) {
+      Ok(specifier) => FileName::Url(specifier),
+      Err(_) => FileName::Custom(self.specifier().to_string()),
     };
     source_map.new_source_file(file_name, self.source().text().to_string());
     // we need the comments to be mutable, so make it single threaded
