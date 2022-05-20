@@ -279,8 +279,7 @@ fn create_assignment(key: String) -> swc_ast::ObjectPatProp {
 
 #[cfg(test)]
 mod test {
-  use crate::ES_VERSION;
-use crate::swc::ast::Module;
+  use crate::swc::ast::Module;
   use crate::swc::codegen::text_writer::JsWriter;
   use crate::swc::codegen::Node;
   use crate::swc::common::FileName;
@@ -292,6 +291,7 @@ use crate::swc::ast::Module;
   use crate::swc::visit::Fold;
   use crate::swc::visit::FoldWith;
   use crate::ModuleSpecifier;
+  use crate::ES_VERSION;
   use pretty_assertions::assert_eq;
   use std::rc::Rc;
 
@@ -511,7 +511,11 @@ use crate::swc::ast::Module;
     {
       let writer =
         Box::new(JsWriter::new(source_map.clone(), "\n", &mut buf, None));
-      let config = crate::swc::codegen::Config { minify: false, ascii_only: false, target: ES_VERSION };
+      let config = crate::swc::codegen::Config {
+        minify: false,
+        ascii_only: false,
+        target: ES_VERSION,
+      };
       let mut emitter = crate::swc::codegen::Emitter {
         cfg: config,
         comments: None,

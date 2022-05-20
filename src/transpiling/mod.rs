@@ -6,7 +6,6 @@ use anyhow::anyhow;
 use anyhow::Result;
 use swc_ecmascript::transforms::typescript::TSEnumConfig;
 
-use crate::ES_VERSION;
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
 use crate::swc::codegen::Node;
@@ -31,6 +30,7 @@ use crate::Diagnostic;
 use crate::DiagnosticsError;
 use crate::ModuleSpecifier;
 use crate::ParsedSource;
+use crate::ES_VERSION;
 
 use std::cell::RefCell;
 
@@ -201,7 +201,11 @@ impl ParsedSource {
           &mut buf,
           Some(&mut src_map_buf),
         ));
-        let config = crate::swc::codegen::Config { minify: false, ascii_only: false, target: ES_VERSION };
+        let config = crate::swc::codegen::Config {
+          minify: false,
+          ascii_only: false,
+          target: ES_VERSION,
+        };
         let mut emitter = crate::swc::codegen::Emitter {
           cfg: config,
           comments: Some(&comments),
@@ -290,7 +294,9 @@ pub fn fold_program(
         None
       },
       development: Some(options.jsx_development),
-      import_source: Some(options.jsx_import_source.clone().unwrap_or_default()),
+      import_source: Some(
+        options.jsx_import_source.clone().unwrap_or_default(),
+      ),
       next: None,
       refresh: None,
       throw_if_namespace: None,

@@ -18,7 +18,7 @@ mod transpiling;
 mod types;
 
 #[cfg(feature = "view")]
-pub use dprint_swc_ext::view as view;
+pub use dprint_swc_ext::view;
 
 pub use dprint_swc_ext::common::*;
 

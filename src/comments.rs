@@ -1,11 +1,15 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::SourcePos;
+// Need to enable this for this file in order to
+// implement swc's `Comments` trait
+#![allow(clippy::disallowed_types)]
+
 use crate::swc::common::comments::Comment;
+use crate::swc::common::comments::Comments as SwcComments;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::comments::SingleThreadedCommentsMapInner;
-use crate::swc::common::comments::Comments as SwcComments;
 use crate::swc::common::BytePos as SwcBytePos;
+use crate::SourcePos;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -105,7 +109,10 @@ impl SwcComments for SwcMultiThreadedComments {
   }
 
   fn get_leading(&self, pos: SwcBytePos) -> Option<Vec<Comment>> {
-    self.0.get_leading(SourcePos::unsafely_from_byte_pos(pos)).cloned()
+    self
+      .0
+      .get_leading(SourcePos::unsafely_from_byte_pos(pos))
+      .cloned()
   }
 
   fn has_trailing(&self, pos: SwcBytePos) -> bool {
@@ -113,7 +120,10 @@ impl SwcComments for SwcMultiThreadedComments {
   }
 
   fn get_trailing(&self, pos: SwcBytePos) -> Option<Vec<Comment>> {
-    self.0.get_trailing(SourcePos::unsafely_from_byte_pos(pos)).cloned()
+    self
+      .0
+      .get_trailing(SourcePos::unsafely_from_byte_pos(pos))
+      .cloned()
   }
 
   fn add_leading(&self, _pos: SwcBytePos, _cmt: Comment) {
@@ -175,12 +185,20 @@ mod test {
     // maps
     assert_eq!(comments.leading_map().len(), 1);
     assert_eq!(
-      comments.leading_map().get(&(start_pos + 5).as_byte_pos()).unwrap()[0].text,
+      comments
+        .leading_map()
+        .get(&(start_pos + 5).as_byte_pos())
+        .unwrap()[0]
+        .text,
       " 1"
     );
     assert_eq!(comments.trailing_map().len(), 1);
     assert_eq!(
-      comments.trailing_map().get(&(start_pos + 7).as_byte_pos()).unwrap()[0].text,
+      comments
+        .trailing_map()
+        .get(&(start_pos + 7).as_byte_pos())
+        .unwrap()[0]
+        .text,
       " 2 "
     );
 
@@ -204,7 +222,9 @@ mod test {
     assert_eq!(comments.get_trailing(start_pos + 7).unwrap()[0].text, " 2 ");
   }
 
-  fn get_single_threaded_comments(text: &str) -> (SingleThreadedComments, StartSourcePos) {
+  fn get_single_threaded_comments(
+    text: &str,
+  ) -> (SingleThreadedComments, StartSourcePos) {
     let module = parse_module(ParseParams {
       specifier: "file.ts".to_string(),
       text_info: SourceTextInfo::from_string(text.to_string()),

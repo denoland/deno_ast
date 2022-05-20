@@ -2,7 +2,6 @@
 
 use std::rc::Rc;
 
-use crate::SourceRangedForSpanned;
 use crate::get_syntax;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::CommentKind;
@@ -11,8 +10,9 @@ use crate::swc::common::input::StringInput;
 use crate::swc::parser::lexer::Lexer;
 use crate::swc::parser::token::Token;
 use crate::MediaType;
-use crate::ES_VERSION;
+use crate::SourceRangedForSpanned;
 use crate::StartSourcePos;
+use crate::ES_VERSION;
 
 #[derive(Debug)]
 pub enum TokenOrComment {
@@ -36,7 +36,11 @@ pub fn lex(source: &str, media_type: MediaType) -> Vec<LexedItem> {
   let lexer = Lexer::new(
     get_syntax(media_type),
     ES_VERSION,
-    StringInput::new(source, start_pos.as_byte_pos(), (start_pos + source.len()).as_byte_pos()),
+    StringInput::new(
+      source,
+      start_pos.as_byte_pos(),
+      (start_pos + source.len()).as_byte_pos(),
+    ),
     Some(&comments),
   );
 

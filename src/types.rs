@@ -4,10 +4,10 @@ use std::borrow::Cow;
 use std::fmt;
 
 use crate::swc::parser::error::SyntaxError;
-use crate::SourceTextInfo;
+use crate::LineAndColumnDisplay;
 use crate::SourceRange;
 use crate::SourceRangedForSpanned;
-use crate::LineAndColumnDisplay;
+use crate::SourceTextInfo;
 
 /// Parsing diagnostic.
 #[derive(Debug, Clone, PartialEq)]

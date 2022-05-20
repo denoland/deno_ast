@@ -3,17 +3,17 @@
 use std::fmt;
 use std::sync::Arc;
 
-use crate::SourceRangedForSpanned;
 use crate::comments::MultiThreadedComments;
 use crate::swc::ast::Module;
 use crate::swc::ast::Program;
 use crate::swc::ast::Script;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::SyntaxContext;
+use crate::swc::parser::token::TokenAndSpan;
 use crate::Diagnostic;
 use crate::MediaType;
+use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
-use crate::swc::parser::token::TokenAndSpan;
 
 pub(crate) struct SyntaxContexts {
   pub unresolved: SyntaxContext,

@@ -24,7 +24,10 @@ impl TextChange {
 
   /// Gets an swc span for the provided text change.
   pub fn as_source_range(&self, source_start: StartSourcePos) -> SourceRange {
-    SourceRange::new(source_start + self.range.start, source_start + self.range.end)
+    SourceRange::new(
+      source_start + self.range.start,
+      source_start + self.range.end,
+    )
   }
 }
 

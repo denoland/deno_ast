@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use crate::swc::parser::token::TokenAndSpan;
 use crate::comments::MultiThreadedComments;
 use crate::swc::ast::EsVersion;
 use crate::swc::ast::Module;
@@ -12,6 +11,7 @@ use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
 use crate::swc::parser::error::Error as SwcError;
 use crate::swc::parser::lexer::Lexer;
+use crate::swc::parser::token::TokenAndSpan;
 use crate::swc::parser::EsConfig;
 use crate::swc::parser::Syntax;
 use crate::swc::parser::TsConfig;
@@ -148,12 +148,19 @@ fn parse(
       crate::swc::common::GLOBALS.set(&globals, || {
         let unresolved_mark = Mark::new();
         let top_level_mark = Mark::new();
-        let program = program.fold_with(&mut resolver(unresolved_mark, top_level_mark, true));
+        let program = program.fold_with(&mut resolver(
+          unresolved_mark,
+          top_level_mark,
+          true,
+        ));
 
-        (program, Some(crate::SyntaxContexts {
-          unresolved: SyntaxContext::empty().apply_mark(unresolved_mark),
-          top_level: SyntaxContext::empty().apply_mark(top_level_mark),
-        }))
+        (
+          program,
+          Some(crate::SyntaxContexts {
+            unresolved: SyntaxContext::empty().apply_mark(unresolved_mark),
+            top_level: SyntaxContext::empty().apply_mark(top_level_mark),
+          }),
+        )
       })
     }
     #[cfg(not(feature = "transforms"))]
@@ -449,7 +456,8 @@ mod test {
         r#"import type { Foo } from "./foo.ts";
 function _bar(...Foo: Foo) {
   console.log(Foo);
-}"#.to_string(),
+}"#
+          .to_string(),
       ),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
@@ -461,17 +469,28 @@ function _bar(...Foo: Foo) {
     parsed_source.with_view(|view| {
       use crate::view::*;
 
-      let named_import_ident = view.children()[0]
-        .expect::<ImportDecl>()
-        .specifiers[0]
-        .expect::<ImportNamedSpecifier>()
-        .local;
-      let bar_func = view.children()[1]
-        .expect::<FnDecl>();
-      let bar_param_rest_pat = bar_func.function.params[0].pat.expect::<RestPat>();
+      let named_import_ident =
+        view.children()[0].expect::<ImportDecl>().specifiers[0]
+          .expect::<ImportNamedSpecifier>()
+          .local;
+      let bar_func = view.children()[1].expect::<FnDecl>();
+      let bar_param_rest_pat =
+        bar_func.function.params[0].pat.expect::<RestPat>();
       let bar_param_ident = bar_param_rest_pat.arg.expect::<BindingIdent>().id;
-      let bar_param_type_ident = bar_param_rest_pat.type_ann.unwrap().type_ann.expect::<TsTypeRef>().type_name.expect::<Ident>();
-      let console_log_arg_ident = bar_func.function.body.unwrap().stmts[0].expect::<ExprStmt>().expr.expect::<CallExpr>().args[0].expr.expect::<Ident>();
+      let bar_param_type_ident = bar_param_rest_pat
+        .type_ann
+        .unwrap()
+        .type_ann
+        .expect::<TsTypeRef>()
+        .type_name
+        .expect::<Ident>();
+      let console_log_arg_ident = bar_func.function.body.unwrap().stmts[0]
+        .expect::<ExprStmt>()
+        .expr
+        .expect::<CallExpr>()
+        .args[0]
+        .expr
+        .expect::<Ident>();
 
       assert_eq!(console_log_arg_ident.to_id(), bar_param_ident.to_id());
       assert_ne!(console_log_arg_ident.to_id(), named_import_ident.to_id());
