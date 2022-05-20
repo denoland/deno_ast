@@ -8,22 +8,26 @@ use crate::swc::ast::Module;
 use crate::swc::ast::Program;
 use crate::swc::ast::Script;
 use crate::swc::common::comments::Comment;
-use crate::swc::common::comments::Comments;
-use crate::swc::common::Spanned;
 use crate::swc::common::SyntaxContext;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::Diagnostic;
 use crate::MediaType;
+use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
+
+pub(crate) struct SyntaxContexts {
+  pub unresolved: SyntaxContext,
+  pub top_level: SyntaxContext,
+}
 
 struct ParsedSourceInner {
   specifier: String,
   media_type: MediaType,
-  source: SourceTextInfo,
+  text_info: SourceTextInfo,
   comments: MultiThreadedComments,
   program: Arc<Program>,
   tokens: Option<Arc<Vec<TokenAndSpan>>>,
-  top_level_context: Option<SyntaxContext>,
+  syntax_contexts: Option<SyntaxContexts>,
   diagnostics: Vec<Diagnostic>,
 }
 
@@ -40,22 +44,22 @@ impl ParsedSource {
   pub(crate) fn new(
     specifier: String,
     media_type: MediaType,
-    source: SourceTextInfo,
+    text_info: SourceTextInfo,
     comments: MultiThreadedComments,
     program: Arc<Program>,
     tokens: Option<Arc<Vec<TokenAndSpan>>>,
-    top_level_context: Option<SyntaxContext>,
+    syntax_contexts: Option<SyntaxContexts>,
     diagnostics: Vec<Diagnostic>,
   ) -> Self {
     ParsedSource {
       inner: Arc::new(ParsedSourceInner {
         specifier,
         media_type,
-        source,
+        text_info,
         comments,
         program,
         tokens,
-        top_level_context,
+        syntax_contexts,
         diagnostics,
       }),
     }
@@ -72,8 +76,8 @@ impl ParsedSource {
   }
 
   /// Gets the text content of the module.
-  pub fn source(&self) -> &SourceTextInfo {
-    &self.inner.source
+  pub fn text_info(&self) -> &SourceTextInfo {
+    &self.inner.text_info
   }
 
   /// Gets the parsed program.
@@ -117,7 +121,8 @@ impl ParsedSource {
     self
       .inner
       .comments
-      .get_leading(self.inner.program.span().lo)
+      .get_leading(self.inner.program.range().start)
+      .cloned()
       .unwrap_or_default()
   }
 
@@ -136,7 +141,18 @@ impl ParsedSource {
   ///
   /// This will panic if the source was not parsed with scope analysis.
   pub fn top_level_context(&self) -> SyntaxContext {
-    self.inner.top_level_context.expect("Could not get top level context because the source was not parsed with scope analysis.")
+    self.syntax_contexts().top_level
+  }
+
+  /// Gets the unresolved context used when parsing with scope analysis.
+  ///
+  /// This will panic if the source was not parsed with scope analysis.
+  pub fn unresolved_context(&self) -> SyntaxContext {
+    self.syntax_contexts().unresolved
+  }
+
+  fn syntax_contexts(&self) -> &SyntaxContexts {
+    self.inner.syntax_contexts.as_ref().expect("Could not get syntax context because the source was not parsed with scope analysis.")
   }
 
   /// Gets extra non-fatal diagnostics found while parsing.
@@ -182,7 +198,7 @@ impl ParsedSource {
         Program::Module(module) => crate::view::ProgramRef::Module(module),
         Program::Script(script) => crate::view::ProgramRef::Script(script),
       },
-      source_file: Some(self.source()),
+      text_info: Some(self.text_info()),
       tokens: self.inner.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
       comments: Some(crate::view::Comments {
         leading: self.comments().leading_map(),
@@ -207,7 +223,7 @@ mod test {
 
     let program = parse_program(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,

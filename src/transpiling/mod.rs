@@ -23,13 +23,14 @@ use crate::swc::transforms::hygiene;
 use crate::swc::transforms::pass::Optional;
 use crate::swc::transforms::proposals;
 use crate::swc::transforms::react;
-use crate::swc::transforms::resolver::ts_resolver;
+use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
 use crate::Diagnostic;
 use crate::DiagnosticsError;
 use crate::ModuleSpecifier;
 use crate::ParsedSource;
+use crate::ES_VERSION;
 
 use std::cell::RefCell;
 
@@ -174,7 +175,9 @@ impl ParsedSource {
       Ok(specifier) => FileName::Url(specifier),
       Err(_) => FileName::Custom(self.specifier().to_string()),
     };
-    source_map.new_source_file(file_name, self.source().text().to_string());
+    source_map.new_source_file(file_name, self.text_info().text().to_string());
+    // needs to align with what's done internally in source map
+    assert_eq!(1, self.text_info().range().start.as_byte_pos().0);
     // we need the comments to be mutable, so make it single threaded
     let comments = self.comments().as_single_threaded();
     let globals = Globals::new();
@@ -198,7 +201,11 @@ impl ParsedSource {
           &mut buf,
           Some(&mut src_map_buf),
         ));
-        let config = crate::swc::codegen::Config { minify: false };
+        let config = crate::swc::codegen::Config {
+          minify: false,
+          ascii_only: false,
+          target: ES_VERSION,
+        };
         let mut emitter = crate::swc::codegen::Emitter {
           cfg: config,
           comments: Some(&comments),
@@ -271,23 +278,29 @@ pub fn fold_program(
 ) -> Result<Program> {
   ensure_no_fatal_diagnostics(diagnostics)?;
 
+  let unresolved_mark = Mark::new();
   let jsx_pass = react::react(
     source_map.clone(),
     Some(comments),
     react::Options {
-      pragma: options.jsx_factory.clone(),
-      pragma_frag: options.jsx_fragment_factory.clone(),
+      pragma: Some(options.jsx_factory.clone()),
+      pragma_frag: Some(options.jsx_fragment_factory.clone()),
       // this will use `Object.assign()` instead of the `_extends` helper
       // when spreading props.
-      use_builtins: true,
+      use_builtins: Some(true),
       runtime: if options.jsx_automatic {
         Some(react::Runtime::Automatic)
       } else {
         None
       },
-      development: options.jsx_development,
-      import_source: options.jsx_import_source.clone().unwrap_or_default(),
-      ..Default::default()
+      development: Some(options.jsx_development),
+      import_source: Some(
+        options.jsx_import_source.clone().unwrap_or_default(),
+      ),
+      next: None,
+      refresh: None,
+      throw_if_namespace: None,
+      use_spread: None,
     },
     top_level_mark,
   );
@@ -297,10 +310,11 @@ pub fn fold_program(
       options.var_decl_imports
     ),
     Optional::new(transforms::StripExportsFolder, options.var_decl_imports),
-    ts_resolver(top_level_mark),
+    resolver(unresolved_mark, top_level_mark, true),
     proposals::decorators::decorators(proposals::decorators::Config {
       legacy: true,
-      emit_metadata: options.emit_metadata
+      emit_metadata: options.emit_metadata,
+      use_define_for_class_fields: true,
     }),
     helpers::inject_helpers(),
     Optional::new(
@@ -327,7 +341,7 @@ pub fn fold_program(
   let emitter = DiagnosticCollector::default();
   let diagnostics_cell = emitter.diagnostics_cell.clone();
   let handler = emitter.into_handler();
-  let result = crate::swc::utils::HANDLER.set(&handler, || {
+  let result = crate::swc::common::errors::HANDLER.set(&handler, || {
     helpers::HELPERS.set(&helpers::Helpers::new(false), || {
       program.fold_with(&mut passes)
     })
@@ -467,7 +481,7 @@ export class A {
     "#;
     let module = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -525,7 +539,7 @@ export class A {
     "#;
     let module = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -554,7 +568,7 @@ function App() {
 }"#;
     let module = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Jsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -583,7 +597,7 @@ function App() {
 }"#;
     let module = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Jsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -612,7 +626,7 @@ function App() {
 }"#;
     let module = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Jsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -646,7 +660,7 @@ function App() {
 }"#;
     let module = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Jsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -698,7 +712,7 @@ function App() {
     "#;
     let module = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -706,7 +720,26 @@ function App() {
     })
     .unwrap();
     let code = module.transpile(&EmitOptions::default()).unwrap().text;
-    assert!(code.contains("_applyDecoratedDescriptor("));
+    let expected = r#"var __decorate = this && this.__decorate || function(decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for(var i = decorators.length - 1; i >= 0; i--)if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+function enumerable(value) {
+    return function(_target, _propertyKey, descriptor) {
+        descriptor.enumerable = value;
+    };
+}
+export class A {
+    a() {
+        Test.value;
+    }
+}
+__decorate([
+    enumerable(false)
+], A.prototype, "a", null);"#;
+    assert_eq!(&code[0..expected.len()], expected);
   }
 
   #[test]
@@ -726,7 +759,7 @@ export function g() {
   "#;
     let module = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -755,7 +788,7 @@ export function g() {
 };"#;
     let parsed_source = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -790,7 +823,7 @@ export function g() {
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let parsed_source = parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: SourceTextInfo::from_string(source.to_string()),
+      text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -811,7 +844,7 @@ export function g() {
 
     let p = parse_module(ParseParams {
       specifier: "file:///Users/ib/dev/deno/foo.ts".to_string(),
-      source: SourceTextInfo::from_string(
+      text_info: SourceTextInfo::from_string(
         r#"export default function () {
     return "📣❓";
 }"#

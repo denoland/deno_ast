@@ -3,8 +3,8 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
-use crate::swc::common::BytePos;
-use crate::swc::common::Span;
+use crate::SourceRange;
+use crate::StartSourcePos;
 
 #[derive(Clone, Debug)]
 pub struct TextChange {
@@ -22,16 +22,11 @@ impl TextChange {
     }
   }
 
-  pub fn from_span_and_text(span: Span, new_text: String) -> Self {
-    TextChange::new(span.lo.0 as usize, span.hi.0 as usize, new_text)
-  }
-
   /// Gets an swc span for the provided text change.
-  pub fn as_span(&self) -> Span {
-    Span::new(
-      BytePos(self.range.start as u32),
-      BytePos(self.range.end as u32),
-      Default::default(),
+  pub fn as_source_range(&self, source_start: StartSourcePos) -> SourceRange {
+    SourceRange::new(
+      source_start + self.range.start,
+      source_start + self.range.end,
     )
   }
 }

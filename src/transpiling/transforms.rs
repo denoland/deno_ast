@@ -291,6 +291,7 @@ mod test {
   use crate::swc::visit::Fold;
   use crate::swc::visit::FoldWith;
   use crate::ModuleSpecifier;
+  use crate::ES_VERSION;
   use pretty_assertions::assert_eq;
   use std::rc::Rc;
 
@@ -510,7 +511,11 @@ mod test {
     {
       let writer =
         Box::new(JsWriter::new(source_map.clone(), "\n", &mut buf, None));
-      let config = crate::swc::codegen::Config { minify: false };
+      let config = crate::swc::codegen::Config {
+        minify: false,
+        ascii_only: false,
+        target: ES_VERSION,
+      };
       let mut emitter = crate::swc::codegen::Emitter {
         cfg: config,
         comments: None,

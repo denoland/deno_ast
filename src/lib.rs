@@ -1,5 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+#![deny(clippy::disallowed_methods)]
+#![deny(clippy::disallowed_types)]
+
 #[cfg(feature = "cjs")]
 mod cjs_parse;
 mod comments;
@@ -10,14 +13,14 @@ mod parsing;
 #[cfg(feature = "scopes")]
 mod scopes;
 mod text_changes;
-mod text_encoding;
-mod text_info;
 #[cfg(feature = "transpiling")]
 mod transpiling;
 mod types;
 
 #[cfg(feature = "view")]
-pub use dprint_swc_ecma_ast_view as view;
+pub use dprint_swc_ext::view;
+
+pub use dprint_swc_ext::common::*;
 
 #[cfg(feature = "cjs")]
 pub use cjs_parse::*;
@@ -29,16 +32,15 @@ pub use parsing::*;
 #[cfg(feature = "scopes")]
 pub use scopes::*;
 pub use text_changes::*;
-pub use text_info::*;
 #[cfg(feature = "transpiling")]
 pub use transpiling::*;
 pub use types::*;
 
 pub mod swc {
-  pub use swc_atoms as atoms;
+  pub use dprint_swc_ext::swc::atoms;
+  pub use dprint_swc_ext::swc::common;
   #[cfg(feature = "bundler")]
   pub use swc_bundler as bundler;
-  pub use swc_common as common;
   pub use swc_ecmascript::ast;
   #[cfg(feature = "codegen")]
   pub use swc_ecmascript::codegen;

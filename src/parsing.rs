@@ -28,7 +28,7 @@ pub struct ParseParams {
   /// Specifier of the source text.
   pub specifier: String,
   /// Source text stored in a `SourceTextInfo`.
-  pub source: SourceTextInfo,
+  pub text_info: SourceTextInfo,
   /// Media type of the source text.
   pub media_type: MediaType,
   /// Whether to capture tokens or not.
@@ -58,7 +58,7 @@ pub fn parse_program(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
 ///  deno_ast::ParseParams {
 ///    specifier: "file:///my_file.ts".to_string(),
 ///    media_type: deno_ast::MediaType::TypeScript,
-///    source: deno_ast::SourceTextInfo::from_string("".to_string()),
+///    text_info: deno_ast::SourceTextInfo::from_string("".to_string()),
 ///    capture_tokens: true,
 ///    maybe_syntax: None,
 ///    scope_analysis: false,
@@ -119,11 +119,9 @@ fn parse(
   parse_mode: ParseMode,
   post_process: impl FnOnce(Program) -> Program,
 ) -> Result<ParsedSource, Diagnostic> {
-  let source = params.source;
-  let source_span = source.span();
+  let source = params.text_info;
   let specifier = params.specifier;
-  let input =
-    StringInput::new(source.text_str(), source_span.lo(), source_span.hi());
+  let input = source.as_string_input();
   let media_type = params.media_type;
   let syntax = params
     .maybe_syntax
@@ -137,24 +135,32 @@ fn parse(
     .collect();
   let program = post_process(program);
 
-  let (program, top_level_context) = if params.scope_analysis {
+  let (program, syntax_contexts) = if params.scope_analysis {
     #[cfg(feature = "transforms")]
     {
       use crate::swc::common::Globals;
       use crate::swc::common::Mark;
       use crate::swc::common::SyntaxContext;
-      use crate::swc::transforms::resolver::ts_resolver;
+      use crate::swc::transforms::resolver;
       use crate::swc::visit::FoldWith;
 
       let globals = Globals::new();
       crate::swc::common::GLOBALS.set(&globals, || {
-        // This is used to apply proper "syntax context" to all AST elements.
-        let top_level_mark = Mark::fresh(Mark::root());
-        let program = program.fold_with(&mut ts_resolver(top_level_mark));
-        let top_level_context =
-          SyntaxContext::empty().apply_mark(top_level_mark);
+        let unresolved_mark = Mark::new();
+        let top_level_mark = Mark::new();
+        let program = program.fold_with(&mut resolver(
+          unresolved_mark,
+          top_level_mark,
+          true,
+        ));
 
-        (program, Some(top_level_context))
+        (
+          program,
+          Some(crate::SyntaxContexts {
+            unresolved: SyntaxContext::empty().apply_mark(unresolved_mark),
+            top_level: SyntaxContext::empty().apply_mark(top_level_mark),
+          }),
+        )
       })
     }
     #[cfg(not(feature = "transforms"))]
@@ -170,7 +176,7 @@ fn parse(
     MultiThreadedComments::from_single_threaded(comments),
     Arc::new(program),
     tokens.map(Arc::new),
-    top_level_context,
+    syntax_contexts,
     diagnostics,
   ))
 }
@@ -245,7 +251,6 @@ pub fn get_es_config(jsx: bool) -> EsConfig {
     decorators_before_export: false,
     fn_bind: false,
     import_assertions: true,
-    static_blocks: true,
     private_in_object: true,
     allow_super_outside_method: true,
   }
@@ -271,7 +276,7 @@ mod test {
   fn should_parse_program() {
     let program = parse_program(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -279,7 +284,7 @@ mod test {
     })
     .unwrap();
     assert_eq!(program.specifier(), "my_file.js");
-    assert_eq!(program.source().text_str(), "// 1\n1 + 1\n// 2");
+    assert_eq!(program.text_info().text_str(), "// 1\n1 + 1\n// 2");
     assert_eq!(program.media_type(), MediaType::JavaScript);
     assert!(matches!(
       program.script().body[0],
@@ -295,7 +300,7 @@ mod test {
   fn should_parse_module() {
     let program = parse_module(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -317,7 +322,7 @@ mod test {
 
     let program = parse_module(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string(
+      text_info: SourceTextInfo::from_string(
         "class T { method() { #test in this; } }".to_string(),
       ),
       media_type: MediaType::JavaScript,
@@ -342,7 +347,7 @@ mod test {
   fn should_panic_when_getting_tokens_and_tokens_not_captured() {
     let program = parse_module(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -356,7 +361,7 @@ mod test {
   fn should_handle_parse_error() {
     let diagnostic = parse_module(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string("t u".to_string()),
+      text_info: SourceTextInfo::from_string("t u".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -377,16 +382,24 @@ mod test {
 
   #[test]
   #[should_panic(
-    expected = "Could not get top level context because the source was not parsed with scope analysis."
+    expected = "Could not get syntax context because the source was not parsed with scope analysis."
   )]
   fn should_panic_when_getting_top_level_context_and_scope_analysis_false() {
     get_scope_analysis_false_parsed_source().top_level_context();
   }
 
+  #[test]
+  #[should_panic(
+    expected = "Could not get syntax context because the source was not parsed with scope analysis."
+  )]
+  fn should_panic_when_getting_unresolved_context_and_scope_analysis_false() {
+    get_scope_analysis_false_parsed_source().unresolved_context();
+  }
+
   fn get_scope_analysis_false_parsed_source() -> ParsedSource {
     parse_module(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -400,7 +413,7 @@ mod test {
   fn should_do_scope_analysis() {
     let parsed_source = parse_module(ParseParams {
       specifier: "my_file.js".to_string(),
-      source: SourceTextInfo::from_string(
+      text_info: SourceTextInfo::from_string(
         "export function test() { const test = 2; test; } test()".to_string(),
       ),
       media_type: MediaType::JavaScript,
@@ -431,6 +444,60 @@ mod test {
       assert_eq!(func_decl.ident.to_id(), call_expr_id.to_id());
       // but these shouldn't be
       assert_ne!(func_decl.ident.to_id(), func_decl_inner_expr.to_id());
+    });
+  }
+
+  #[cfg(all(feature = "view", feature = "transforms"))]
+  #[test]
+  fn should_scope_analyze_typescript() {
+    let parsed_source = parse_module(ParseParams {
+      specifier: "my_file.ts".to_string(),
+      text_info: SourceTextInfo::from_string(
+        r#"import type { Foo } from "./foo.ts";
+function _bar(...Foo: Foo) {
+  console.log(Foo);
+}"#
+          .to_string(),
+      ),
+      media_type: MediaType::TypeScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+
+    parsed_source.with_view(|view| {
+      use crate::view::*;
+
+      let named_import_ident =
+        view.children()[0].expect::<ImportDecl>().specifiers[0]
+          .expect::<ImportNamedSpecifier>()
+          .local;
+      let bar_func = view.children()[1].expect::<FnDecl>();
+      let bar_param_rest_pat =
+        bar_func.function.params[0].pat.expect::<RestPat>();
+      let bar_param_ident = bar_param_rest_pat.arg.expect::<BindingIdent>().id;
+      let bar_param_type_ident = bar_param_rest_pat
+        .type_ann
+        .unwrap()
+        .type_ann
+        .expect::<TsTypeRef>()
+        .type_name
+        .expect::<Ident>();
+      let console_log_arg_ident = bar_func.function.body.unwrap().stmts[0]
+        .expect::<ExprStmt>()
+        .expr
+        .expect::<CallExpr>()
+        .args[0]
+        .expr
+        .expect::<Ident>();
+
+      assert_eq!(console_log_arg_ident.to_id(), bar_param_ident.to_id());
+      assert_ne!(console_log_arg_ident.to_id(), named_import_ident.to_id());
+      assert_ne!(console_log_arg_ident.to_id(), bar_param_type_ident.to_id());
+
+      assert_eq!(named_import_ident.to_id(), bar_param_type_ident.to_id());
+      assert_ne!(named_import_ident.to_id(), bar_param_ident.to_id());
     });
   }
 
@@ -488,7 +555,7 @@ mod test {
   fn parse_ts_module(text: &str) -> Result<ParsedSource, Diagnostic> {
     parse_module(ParseParams {
       specifier: "my_file.ts".to_string(),
-      source: SourceTextInfo::from_string(text.to_string()),
+      text_info: SourceTextInfo::from_string(text.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,

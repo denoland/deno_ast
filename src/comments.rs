@@ -1,10 +1,15 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+// Need to enable this for this file in order to
+// implement swc's `Comments` trait
+#![allow(clippy::disallowed_types)]
+
 use crate::swc::common::comments::Comment;
-use crate::swc::common::comments::Comments;
+use crate::swc::common::comments::Comments as SwcComments;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::comments::SingleThreadedCommentsMapInner;
-use crate::swc::common::BytePos;
+use crate::swc::common::BytePos as SwcBytePos;
+use crate::SourcePos;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -19,9 +24,6 @@ struct MultiThreadedCommentsInner {
 /// to support being used in multi-threaded code. This implementation
 /// is immutable and should you need mutability you may create a copy
 /// by converting it to an swc `SingleThreadedComments`.
-///
-/// When using this, you will want to use the
-/// `deno_ast::swc::common::comments::Comments` trait.
 #[derive(Clone, Debug)]
 pub struct MultiThreadedComments {
   inner: Arc<MultiThreadedCommentsInner>,
@@ -72,58 +74,91 @@ impl MultiThreadedComments {
     comments.sort_by_key(|comment| comment.span.lo);
     comments
   }
+
+  pub fn has_leading(&self, pos: SourcePos) -> bool {
+    self.inner.leading.contains_key(&pos.as_byte_pos())
+  }
+
+  pub fn get_leading(&self, pos: SourcePos) -> Option<&Vec<Comment>> {
+    self.inner.leading.get(&pos.as_byte_pos())
+  }
+
+  pub fn has_trailing(&self, pos: SourcePos) -> bool {
+    self.inner.trailing.contains_key(&pos.as_byte_pos())
+  }
+
+  pub fn get_trailing(&self, pos: SourcePos) -> Option<&Vec<Comment>> {
+    self.inner.trailing.get(&pos.as_byte_pos())
+  }
+
+  pub fn as_swc_comments(&self) -> Box<dyn SwcComments> {
+    Box::new(SwcMultiThreadedComments(self.clone()))
+  }
 }
 
-impl Comments for MultiThreadedComments {
-  fn has_leading(&self, pos: BytePos) -> bool {
-    self.inner.leading.contains_key(&pos)
+// Don't want to expose this API easily, so someone should
+// use the `.as_swc_comments()` above to access it.
+struct SwcMultiThreadedComments(MultiThreadedComments);
+
+impl SwcComments for SwcMultiThreadedComments {
+  fn has_leading(&self, pos: SwcBytePos) -> bool {
+    // It's ok to convert these byte positions to source
+    // positions because we received them from swc and
+    // didn't create them on their own.
+    self.0.has_leading(SourcePos::unsafely_from_byte_pos(pos))
   }
 
-  fn get_leading(&self, pos: BytePos) -> Option<Vec<Comment>> {
-    self.inner.leading.get(&pos).cloned()
+  fn get_leading(&self, pos: SwcBytePos) -> Option<Vec<Comment>> {
+    self
+      .0
+      .get_leading(SourcePos::unsafely_from_byte_pos(pos))
+      .cloned()
   }
 
-  fn has_trailing(&self, pos: BytePos) -> bool {
-    self.inner.trailing.contains_key(&pos)
+  fn has_trailing(&self, pos: SwcBytePos) -> bool {
+    self.0.has_trailing(SourcePos::unsafely_from_byte_pos(pos))
   }
 
-  fn get_trailing(&self, pos: BytePos) -> Option<Vec<Comment>> {
-    self.inner.trailing.get(&pos).cloned()
+  fn get_trailing(&self, pos: SwcBytePos) -> Option<Vec<Comment>> {
+    self
+      .0
+      .get_trailing(SourcePos::unsafely_from_byte_pos(pos))
+      .cloned()
   }
 
-  fn add_leading(&self, _pos: BytePos, _cmt: Comment) {
+  fn add_leading(&self, _pos: SwcBytePos, _cmt: Comment) {
     panic_readonly();
   }
 
-  fn add_leading_comments(&self, _pos: BytePos, _comments: Vec<Comment>) {
+  fn add_leading_comments(&self, _pos: SwcBytePos, _comments: Vec<Comment>) {
     panic_readonly();
   }
 
-  fn move_leading(&self, _from: BytePos, _to: BytePos) {
+  fn move_leading(&self, _from: SwcBytePos, _to: SwcBytePos) {
     panic_readonly();
   }
 
-  fn take_leading(&self, _pos: BytePos) -> Option<Vec<Comment>> {
+  fn take_leading(&self, _pos: SwcBytePos) -> Option<Vec<Comment>> {
     panic_readonly();
   }
 
-  fn add_trailing(&self, _pos: BytePos, _cmt: Comment) {
+  fn add_trailing(&self, _pos: SwcBytePos, _cmt: Comment) {
     panic_readonly();
   }
 
-  fn add_trailing_comments(&self, _pos: BytePos, _comments: Vec<Comment>) {
+  fn add_trailing_comments(&self, _pos: SwcBytePos, _comments: Vec<Comment>) {
     panic_readonly();
   }
 
-  fn move_trailing(&self, _from: BytePos, _to: BytePos) {
+  fn move_trailing(&self, _from: SwcBytePos, _to: SwcBytePos) {
     panic_readonly();
   }
 
-  fn take_trailing(&self, _pos: BytePos) -> Option<Vec<Comment>> {
+  fn take_trailing(&self, _pos: SwcBytePos) -> Option<Vec<Comment>> {
     panic_readonly();
   }
 
-  fn add_pure_comment(&self, _pos: BytePos) {
+  fn add_pure_comment(&self, _pos: SwcBytePos) {
     panic_readonly();
   }
 }
@@ -134,30 +169,36 @@ fn panic_readonly() -> ! {
 
 #[cfg(test)]
 mod test {
-  use swc_common::comments::Comments;
-
   use crate::parse_module;
   use crate::swc::common::comments::SingleThreadedComments;
-  use crate::swc::common::BytePos;
   use crate::MediaType;
   use crate::MultiThreadedComments;
   use crate::ParseParams;
   use crate::SourceTextInfo;
+  use crate::StartSourcePos;
 
   #[test]
   fn general_use() {
-    let comments = get_single_threaded_comments("// 1\nt;/* 2 */");
+    let (comments, start_pos) = get_single_threaded_comments("// 1\nt;/* 2 */");
     let comments = MultiThreadedComments::from_single_threaded(comments);
 
     // maps
     assert_eq!(comments.leading_map().len(), 1);
     assert_eq!(
-      comments.leading_map().get(&BytePos(5)).unwrap()[0].text,
+      comments
+        .leading_map()
+        .get(&(start_pos + 5).as_byte_pos())
+        .unwrap()[0]
+        .text,
       " 1"
     );
     assert_eq!(comments.trailing_map().len(), 1);
     assert_eq!(
-      comments.trailing_map().get(&BytePos(7)).unwrap()[0].text,
+      comments
+        .trailing_map()
+        .get(&(start_pos + 7).as_byte_pos())
+        .unwrap()[0]
+        .text,
       " 2 "
     );
 
@@ -168,29 +209,34 @@ mod test {
     assert_eq!(comments_vec[1].text, " 2 ");
 
     // comments trait
-    assert!(comments.has_leading(BytePos(5)));
-    assert!(!comments.has_leading(BytePos(7)));
+    assert!(comments.has_leading(start_pos + 5));
+    assert!(!comments.has_leading(start_pos + 7));
 
-    assert_eq!(comments.get_leading(BytePos(5)).unwrap()[0].text, " 1");
-    assert!(comments.get_leading(BytePos(7)).is_none());
+    assert_eq!(comments.get_leading(start_pos + 5).unwrap()[0].text, " 1");
+    assert!(comments.get_leading(start_pos + 7).is_none());
 
-    assert!(!comments.has_trailing(BytePos(5)));
-    assert!(comments.has_trailing(BytePos(7)));
+    assert!(!comments.has_trailing(start_pos + 5));
+    assert!(comments.has_trailing(start_pos + 7));
 
-    assert!(comments.get_trailing(BytePos(5)).is_none());
-    assert_eq!(comments.get_trailing(BytePos(7)).unwrap()[0].text, " 2 ");
+    assert!(comments.get_trailing(start_pos + 5).is_none());
+    assert_eq!(comments.get_trailing(start_pos + 7).unwrap()[0].text, " 2 ");
   }
 
-  fn get_single_threaded_comments(text: &str) -> SingleThreadedComments {
+  fn get_single_threaded_comments(
+    text: &str,
+  ) -> (SingleThreadedComments, StartSourcePos) {
     let module = parse_module(ParseParams {
       specifier: "file.ts".to_string(),
-      source: SourceTextInfo::from_string(text.to_string()),
+      text_info: SourceTextInfo::from_string(text.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
       scope_analysis: false,
     })
     .expect("expects a module");
-    module.comments().as_single_threaded()
+    (
+      module.comments().as_single_threaded(),
+      module.text_info().range().start,
+    )
   }
 }
