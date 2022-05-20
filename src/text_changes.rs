@@ -3,9 +3,6 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
-use crate::SourceRange;
-use crate::StartSourcePos;
-
 #[derive(Clone, Debug)]
 pub struct TextChange {
   /// Range start to end byte index.
@@ -20,14 +17,6 @@ impl TextChange {
       range: start..end,
       new_text,
     }
-  }
-
-  /// Gets an swc span for the provided text change.
-  pub fn as_source_range(&self, source_start: StartSourcePos) -> SourceRange {
-    SourceRange::new(
-      source_start + self.range.start,
-      source_start + self.range.end,
-    )
   }
 }
 
