@@ -3,7 +3,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use crate::SwcSourceRanged;
+use crate::SourceRangedForSpanned;
 use crate::comments::MultiThreadedComments;
 use crate::swc::ast::Module;
 use crate::swc::ast::Program;

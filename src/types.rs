@@ -6,7 +6,7 @@ use std::fmt;
 use crate::swc::parser::error::SyntaxError;
 use crate::SourceTextInfo;
 use crate::SourceRange;
-use crate::SwcSourceRanged;
+use crate::SourceRangedForSpanned;
 use crate::LineAndColumnDisplay;
 
 /// Parsing diagnostic.

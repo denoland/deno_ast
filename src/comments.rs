@@ -98,19 +98,22 @@ struct SwcMultiThreadedComments(MultiThreadedComments);
 
 impl SwcComments for SwcMultiThreadedComments {
   fn has_leading(&self, pos: SwcBytePos) -> bool {
-    self.0.has_leading(pos.into())
+    // It's ok to convert these byte positions to source
+    // positions because we received them from swc and
+    // didn't create them on their own.
+    self.0.has_leading(SourcePos::unsafely_from_byte_pos(pos))
   }
 
   fn get_leading(&self, pos: SwcBytePos) -> Option<Vec<Comment>> {
-    self.0.get_leading(pos.into()).cloned()
+    self.0.get_leading(SourcePos::unsafely_from_byte_pos(pos)).cloned()
   }
 
   fn has_trailing(&self, pos: SwcBytePos) -> bool {
-    self.0.has_trailing(pos.into())
+    self.0.has_trailing(SourcePos::unsafely_from_byte_pos(pos))
   }
 
   fn get_trailing(&self, pos: SwcBytePos) -> Option<Vec<Comment>> {
-    self.0.get_trailing(pos.into()).cloned()
+    self.0.get_trailing(SourcePos::unsafely_from_byte_pos(pos)).cloned()
   }
 
   fn add_leading(&self, _pos: SwcBytePos, _cmt: Comment) {

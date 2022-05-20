@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::SwcSourceRanged;
+use crate::SourceRangedForSpanned;
 use crate::get_syntax;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::CommentKind;
@@ -42,13 +42,13 @@ pub fn lex(source: &str, media_type: MediaType) -> Vec<LexedItem> {
 
   let mut tokens: Vec<LexedItem> = lexer
     .map(|token| LexedItem {
-      range: token.range().as_std_range(start_pos),
+      range: token.range().as_byte_range(start_pos),
       inner: TokenOrComment::Token(token.token),
     })
     .collect();
 
   tokens.extend(flatten_comments(comments).map(|comment| LexedItem {
-    range: comment.range().as_std_range(start_pos),
+    range: comment.range().as_byte_range(start_pos),
     inner: TokenOrComment::Comment {
       kind: comment.kind,
       text: comment.text,
