@@ -36,10 +36,10 @@ utils = ["swc_ecmascript/utils"]
 anyhow = { version = "1.0.43", optional = true }
 base64 = { version = "0.13.0", optional = true }
 data-url = { version = "0.1.1", optional = true }
-dprint-swc-ext = "0.1.1"
+dprint-swc-ext = { path = "/home/chris/programming/rust/dprint-swc-ext/rs-lib" }
 serde = { version = "1.0.130", features = ["derive"] }
-swc_bundler = { version = "0.147.0", optional = true }
-swc_ecmascript = { version = "0.157.0", features = ["parser"] }
+swc_bundler = { version = "0.150.0", optional = true }
+swc_ecmascript = { version = "0.160.0", features = ["parser"] }
 text_lines = { version = "0.4.1", features = ["serialization"] }
 url = { version = "2.2.2", features = ["serde"], optional = true }
 
