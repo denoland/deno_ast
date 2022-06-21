@@ -5,7 +5,6 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use anyhow::Result;
 
-use crate::swc::transforms::typescript::TSEnumConfig;
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
 use crate::swc::codegen::Node;
@@ -25,6 +24,7 @@ use crate::swc::transforms::proposals;
 use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
+use crate::swc::transforms::typescript::TSEnumConfig;
 use crate::swc::visit::FoldWith;
 use crate::Diagnostic;
 use crate::DiagnosticsError;
