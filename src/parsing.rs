@@ -200,8 +200,8 @@ fn parse_string_input(
   let lexer = Lexer::new(syntax, ES_VERSION, input, Some(&comments));
 
   if capture_tokens {
-    let lexer = swc_ecmascript::parser::Capturing::new(lexer);
-    let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
+    let lexer = crate::swc::parser::Capturing::new(lexer);
+    let mut parser = crate::swc::parser::Parser::new_from(lexer);
     let program = match parse_mode {
       ParseMode::Program => parser.parse_program()?,
       ParseMode::Module => Program::Module(parser.parse_module()?),
@@ -212,7 +212,7 @@ fn parse_string_input(
 
     Ok((comments, program, Some(tokens), errors))
   } else {
-    let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
+    let mut parser = crate::swc::parser::Parser::new_from(lexer);
     let program = match parse_mode {
       ParseMode::Program => parser.parse_program()?,
       ParseMode::Module => Program::Module(parser.parse_module()?),

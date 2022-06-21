@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use swc_ecmascript::transforms::typescript::TSEnumConfig;
 
+use crate::swc::transforms::typescript::TSEnumConfig;
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
 use crate::swc::codegen::Node;

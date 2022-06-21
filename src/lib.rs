@@ -41,20 +41,20 @@ pub mod swc {
   pub use dprint_swc_ext::swc::common;
   #[cfg(feature = "bundler")]
   pub use swc_bundler as bundler;
-  pub use swc_ecmascript::ast;
+  pub use swc_ecma_ast as ast;
   #[cfg(feature = "codegen")]
-  pub use swc_ecmascript::codegen;
+  pub use swc_ecma_codegen as codegen;
   #[cfg(feature = "dep_graph")]
-  pub use swc_ecmascript::dep_graph;
+  pub use swc_ecma_dep_graph as dep_graph;
   #[cfg(feature = "minifier")]
-  pub use swc_ecmascript::minifier;
-  pub use swc_ecmascript::parser;
+  pub use swc_ecma_minifier as minifier;
+  pub use swc_ecma_parser as parser;
   #[cfg(feature = "preset_env")]
-  pub use swc_ecmascript::preset_env;
+  pub use swc_ecma_preset_env as preset_env;
   #[cfg(feature = "transforms")]
-  pub use swc_ecmascript::transforms;
+  pub use swc_ecma_transforms as transforms;
   #[cfg(feature = "utils")]
-  pub use swc_ecmascript::utils;
+  pub use swc_ecma_utils as utils;
   #[cfg(feature = "visit")]
-  pub use swc_ecmascript::visit;
+  pub use swc_ecma_visit as visit;
 }

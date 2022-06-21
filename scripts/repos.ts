@@ -13,6 +13,7 @@ const repoNames = [
   "eszip",
   "deno_lint",
   "dprint-plugin-typescript",
+  "deno_emit",
   "deno",
 ];
 

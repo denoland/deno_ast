@@ -182,13 +182,13 @@ impl fmt::Debug for ParsedSource {
 
 #[cfg(feature = "view")]
 impl ParsedSource {
-  /// Gets a dprint-swc-ecma-ast-view of the module.
+  /// Gets a dprint-swc-ext view of the module.
   ///
   /// This provides a closure to examine an "ast view" of the swc AST
   /// which has more helper methods and allows for going up the ancestors
   /// of a node.
   ///
-  /// Read more: https://github.com/dprint/dprint-swc-ecma-ast-view
+  /// Read more: https://github.com/dprint/dprint-swc-ext
   pub fn with_view<'a, T>(
     &self,
     with_view: impl FnOnce(crate::view::Program<'a>) -> T,
