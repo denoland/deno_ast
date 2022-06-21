@@ -1,6 +1,6 @@
 [package]
 name = "deno_ast"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["the Deno authors"]
 documentation = "https://docs.rs/deno_ast"
 edition = "2021"
@@ -15,33 +15,53 @@ all-features = true
 [features]
 bundler = ["swc_bundler"]
 cjs = ["utils", "visit"]
-codegen = ["swc_ecmascript/codegen"]
-compat = ["swc_ecmascript/compat"]
-dep_graph = ["swc_ecmascript/dep_graph"]
-minifier = ["swc_ecmascript/minifier"]
+codegen = ["swc_ecma_codegen", "swc_ecma_codegen_macros"]
+compat = ["transforms", "swc_ecma_transforms_compat"]
+dep_graph = ["swc_ecma_dep_graph"]
 module_specifier = ["data-url", "url"]
-preset_env = ["swc_ecmascript/preset_env"]
-proposal = ["swc_ecmascript/proposal"]
-react = ["swc_ecmascript/react"]
+preset_env = ["swc_ecma_preset_env"]
+proposal = ["transforms", "swc_ecma_transforms_proposal", "swc_ecma_transforms_classes", "swc_ecma_transforms_macros"]
+react = ["transforms", "swc_ecma_transforms_react", "swc_ecma_transforms_macros"]
 scopes = ["view", "utils", "visit"]
 sourcemap = ["dprint-swc-ext/sourcemap"]
-transforms = ["swc_ecmascript/transforms"]
-transpiling = ["codegen", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "utils", "visit", "anyhow", "base64"]
-typescript = ["swc_ecmascript/typescript"]
+transforms = ["swc_ecma_loader", "swc_ecma_transforms_base"]
+transpiling = ["anyhow", "base64", "codegen", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "utils", "visit"]
+typescript = ["transforms", "swc_ecma_transforms_typescript"]
+utils = ["swc_ecma_utils"]
 view = ["dprint-swc-ext/view"]
-visit = ["swc_ecmascript/visit"]
-utils = ["swc_ecmascript/utils"]
+visit = ["swc_ecma_visit"]
 
 [dependencies]
 anyhow = { version = "1.0.43", optional = true }
 base64 = { version = "0.13.0", optional = true }
 data-url = { version = "0.1.1", optional = true }
-dprint-swc-ext = "0.1.1"
+dprint-swc-ext = "0.2.0"
 serde = { version = "1.0.130", features = ["derive"] }
-swc_bundler = { version = "0.147.0", optional = true }
-swc_ecmascript = { version = "0.157.0", features = ["parser"] }
 text_lines = { version = "0.4.1", features = ["serialization"] }
 url = { version = "2.2.2", features = ["serde"], optional = true }
+
+# swc's version bumping is very buggy and there will often be patch versions
+# published that break our build, so we pin all swc versions to prevent
+# pulling in new versions of swc crates
+swc_atoms = "=0.2.12"
+swc_common = "=0.18.9"
+swc_ecma_ast = "=0.79.0"
+swc_ecma_codegen = { version = "=0.109.1", optional = true }
+swc_ecma_codegen_macros = { version = "=0.7.1", optional = true }
+swc_ecma_dep_graph = { version = "=0.77.0", optional = true }
+swc_ecma_loader = { version = "=0.30.2", optional = true }
+swc_ecma_parser = "=0.105.6"
+swc_ecma_preset_env = { version = "=0.136.0", optional = true }
+swc_ecma_transforms_base = { version = "=0.89.6", optional = true }
+swc_ecma_transforms_classes = { version = "=0.77.0", optional = true }
+swc_ecma_transforms_compat = { version = "=0.104.1", optional = true }
+swc_ecma_transforms_macros = { version = "=0.5.0", optional = true }
+swc_ecma_transforms_proposal = { version = "=0.112.0", optional = true }
+swc_ecma_transforms_react = { version = "=0.120.0", optional = true }
+swc_ecma_transforms_typescript = { version = "=0.124.0", optional = true }
+swc_ecma_utils = { version = "=0.86.2", optional = true }
+swc_ecma_visit = { version = "=0.65.0", optional = true }
+swc_bundler = { version = "=0.155.0", optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1.0.0"

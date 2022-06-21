@@ -10,6 +10,7 @@ crates on an swc version bump.
 - `./deno`
 - `./deno_ast`
 - `./deno_doc`
+- `./deno_emit`
 - `./deno_graph`
 - `./deno_lint`
 - `./dprint-plugin-typescript`

@@ -4,7 +4,6 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use swc_ecmascript::transforms::typescript::TSEnumConfig;
 
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
@@ -21,10 +20,11 @@ use crate::swc::transforms::fixer;
 use crate::swc::transforms::helpers;
 use crate::swc::transforms::hygiene;
 use crate::swc::transforms::pass::Optional;
-use crate::swc::transforms::proposals;
+use crate::swc::transforms::proposal;
 use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
+use crate::swc::transforms::typescript::TSEnumConfig;
 use crate::swc::visit::FoldWith;
 use crate::Diagnostic;
 use crate::DiagnosticsError;
@@ -130,6 +130,8 @@ impl EmitOptions {
         treat_const_enum_as_enum: false,
         ts_enum_is_readonly: false,
       },
+      // we don't suport this, so leave it as-is so it errors
+      preserve_import_export_assign: true,
     }
   }
 }
@@ -311,7 +313,7 @@ pub fn fold_program(
     ),
     Optional::new(transforms::StripExportsFolder, options.var_decl_imports),
     resolver(unresolved_mark, top_level_mark, true),
-    proposals::decorators::decorators(proposals::decorators::Config {
+    proposal::decorators::decorators(proposal::decorators::Config {
       legacy: true,
       emit_metadata: options.emit_metadata,
       use_define_for_class_fields: true,
@@ -495,12 +497,12 @@ export class A {
     D[D["B"] = 1] = "B";
 })(D || (D = {}));
 var N;
-(function(N1) {
+(function(N) {
     let D;
     (function(D) {
         D["A"] = "value";
-    })(D = N1.D || (N1.D = {}));
-    var Value = N1.Value = 5;
+    })(D = N.D || (N.D = {}));
+    var Value = N.Value = 5;
 })(N || (N = {}));
 export class A {
     b;

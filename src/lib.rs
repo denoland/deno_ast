@@ -41,20 +41,39 @@ pub mod swc {
   pub use dprint_swc_ext::swc::common;
   #[cfg(feature = "bundler")]
   pub use swc_bundler as bundler;
-  pub use swc_ecmascript::ast;
+  pub use swc_ecma_ast as ast;
   #[cfg(feature = "codegen")]
-  pub use swc_ecmascript::codegen;
+  pub use swc_ecma_codegen as codegen;
   #[cfg(feature = "dep_graph")]
-  pub use swc_ecmascript::dep_graph;
+  pub use swc_ecma_dep_graph as dep_graph;
   #[cfg(feature = "minifier")]
-  pub use swc_ecmascript::minifier;
-  pub use swc_ecmascript::parser;
+  pub use swc_ecma_minifier as minifier;
+  pub use swc_ecma_parser as parser;
   #[cfg(feature = "preset_env")]
-  pub use swc_ecmascript::preset_env;
+  pub use swc_ecma_preset_env as preset_env;
   #[cfg(feature = "transforms")]
-  pub use swc_ecmascript::transforms;
+  pub mod transforms {
+    pub use self::fixer::fixer;
+    pub use self::hygiene::hygiene;
+    pub use swc_ecma_transforms_base::assumptions::Assumptions;
+    pub use swc_ecma_transforms_base::fixer;
+    pub use swc_ecma_transforms_base::helpers;
+    pub use swc_ecma_transforms_base::hygiene;
+    pub use swc_ecma_transforms_base::pass;
+    pub use swc_ecma_transforms_base::perf;
+    pub use swc_ecma_transforms_base::resolver;
+
+    #[cfg(feature = "compat")]
+    pub use swc_ecma_transforms_compat as compat;
+    #[cfg(feature = "proposal")]
+    pub use swc_ecma_transforms_proposal as proposal;
+    #[cfg(feature = "react")]
+    pub use swc_ecma_transforms_react as react;
+    #[cfg(feature = "typescript")]
+    pub use swc_ecma_transforms_typescript as typescript;
+  }
   #[cfg(feature = "utils")]
-  pub use swc_ecmascript::utils;
+  pub use swc_ecma_utils as utils;
   #[cfg(feature = "visit")]
-  pub use swc_ecmascript::visit;
+  pub use swc_ecma_visit as visit;
 }
