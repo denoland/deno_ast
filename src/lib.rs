@@ -53,6 +53,8 @@ pub mod swc {
   pub use swc_ecma_preset_env as preset_env;
   #[cfg(feature = "transforms")]
   pub mod transforms {
+    pub use self::fixer::fixer;
+    pub use self::hygiene::hygiene;
     pub use swc_ecma_transforms_base::assumptions::Assumptions;
     pub use swc_ecma_transforms_base::fixer;
     pub use swc_ecma_transforms_base::helpers;
@@ -60,8 +62,6 @@ pub mod swc {
     pub use swc_ecma_transforms_base::pass;
     pub use swc_ecma_transforms_base::perf;
     pub use swc_ecma_transforms_base::resolver;
-    pub use self::fixer::fixer;
-    pub use self::hygiene::hygiene;
 
     #[cfg(feature = "compat")]
     pub use swc_ecma_transforms_compat as compat;
