@@ -11,10 +11,9 @@ use deno_ast::parse_module;
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
 use deno_ast::SourceTextInfo;
-use std::sync::Arc;
 
-let source_text = Arc::new("class MyClass {}");
-let text_info = SourceTextInfo::new(source_text);
+let source_text = "class MyClass {}";
+let text_info = SourceTextInfo::new(source_text.into());
 let parsed_source = parse_module(ParseParams {
   specifier: "file:///my_file.ts".to_string(),
   media_type: MediaType::TypeScript,
@@ -31,5 +30,5 @@ parsed_source.tokens();
 // returns the module (AST)
 parsed_source.module();
 // returns the `SourceTextInfo`
-parsed_source.source();
+parsed_source.text_info();
 ```
