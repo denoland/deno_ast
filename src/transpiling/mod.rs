@@ -782,6 +782,28 @@ export function g() {
   }
 
   #[test]
+  fn transpile_bitshift_typescript() {
+    // from https://github.com/denoland/deno/issues/14900
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"
+for (let i = 0; i < testVariable >> 1; i++) callCount++;
+  "#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let code = module.transpile(&Default::default()).unwrap().text;
+    let expected = r#"for(let i = 0; i < testVariable >> 1; i++)callCount++;"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
   fn diagnostic_jsx_spread_instead_of_panic() {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
