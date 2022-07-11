@@ -245,14 +245,15 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
 /// Gets the default `EsConfig` used by `deno_ast` for the provided options.
 pub fn get_es_config(jsx: bool) -> EsConfig {
   EsConfig {
-    export_default_from: true,
-    jsx,
+    allow_return_outside_function: true,
+    allow_super_outside_method: true,
     decorators: false,
     decorators_before_export: false,
+    export_default_from: true,
     fn_bind: false,
     import_assertions: true,
+    jsx,
     private_in_object: true,
-    allow_super_outside_method: true,
   }
 }
 
