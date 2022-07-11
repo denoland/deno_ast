@@ -110,6 +110,7 @@ export class Repos {
     const deno_core = this.getCrate("deno_core");
     const eszip = this.getCrate("eszip");
     const eszipWasm = this.getCrate("eszip_wasm");
+    const deno_emit = this.getCrate("deno_emit");
 
     return [
       [deno_graph, deno_ast],
@@ -120,6 +121,8 @@ export class Repos {
       [eszipWasm, deno_graph],
       [deno_lint, deno_ast],
       [dprint_plugin_typescript, deno_ast],
+      [deno_emit, deno_graph],
+      [deno_emit, deno_ast],
       [deno_core, deno_ast],
       [deno_cli, deno_ast],
       [deno_cli, deno_graph],
@@ -127,6 +130,7 @@ export class Repos {
       [deno_cli, deno_lint],
       [deno_cli, eszip],
       [deno_cli, dprint_plugin_typescript],
+      [deno_cli, deno_emit],
     ] as [Crate, Crate][];
   }
 }

@@ -131,7 +131,8 @@ impl EmitOptions {
         ts_enum_is_readonly: false,
       },
       // we don't suport this, so leave it as-is so it errors
-      import_export_assign_config: typescript::TsImportExportAssignConfig::Preserve,
+      import_export_assign_config:
+        typescript::TsImportExportAssignConfig::Preserve,
     }
   }
 }
