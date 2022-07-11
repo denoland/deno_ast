@@ -24,7 +24,7 @@ use crate::swc::transforms::proposal;
 use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
-use crate::swc::transforms::typescript::TSEnumConfig;
+use crate::swc::transforms::typescript::TsEnumConfig;
 use crate::swc::visit::FoldWith;
 use crate::Diagnostic;
 use crate::DiagnosticsError;
@@ -126,12 +126,13 @@ impl EmitOptions {
       // TODO(bartlomieju): this could be changed to `false` to provide `export {}`
       // in Typescript files without manual changes
       no_empty_export: true,
-      ts_enum_config: TSEnumConfig {
+      ts_enum_config: TsEnumConfig {
         treat_const_enum_as_enum: false,
         ts_enum_is_readonly: false,
       },
       // we don't suport this, so leave it as-is so it errors
-      preserve_import_export_assign: true,
+      import_export_assign_config:
+        typescript::TsImportExportAssignConfig::Preserve,
     }
   }
 }
