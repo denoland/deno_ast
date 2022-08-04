@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Crate, $, Repo } from "./deps.ts";
+import { $, Crate, Repo } from "./deps.ts";
 
 export const rootDir = $.path.resolve(
   $.path.join($.path.fromFileUrl(import.meta.url), "../../../../"),
