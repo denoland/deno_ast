@@ -105,6 +105,22 @@ impl MediaType {
   }
 
   #[cfg(feature = "module_specifier")]
+  pub fn from_specifier_and_headers(
+    specifier: &ModuleSpecifier,
+    maybe_headers: Option<&std::collections::HashMap<String, String>>,
+  ) -> Self {
+    if let Some(headers) = maybe_headers {
+      if let Some(content_type) = headers.get("content-type") {
+        MediaType::from_content_type(specifier, content_type)
+      } else {
+        MediaType::from(specifier)
+      }
+    } else {
+      MediaType::from(specifier)
+    }
+  }
+
+  #[cfg(feature = "module_specifier")]
   pub fn from_content_type<S: AsRef<str>>(
     specifier: &ModuleSpecifier,
     content_type: S,
