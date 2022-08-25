@@ -495,6 +495,14 @@ mod tests {
     for (specifier, expected) in fixtures {
       let actual = resolve_url_or_path(specifier);
       assert_eq!(MediaType::from(&actual), expected);
+
+      #[cfg(feature = "module_specifier")]
+      {
+        assert_eq!(
+          MediaType::from_specifier_and_headers(&actual, None),
+          expected
+        );
+      }
     }
   }
 
@@ -599,11 +607,21 @@ mod tests {
     ];
 
     for (specifier, content_type, expected) in fixtures {
-      let fixture = resolve_url_or_path(specifier);
+      let specifier = resolve_url_or_path(specifier);
       assert_eq!(
-        MediaType::from_content_type(&fixture, content_type),
+        MediaType::from_content_type(&specifier, content_type),
         expected
       );
+
+      #[cfg(feature = "module_specifier")]
+      {
+        let mut headers = std::collections::HashMap::<String, String>::new();
+        headers.insert("content-type".to_string(), content_type.to_string());
+        assert_eq!(
+          MediaType::from_specifier_and_headers(&specifier, Some(&headers)),
+          expected
+        );
+      }
     }
   }
 
