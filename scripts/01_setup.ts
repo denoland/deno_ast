@@ -13,12 +13,12 @@ for (const repo of repos.nonDenoAstRepos()) {
       `Repo ${repo.name} had local changes. Please resolve this.`,
     );
   }
-  await $.logIndent(async () => {
-    $.logStep("Switching to main...");
-    await repo.command("git switch main");
-    $.logStep("Pulling upstream main...");
-    await repo.command("git pull upstream main");
-  });
+  $.logGroup();
+  $.logStep("Switching to main...");
+  await repo.command("git switch main");
+  $.logStep("Pulling upstream main...");
+  await repo.command("git pull upstream main");
+  $.logGroupEnd();
 }
 
 // Update the repos to refer to local versions of each other
