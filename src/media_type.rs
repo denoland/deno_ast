@@ -105,6 +105,22 @@ impl MediaType {
   }
 
   #[cfg(feature = "module_specifier")]
+  pub fn from_specifier_and_headers(
+    specifier: &ModuleSpecifier,
+    maybe_headers: Option<&std::collections::HashMap<String, String>>,
+  ) -> Self {
+    if let Some(headers) = maybe_headers {
+      if let Some(content_type) = headers.get("content-type") {
+        MediaType::from_content_type(specifier, content_type)
+      } else {
+        MediaType::from(specifier)
+      }
+    } else {
+      MediaType::from(specifier)
+    }
+  }
+
+  #[cfg(feature = "module_specifier")]
   pub fn from_content_type<S: AsRef<str>>(
     specifier: &ModuleSpecifier,
     content_type: S,
@@ -479,6 +495,11 @@ mod tests {
     for (specifier, expected) in fixtures {
       let actual = resolve_url_or_path(specifier);
       assert_eq!(MediaType::from(&actual), expected);
+
+      assert_eq!(
+        MediaType::from_specifier_and_headers(&actual, None),
+        expected
+      );
     }
   }
 
@@ -583,9 +604,16 @@ mod tests {
     ];
 
     for (specifier, content_type, expected) in fixtures {
-      let fixture = resolve_url_or_path(specifier);
+      let specifier = resolve_url_or_path(specifier);
       assert_eq!(
-        MediaType::from_content_type(&fixture, content_type),
+        MediaType::from_content_type(&specifier, content_type),
+        expected
+      );
+
+      let mut headers = std::collections::HashMap::<String, String>::new();
+      headers.insert("content-type".to_string(), content_type.to_string());
+      assert_eq!(
+        MediaType::from_specifier_and_headers(&specifier, Some(&headers)),
         expected
       );
     }
