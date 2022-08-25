@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Crate, path, Repo } from "./deps.ts";
+import { $, Crate, Repo } from "./deps.ts";
 
-export const rootDir = path.resolve(
-  path.join(path.fromFileUrl(import.meta.url), "../../../../"),
+export const rootDir = $.path.resolve(
+  $.path.join($.path.fromFileUrl(import.meta.url), "../../../../"),
 );
 
 const repoNames = [
@@ -29,13 +29,16 @@ export class Repos {
   }
 
   static async load({ skipLoadingCrates = false } = {}) {
+    if (!skipLoadingCrates) {
+      $.logStep("Loading repos...");
+    }
     const repos = await Promise.all(repoNames.map((n) => loadRepo(n)));
     return new Repos(repos);
 
     function loadRepo(name: string) {
       return Repo.load({
         name,
-        path: path.join(rootDir, name),
+        path: $.path.join(rootDir, name),
         skipLoadingCrates,
       }).catch((err) => {
         console.error(`Error loading: ${name}`);

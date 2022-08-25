@@ -48,13 +48,7 @@ async function preAction(repo: Repo) {
   switch (repo.name) {
     case "deno_graph":
     case "deno_doc":
-      await repo.runCommandWithOutput([
-        "deno",
-        "run",
-        "-A",
-        "--unstable",
-        "_build.ts",
-      ]);
+      await repo.command("deno task build");
       break;
     default:
       break;
