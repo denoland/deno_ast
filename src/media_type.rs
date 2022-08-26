@@ -253,18 +253,32 @@ impl<'a> From<&'a String> for MediaType {
 
 #[cfg(feature = "module_specifier")]
 #[cfg(not(target_arch = "wasm32"))]
-fn file_specifier_to_path(specifier: &ModuleSpecifier) -> PathBuf {
+fn specifier_to_path(specifier: &ModuleSpecifier) -> PathBuf {
   if let Ok(path) = specifier.to_file_path() {
     path
   } else {
-    PathBuf::from(specifier.path())
+    specifier_path_to_path(specifier)
   }
 }
 
 #[cfg(feature = "module_specifier")]
 #[cfg(target_arch = "wasm32")]
-fn file_specifier_to_path(specifier: &ModuleSpecifier) -> PathBuf {
-  PathBuf::from(specifier.path())
+fn specifier_to_path(specifier: &ModuleSpecifier) -> PathBuf {
+  specifier_path_to_path(specifier)
+}
+
+fn specifier_path_to_path(specifier: &ModuleSpecifier) -> PathBuf {
+  let path = specifier.path();
+  if path.is_empty() {
+    if let Some(domain) = specifier.domain() {
+      // ex. deno://lib.deno.d.ts
+      PathBuf::from(domain)
+    } else {
+      PathBuf::from("")
+    }
+  } else {
+    PathBuf::from(path)
+  }
 }
 
 #[cfg(feature = "module_specifier")]
@@ -273,11 +287,7 @@ impl<'a> From<&'a ModuleSpecifier> for MediaType {
     use data_url::DataUrl;
 
     if specifier.scheme() != "data" {
-      let path = if specifier.scheme() == "file" {
-        file_specifier_to_path(specifier)
-      } else {
-        PathBuf::from(specifier.path())
-      };
+      let path = specifier_to_path(specifier);
       Self::from_path(&path)
     } else if let Ok(data_url) = DataUrl::process(specifier.as_str()) {
       Self::from_content_type(specifier, data_url.mime_type().to_string())
@@ -294,11 +304,7 @@ fn map_js_like_extension(
   specifier: &ModuleSpecifier,
   default: MediaType,
 ) -> MediaType {
-  let path = if specifier.scheme() == "file" {
-    file_specifier_to_path(specifier)
-  } else {
-    PathBuf::from(specifier.path())
-  };
+  let path = specifier_to_path(specifier);
   match path.extension() {
     None => default,
     Some(os_str) => match os_str.to_str() {
@@ -484,6 +490,12 @@ mod tests {
       ("file:///a/b/c.mjs", MediaType::Mjs),
       ("file:///a/b/c.cjs", MediaType::Cjs),
       ("file:///a/b/c.txt", MediaType::Unknown),
+      ("file:///lib.deno.d.ts", MediaType::Dts),
+      ("file:///lib.deno.ts", MediaType::TypeScript),
+      ("file:///deno.js", MediaType::JavaScript),
+      ("deno://lib.deno.d.ts", MediaType::Dts),
+      ("deno://deno.ts", MediaType::TypeScript),
+      ("deno://deno.js", MediaType::JavaScript),
       ("https://deno.land/x/mod.ts", MediaType::TypeScript),
       ("https://deno.land/x/mod.js", MediaType::JavaScript),
       ("https://deno.land/x/mod.txt", MediaType::Unknown),
