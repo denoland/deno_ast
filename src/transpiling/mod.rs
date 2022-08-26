@@ -36,7 +36,7 @@ use std::cell::RefCell;
 
 mod transforms;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub enum ImportsNotUsedAsValues {
   Remove,
   Preserve,
@@ -44,7 +44,9 @@ pub enum ImportsNotUsedAsValues {
 }
 
 /// Options which can be adjusted when transpiling a module.
-#[derive(Debug, Clone)]
+///
+/// This implements `Hash` so the CLI can use it to bust the emit cache.
+#[derive(Debug, Clone, Hash)]
 pub struct EmitOptions {
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
