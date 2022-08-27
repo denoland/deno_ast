@@ -14,7 +14,7 @@ on:
 
 jobs:
   rust:
-    name: deno_ast-ubuntu-latest-publish
+    name: publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
