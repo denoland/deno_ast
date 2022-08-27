@@ -2,15 +2,15 @@ name: publish
 
 on:
   workflow_dispatch:
-  inputs:
-    releaseKind:
-      description: 'Kind of release'
-      default: 'minor'
-      type: choice
-      options:
-        - patch
-        - minor
-      required: true
+    inputs:
+      releaseKind:
+        description: 'Kind of release'
+        default: 'minor'
+        type: choice
+        options:
+          - patch
+          - minor
+        required: true
 
 jobs:
   rust:
