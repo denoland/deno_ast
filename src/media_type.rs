@@ -267,6 +267,7 @@ fn specifier_to_path(specifier: &ModuleSpecifier) -> PathBuf {
   specifier_path_to_path(specifier)
 }
 
+#[cfg(feature = "module_specifier")]
 fn specifier_path_to_path(specifier: &ModuleSpecifier) -> PathBuf {
   let path = specifier.path();
   if path.is_empty() {
