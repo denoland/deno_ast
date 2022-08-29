@@ -32,4 +32,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
           GH_WORKFLOW_ACTOR: ${{ github.actor }}
         run: |
+          git config user.email "denobot@users.noreply.github.com"
+          git config user.name "denobot"
           deno run -A https://raw.githubusercontent.com/denoland/automation/0.14.0/tasks/publish_release.ts --${{github.event.inputs.releaseKind}}
