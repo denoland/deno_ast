@@ -5,14 +5,13 @@ on:
     branches: [main]
   push:
     branches: [main]
+    tags:
+    - '*'
   workflow_dispatch:
 
 jobs:
   rust:
     name: deno_ast-ubuntu-latest-release
-    if: |
-      github.event_name == 'push' ||
-      !startsWith(github.event.pull_request.head.label, 'denoland:')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
