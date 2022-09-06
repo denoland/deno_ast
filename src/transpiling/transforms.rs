@@ -514,6 +514,7 @@ mod test {
       let config = crate::swc::codegen::Config {
         minify: false,
         ascii_only: false,
+        omit_last_semi: false,
         target: ES_VERSION,
       };
       let mut emitter = crate::swc::codegen::Emitter {

@@ -209,6 +209,7 @@ impl ParsedSource {
         let config = crate::swc::codegen::Config {
           minify: false,
           ascii_only: false,
+          omit_last_semi: false,
           target: ES_VERSION,
         };
         let mut emitter = crate::swc::codegen::Emitter {
@@ -610,8 +611,8 @@ function App() {
     })
     .unwrap();
     let code = module.transpile(&EmitOptions::default()).unwrap().text;
-    let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
-/** @jsxImportSource jsx_lib */ function App() {
+    let expected = r#"/** @jsxImportSource jsx_lib */ import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
+function App() {
     return /*#__PURE__*/ _jsx("div", {
         children: /*#__PURE__*/ _jsx(_Fragment, {})
     });

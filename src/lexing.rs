@@ -2,6 +2,8 @@
 
 use std::rc::Rc;
 
+use swc_atoms::Atom;
+
 use crate::get_syntax;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::CommentKind;
@@ -14,13 +16,13 @@ use crate::SourceRangedForSpanned;
 use crate::StartSourcePos;
 use crate::ES_VERSION;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TokenOrComment {
   Token(Token),
-  Comment { kind: CommentKind, text: String },
+  Comment { kind: CommentKind, text: Atom },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LexedItem {
   /// Range of the token or comment.
   pub range: std::ops::Range<usize>,
