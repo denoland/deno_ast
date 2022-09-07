@@ -9,10 +9,10 @@ export const rootDir = $.path.resolve(
 const repoNames = [
   "deno_ast",
   "deno_graph",
-  "deno_doc",
-  "eszip",
   "deno_lint",
   "dprint-plugin-typescript",
+  "deno_doc",
+  "eszip",
   "deno_emit",
   "deno",
 ];
@@ -57,7 +57,11 @@ export class Repos {
       if (repo.name === "deno") {
         crates.push(repo.getCrate("deno"));
       } else {
-        crates.push(...repo.crates.filter((c) => c.name !== "eszip_wasm"));
+        crates.push(
+          ...repo.crates.filter((c) =>
+            c.name !== "eszip_wasm" && c.name !== "deno_emit_wasm"
+          ),
+        );
       }
     }
     return crates;
@@ -97,10 +101,16 @@ export class Repos {
 
   async revertLocalSource() {
     for (
-      const [workingCrate, otherCrate] of this.#getLocalSourceRelationships()
+      const [workingCrate, depCrate] of this.#getLocalSourceRelationships()
     ) {
-      await workingCrate.revertLocalSource(otherCrate);
+      await workingCrate.revertLocalSource(depCrate);
     }
+  }
+
+  getCrateLocalSourceCrates(crate: Crate) {
+    return this.#getLocalSourceRelationships()
+      .filter(([workingCrate]) => workingCrate === crate)
+      .map(([_workingCrate, depCrate]) => depCrate);
   }
 
   #getLocalSourceRelationships() {
