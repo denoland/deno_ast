@@ -538,7 +538,10 @@ function _bar(...Foo: Foo) {
   #[test]
   fn should_diganotic_when_var_stmts_sep_by_comma() {
     let diagnostic = parse_for_diagnostic("let a = 0, let b = 1;");
-    assert_eq!(diagnostic.message(), "'implements', 'interface', 'let', 'package', 'private', 'protected',  'public', 'static', or 'yield' cannot be used as an identifier in strict mode");
+    assert_eq!(
+      diagnostic.message(),
+      "`let` cannot be used as an identifier in strict mode"
+    );
   }
 
   #[test]
