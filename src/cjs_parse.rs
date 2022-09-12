@@ -3,6 +3,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::swc::ast::*;
 use crate::swc::atoms::JsWord;
 use crate::swc::visit::noop_visit_type;
@@ -10,7 +13,7 @@ use crate::swc::visit::Visit;
 use crate::swc::visit::VisitWith;
 use crate::ParsedSource;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CjsAnalysis {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
