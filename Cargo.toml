@@ -33,36 +33,36 @@ visit = ["swc_ecma_visit"]
 
 [dependencies]
 anyhow = { version = "1.0.64", optional = true }
-base64 = { version = "0.13.0", optional = true }
-data-url = { version = "0.1.1", optional = true }
-dprint-swc-ext = "0.4.0"
+base64 = { version = "0.13.1", optional = true }
+data-url = { version = "0.2.0", optional = true }
+dprint-swc-ext = "0.5.0"
 serde = { version = "1.0.144", features = ["derive"] }
 text_lines = { version = "0.6.0", features = ["serialization"] }
-url = { version = "2.2.2", features = ["serde"], optional = true }
+url = { version = "2.3.1", features = ["serde"], optional = true }
 
 # swc's version bumping is very buggy and there will often be patch versions
 # published that break our build, so we pin all swc versions to prevent
 # pulling in new versions of swc crates
-swc_atoms = "=0.4.10"
-swc_common = "=0.27.13"
-swc_ecma_ast = "=0.90.17"
-swc_ecma_codegen = { version = "=0.123.2", optional = true }
+swc_atoms = "=0.4.23"
+swc_common = "=0.29.10"
+swc_ecma_ast = "=0.94.14"
+swc_ecma_codegen = { version = "=0.127.23", optional = true }
 swc_ecma_codegen_macros = { version = "=0.7.1", optional = true }
-swc_ecma_dep_graph = { version = "=0.90.1", optional = true }
-swc_ecma_loader = { version = "=0.39.4", optional = true }
-swc_ecma_parser = "=0.118.7"
-swc_ecma_preset_env = { version = "=0.167.1", optional = true }
-swc_ecma_transforms_base = { version = "=0.106.4", optional = true }
-swc_ecma_transforms_classes = { version = "=0.95.1", optional = true }
-swc_ecma_transforms_compat = { version = "=0.129.1", optional = true }
+swc_ecma_dep_graph = { version = "=0.94.19", optional = true }
+swc_ecma_loader = { version = "=0.41.11", optional = true }
+swc_ecma_parser = "=0.122.19"
+swc_ecma_preset_env = { version = "=0.174.26", optional = true }
+swc_ecma_transforms_base = { version = "=0.111.33", optional = true }
+swc_ecma_transforms_classes = { version = "=0.100.32", optional = true }
+swc_ecma_transforms_compat = { version = "=0.136.20", optional = true }
 swc_ecma_transforms_macros = { version = "=0.5.0", optional = true }
-swc_ecma_transforms_proposal = { version = "=0.137.1", optional = true }
-swc_ecma_transforms_react = { version = "=0.148.1", optional = true }
-swc_ecma_transforms_typescript = { version = "=0.152.1", optional = true }
-swc_ecma_utils = { version = "=0.101.3", optional = true }
-swc_ecma_visit = { version = "=0.76.7", optional = true }
-swc_bundler = { version = "=0.185.5", optional = true }
+swc_ecma_transforms_proposal = { version = "=0.144.20", optional = true }
+swc_ecma_transforms_react = { version = "=0.155.21", optional = true }
+swc_ecma_transforms_typescript = { version = "=0.159.22", optional = true }
+swc_ecma_utils = { version = "=0.105.24", optional = true }
+swc_ecma_visit = { version = "=0.80.14", optional = true }
+swc_bundler = { version = "=0.192.45", optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1.0.0"
-serde_json = { version = "1.0.85", features = ["preserve_order"] }
+serde_json = { version = "1.0.87", features = ["preserve_order"] }
