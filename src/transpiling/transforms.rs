@@ -75,7 +75,7 @@ impl Fold for ImportDeclsToVarDeclsFolder {
               _ => None,
             });
 
-        ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
+        ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(VarDecl {
           span: DUMMY_SP,
           kind: VarDeclKind::Const,
           declare: false,
@@ -106,7 +106,7 @@ impl Fold for ImportDeclsToVarDeclsFolder {
 
             decls
           },
-        })))
+        }))))
       }
       _ => module_item,
     }
@@ -226,7 +226,7 @@ fn create_key_value(key: String, value: String) -> swc_ast::ObjectPatProp {
 
 fn create_await_import_expr(
   module_specifier: &str,
-  maybe_asserts: Option<swc_ast::ObjectLit>,
+  maybe_asserts: Option<Box<swc_ast::ObjectLit>>,
 ) -> Box<swc_ast::Expr> {
   use swc_ast::*;
   let mut args = vec![ExprOrSpread {
@@ -247,7 +247,7 @@ fn create_await_import_expr(
         props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
           KeyValueProp {
             key: PropName::Ident(create_ident("assert".to_string())),
-            value: Box::new(Expr::Object(asserts)),
+            value: Box::new(Expr::Object(*asserts)),
           },
         )))],
       })),
