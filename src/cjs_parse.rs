@@ -258,7 +258,7 @@ impl Visit for CjsVisitor {
         _ => {}
       };
     } else if let Some(left_member) = left_expr.as_member() {
-      if is_module_exports_or_exports(&*left_member.obj) {
+      if is_module_exports_or_exports(&left_member.obj) {
         // check for:
         // * `exports["something"] = other`
         // * `exports.something = other`
