@@ -1235,4 +1235,15 @@ mod test {
 
     tester.assert_reexports(vec!["./foo"]);
   }
+
+  #[test]
+  fn multiple_assigns_in_statement() {
+    let tester = parse_cjs(
+      r#"
+      exports.x = exports.extract = require('./lib/extract.js')
+      "#,
+    );
+
+    tester.assert_exports(vec!["x", "extract"]);
+  }
 }
