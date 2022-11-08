@@ -264,6 +264,9 @@ impl Visit for CjsVisitor {
         // * `exports.something = other`
         if let Some(prop_name) = get_member_prop_text(&left_member.prop) {
           self.add_export(prop_name);
+          if let Some(right_expr) = assign_expr.right.as_assign() {
+            self.visit_assign_expr(right_expr);
+          }
         } else if let Some(right_member) = assign_expr.right.as_member() {
           // check for:
           // * `exports[key] = _something[key];
@@ -1234,5 +1237,16 @@ mod test {
     );
 
     tester.assert_reexports(vec!["./foo"]);
+  }
+
+  #[test]
+  fn multiple_assigns_in_statement() {
+    let tester = parse_cjs(
+      r#"
+      exports.x = exports.extract = require('./lib/extract.js')
+      "#,
+    );
+
+    tester.assert_exports(vec!["x", "extract"]);
   }
 }
