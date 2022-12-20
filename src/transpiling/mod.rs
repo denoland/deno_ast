@@ -851,12 +851,12 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   #[test]
   fn diagnostic_nullish_coalescing_with_logical_op() {
     assert_eq!(
-      get_diagnostic("null || undefined ?? 'foo'"),
-      "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:17"
+      get_diagnostic("null || undefined ?? 'foo';"),
+      "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:1"
     );
     assert_eq!(
-      get_diagnostic("null && undefined ?? 'foo'"),
-      "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:17"
+      get_diagnostic("null && undefined ?? 'foo';"),
+      "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:1"
     );
   }
 
