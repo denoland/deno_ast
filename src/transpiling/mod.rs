@@ -441,6 +441,8 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
         SyntaxError::TS1109 |
         // unterminated string literal
         SyntaxError::UnterminatedStrLit |
+        // nullish coalescing with logical op
+        SyntaxError::NullishCoalescingWithLogicalOp |
         // missing a token
         SyntaxError::Expected(_, _)
   )
@@ -843,6 +845,18 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     assert_eq!(
       get_diagnostic("function test() {"),
       "Expected '}', got '<eof>' at https://deno.land/x/mod.ts:1:17"
+    );
+  }
+
+  #[test]
+  fn diagnostic_nullish_coalescing_with_logical_op() {
+    assert_eq!(
+      get_diagnostic("null || undefined ?? 'foo';"),
+      "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:1"
+    );
+    assert_eq!(
+      get_diagnostic("null && undefined ?? 'foo';"),
+      "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:1"
     );
   }
 
