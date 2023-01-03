@@ -514,10 +514,7 @@ function _bar(...Foo: Foo) {
       "test;\n",
       r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
     )).err().unwrap();
-    assert_eq!(
-      diagnostic.message(),
-      "Expression expected",
-    );
+    assert_eq!(diagnostic.message(), "Expression expected",);
   }
 
   #[test]
