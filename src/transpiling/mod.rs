@@ -810,7 +810,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   }
 
   #[test]
-  fn diagnostic_jsx_spread_instead_of_panic() {
+  fn jsx_spread_works() {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = r#"const A = () => {
@@ -825,9 +825,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       scope_analysis: false,
     })
     .unwrap();
-    let err = parsed_source.transpile(&Default::default()).err().unwrap();
-
-    assert_eq!(err.to_string(), "Spread children are not supported in React. at https://deno.land/x/mod.ts:2:15");
+    assert!(parsed_source.transpile(&Default::default()).is_ok());
   }
 
   #[test]
