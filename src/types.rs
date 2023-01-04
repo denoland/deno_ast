@@ -73,6 +73,11 @@ impl fmt::Display for Diagnostic {
       // tested this out a lot
       std::panic::catch_unwind(|| {
         get_range_text_highlight(&self.source, self.range)
+          .lines()
+          // indent two spaces
+          .map(|l| format!("  {}", l))
+          .collect::<Vec<_>>()
+          .join("\n")
       })
       .unwrap_or_else(|err| {
         format!("Bug. Please report this issue: {:?}", err)
@@ -100,6 +105,8 @@ impl fmt::Display for DiagnosticsError {
   }
 }
 
+/// Code in this function was adapted from:
+/// https://github.com/dprint/dprint/blob/a026a1350d27a61ea18207cb31897b18eaab51a1/crates/core/src/formatting/utils/string_utils.rs#L62
 fn get_range_text_highlight(
   source: &SourceTextInfo,
   byte_range: SourceRange,
@@ -139,10 +146,14 @@ fn get_range_text_highlight(
     get_text_and_error_range(source, byte_range);
 
   let mut result = String::new();
+  // don't use .lines() here because it will trim any empty
+  // lines, which might for some reason be part of the range
   let lines = sub_text.split('\n').collect::<Vec<_>>();
   let line_count = lines.len();
-  for (i, line) in lines.into_iter().enumerate() {
-    let line = line.trim(); // trim any \r
+  for (i, mut line) in lines.into_iter().enumerate() {
+    if line.ends_with('\r') {
+      line = &line[..line.len() - 1]; // trim the \r
+    }
     let is_last_line = i == line_count - 1;
     // don't show all the lines if there are more than 3 lines
     if i > 2 && !is_last_line {
@@ -299,6 +310,18 @@ mod test {
         "...ong line testing0 testing1 testing2 testing3 testing4 testing5 testing6 testing7\n",
         "                                                                                  ~",
       ),
+    );
+  }
+
+  #[test]
+  fn range_highlight_whitespace_start_line() {
+    let text = SourceTextInfo::from_string("  testing\r\ntest".to_string());
+    assert_eq!(
+      get_range_text_highlight(
+        &text,
+        SourceRange::new(text.line_end(0) - 1, text.line_end(1))
+      ),
+      concat!("  testing\n", "        ~\n", "test\n", "~~~~",),
     );
   }
 }

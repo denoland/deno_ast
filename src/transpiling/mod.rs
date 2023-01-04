@@ -829,16 +829,16 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     assert_eq!(get_diagnostic("077"), concat!(
       "Legacy octal literals are not available when targeting ECMAScript 5 and higher ",
       "at https://deno.land/x/mod.ts:1:1\n\n",
-      "077\n",
-      "~~~\n\n",
+      "  077\n",
+      "  ~~~\n\n",
       "Legacy octal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-      "077\n",
-      "~~~",
+      "  077\n",
+      "  ~~~",
     ));
     assert_eq!(get_diagnostic("099"), concat!(
       "Legacy decimal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-      "099\n",
-      "~~~",
+      "  099\n",
+      "  ~~~",
     ));
   }
 
@@ -848,8 +848,8 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       get_diagnostic("function test() {"),
       concat!(
         "Expected '}', got '<eof>' at https://deno.land/x/mod.ts:1:17\n\n",
-        "function test() {\n",
-        "                ~",
+        "  function test() {\n",
+        "                  ~",
       ),
     );
   }
@@ -860,16 +860,16 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       get_diagnostic("null || undefined ?? 'foo';"),
       concat!(
         "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:1\n\n",
-        "null || undefined ?? 'foo';\n",
-        "~~~~~~~~~~~~~~~~~",
+        "  null || undefined ?? 'foo';\n",
+        "  ~~~~~~~~~~~~~~~~~",
       )
     );
     assert_eq!(
       get_diagnostic("null && undefined ?? 'foo';"),
       concat!(
         "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:1\n\n",
-        "null && undefined ?? 'foo';\n",
-        "~~~~~~~~~~~~~~~~~",
+        "  null && undefined ?? 'foo';\n",
+        "  ~~~~~~~~~~~~~~~~~",
       ),
     );
   }
