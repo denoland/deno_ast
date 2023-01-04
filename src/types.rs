@@ -75,7 +75,13 @@ impl fmt::Display for Diagnostic {
         get_range_text_highlight(&self.source, self.range)
           .lines()
           // indent two spaces
-          .map(|l| format!("  {}", l))
+          .map(|l| {
+            if l.trim().is_empty() {
+              String::new()
+            } else {
+              format!("  {}", l)
+            }
+          })
           .collect::<Vec<_>>()
           .join("\n")
       })
