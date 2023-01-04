@@ -226,7 +226,7 @@ impl ParsedSource {
         let mut buf = Vec::new();
         source_map
           .build_source_map_with_config(
-            &mut src_map_buf,
+            &src_map_buf,
             None,
             source_map_config,
           )
