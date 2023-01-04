@@ -18,6 +18,9 @@ for (const repo of nonDenoRepos) {
   if (!await repo.hasLocalChanges()) {
     continue;
   }
+  if (repo.name !== "deno_ast") {
+    await repo.loadCrates();
+  }
   if (
     confirm(
       `Branch for ${repo.name}? (Note: do this after the dependency crates have PUBLISHED)`,
@@ -25,9 +28,6 @@ for (const repo of nonDenoRepos) {
   ) {
     await bumpDeps(repo);
     await preAction(repo);
-    if (repo.name !== "deno_ast") {
-      await repo.loadCrates();
-    }
     for (const crate of repo.crates) {
       await crate.cargoCheck();
     }
@@ -56,6 +56,7 @@ async function preAction(repo: Repo) {
   switch (repo.name) {
     case "deno_graph":
     case "deno_doc":
+    case "deno_emit":
     case "eszip":
       await repo.command("deno task build");
       break;

@@ -225,11 +225,7 @@ impl ParsedSource {
       {
         let mut buf = Vec::new();
         source_map
-          .build_source_map_with_config(
-            &mut src_map_buf,
-            None,
-            source_map_config,
-          )
+          .build_source_map_with_config(&src_map_buf, None, source_map_config)
           .to_writer(&mut buf)?;
 
         if options.inline_source_map {
@@ -810,7 +806,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   }
 
   #[test]
-  fn diagnostic_jsx_spread_instead_of_panic() {
+  fn jsx_spread_works() {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = r#"const A = () => {
@@ -825,9 +821,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       scope_analysis: false,
     })
     .unwrap();
-    let err = parsed_source.transpile(&Default::default()).err().unwrap();
-
-    assert_eq!(err.to_string(), "Spread children are not supported in React. at https://deno.land/x/mod.ts:2:15");
+    assert!(parsed_source.transpile(&Default::default()).is_ok());
   }
 
   #[test]

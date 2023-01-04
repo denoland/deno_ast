@@ -423,7 +423,7 @@ mod tests {
   #[cfg(feature = "module_specifier")]
   fn resolve_path(path_str: &str) -> ModuleSpecifier {
     let path = std::env::current_dir().unwrap().join(path_str);
-    let path = normalize_path(&path);
+    let path = normalize_path(path);
     ModuleSpecifier::from_file_path(path).expect("Invalid path.")
   }
 

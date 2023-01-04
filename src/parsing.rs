@@ -253,7 +253,6 @@ pub fn get_es_config(jsx: bool) -> EsConfig {
     fn_bind: false,
     import_assertions: true,
     jsx,
-    private_in_object: true,
   }
 }
 
@@ -515,14 +514,7 @@ function _bar(...Foo: Foo) {
       "test;\n",
       r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
     )).err().unwrap();
-    assert_eq!(
-      diagnostic.message(),
-      concat!(
-        "Unexpected token `;`. Expected this, import, async, function, [ for array literal, ",
-        "{ for object literal, @ for decorator, function, class, null, true, false, number, bigint, string, ",
-        "regexp, ` for template literal, (, or an identifier",
-      )
-    );
+    assert_eq!(diagnostic.message(), "Expression expected",);
   }
 
   #[test]
