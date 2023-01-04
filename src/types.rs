@@ -105,6 +105,8 @@ impl fmt::Display for DiagnosticsError {
   }
 }
 
+/// Code in this function was adapted from:
+/// https://github.com/dprint/dprint/blob/a026a1350d27a61ea18207cb31897b18eaab51a1/crates/core/src/formatting/utils/string_utils.rs#L62
 fn get_range_text_highlight(
   source: &SourceTextInfo,
   byte_range: SourceRange,
