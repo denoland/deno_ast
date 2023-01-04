@@ -128,10 +128,12 @@ fn parse(
     .unwrap_or_else(|| get_syntax(media_type));
   let (comments, program, tokens, errors) =
     parse_string_input(input, syntax, params.capture_tokens, parse_mode)
-      .map_err(|err| Diagnostic::from_swc_error(err, &specifier, &source))?;
+      .map_err(|err| {
+        Diagnostic::from_swc_error(err, &specifier, source.clone())
+      })?;
   let diagnostics = errors
     .into_iter()
-    .map(|err| Diagnostic::from_swc_error(err, &specifier, &source))
+    .map(|err| Diagnostic::from_swc_error(err, &specifier, source.clone()))
     .collect();
   let program = post_process(program);
 
@@ -371,7 +373,7 @@ mod test {
     .unwrap();
     assert_eq!(diagnostic.specifier, "my_file.js".to_string());
     assert_eq!(
-      diagnostic.display_position,
+      diagnostic.display_position(),
       LineAndColumnDisplay {
         line_number: 1,
         column_number: 3,
