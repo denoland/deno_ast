@@ -216,7 +216,10 @@ fn get_range_text_highlight(
     result.push('\n');
 
     result.push_str(&" ".repeat(error_start_char_index));
-    result.push_str(&"~".repeat(error_end_char_index - error_start_char_index));
+    result.push_str(&"~".repeat(std::cmp::max(
+      1, // this means it's the end of the line, so display a single ~
+      error_end_char_index - error_start_char_index,
+    )));
   }
   result
 }
@@ -328,6 +331,22 @@ mod test {
         SourceRange::new(text.line_end(0) - 1, text.line_end(1))
       ),
       concat!("  testing\n", "        ~\n", "test\n", "~~~~",),
+    );
+  }
+
+  #[test]
+  fn range_end_of_line() {
+    let text =
+      SourceTextInfo::from_string("  testingtestingtestingtesting".to_string());
+    assert_eq!(
+      get_range_text_highlight(
+        &text,
+        SourceRange::new(text.line_end(0), text.line_end(0))
+      ),
+      concat!(
+        "  testingtestingtestingtesting\n",
+        "                              ~",
+      ),
     );
   }
 }
