@@ -225,11 +225,7 @@ impl ParsedSource {
       {
         let mut buf = Vec::new();
         source_map
-          .build_source_map_with_config(
-            &src_map_buf,
-            None,
-            source_map_config,
-          )
+          .build_source_map_with_config(&src_map_buf, None, source_map_config)
           .to_writer(&mut buf)?;
 
         if options.inline_source_map {
