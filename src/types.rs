@@ -43,7 +43,7 @@ impl Diagnostic {
 }
 
 impl Diagnostic {
-  pub(crate) fn from_swc_error(
+  pub fn from_swc_error(
     err: crate::swc::parser::error::Error,
     specifier: &str,
     source: SourceTextInfo,
@@ -75,7 +75,13 @@ impl fmt::Display for Diagnostic {
         get_range_text_highlight(&self.source, self.range)
           .lines()
           // indent two spaces
-          .map(|l| format!("  {}", l))
+          .map(|l| {
+            if l.trim().is_empty() {
+              String::new()
+            } else {
+              format!("  {}", l)
+            }
+          })
           .collect::<Vec<_>>()
           .join("\n")
       })
@@ -210,7 +216,10 @@ fn get_range_text_highlight(
     result.push('\n');
 
     result.push_str(&" ".repeat(error_start_char_index));
-    result.push_str(&"~".repeat(error_end_char_index - error_start_char_index));
+    result.push_str(&"~".repeat(std::cmp::max(
+      1, // this means it's the end of the line, so display a single ~
+      error_end_char_index - error_start_char_index,
+    )));
   }
   result
 }
@@ -322,6 +331,22 @@ mod test {
         SourceRange::new(text.line_end(0) - 1, text.line_end(1))
       ),
       concat!("  testing\n", "        ~\n", "test\n", "~~~~",),
+    );
+  }
+
+  #[test]
+  fn range_end_of_line() {
+    let text =
+      SourceTextInfo::from_string("  testingtestingtestingtesting".to_string());
+    assert_eq!(
+      get_range_text_highlight(
+        &text,
+        SourceRange::new(text.line_end(0), text.line_end(0))
+      ),
+      concat!(
+        "  testingtestingtestingtesting\n",
+        "                              ~",
+      ),
     );
   }
 }
