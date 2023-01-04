@@ -73,6 +73,11 @@ impl fmt::Display for Diagnostic {
       // tested this out a lot
       std::panic::catch_unwind(|| {
         get_range_text_highlight(&self.source, self.range)
+          .lines()
+          // indent two spaces
+          .map(|l| format!("  {}", l))
+          .collect::<Vec<_>>()
+          .join("\n")
       })
       .unwrap_or_else(|err| {
         format!("Bug. Please report this issue: {:?}", err)

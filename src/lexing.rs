@@ -2,9 +2,8 @@
 
 use std::rc::Rc;
 
-use swc_atoms::Atom;
-
 use crate::get_syntax;
+use crate::swc::atoms::Atom;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::CommentKind;
 use crate::swc::common::comments::SingleThreadedComments;
