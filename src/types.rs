@@ -43,7 +43,7 @@ impl Diagnostic {
 }
 
 impl Diagnostic {
-  pub(crate) fn from_swc_error(
+  pub fn from_swc_error(
     err: crate::swc::parser::error::Error,
     specifier: &str,
     source: SourceTextInfo,
