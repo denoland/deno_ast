@@ -318,7 +318,7 @@ pub fn fold_program(
       emit_metadata: options.emit_metadata,
       use_define_for_class_fields: true,
     }),
-    helpers::inject_helpers(),
+    helpers::inject_helpers(top_level_mark),
     Optional::new(
       typescript::strip::strip_with_config(
         options.as_typescript_strip_config(),
