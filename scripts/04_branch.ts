@@ -1,15 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import { Repo } from "./deps.ts";
 import { Repos } from "./repos.ts";
 
-const repos = await Repos.load({
-  // Delay loading crates until they're ready to be branched because
-  // they may have dependencies that aren't published yet.
-  skipLoadingCrates: true,
-});
+const repos = await Repos.load();
 const denoRepo = repos.get("deno");
-await repos.get("deno_ast").loadCrates();
 const deno_ast = repos.getCrate("deno_ast");
 const nonDenoRepos = repos.getRepos().filter((c) => c.name !== "deno");
 
@@ -17,9 +12,6 @@ const nonDenoRepos = repos.getRepos().filter((c) => c.name !== "deno");
 for (const repo of nonDenoRepos) {
   if (!await repo.hasLocalChanges()) {
     continue;
-  }
-  if (repo.name !== "deno_ast") {
-    await repo.loadCrates();
   }
   if (
     confirm(

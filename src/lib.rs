@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 #![deny(clippy::disallowed_methods)]
 #![deny(clippy::disallowed_types)]
@@ -46,11 +46,7 @@ pub mod swc {
   pub use swc_ecma_codegen as codegen;
   #[cfg(feature = "dep_graph")]
   pub use swc_ecma_dep_graph as dep_graph;
-  #[cfg(feature = "minifier")]
-  pub use swc_ecma_minifier as minifier;
   pub use swc_ecma_parser as parser;
-  #[cfg(feature = "preset_env")]
-  pub use swc_ecma_preset_env as preset_env;
   #[cfg(feature = "transforms")]
   pub mod transforms {
     pub use self::fixer::fixer;
