@@ -54,7 +54,7 @@ impl MediaType {
   ///
   /// *NOTE* This is defined in TypeScript as a string based enum.  Changes to
   /// that enum in TypeScript should be reflected here.
-  pub fn as_ts_extension(&self) -> &str {
+  pub fn as_ts_extension(&self) -> &'static str {
     match self {
       Self::JavaScript => ".js",
       Self::Jsx => ".jsx",
@@ -81,6 +81,35 @@ impl MediaType {
       // for mapping purposes, though in reality, it is unlikely to ever be
       // passed to the compiler.
       Self::Unknown => ".js",
+    }
+  }
+
+  /// Returns `None` only for `MediaType::Unknown`.
+  /// There is no 1:1 mapping between content types and MediaType.
+  /// Specifically, for some `MediaType m`
+  /// ```ignore
+  /// MediaType::from_content_type(module_specifier, m.as_content_type()) != m
+  /// ```
+  pub fn as_content_type(&self) -> Option<&'static str> {
+    // https://www.iana.org/assignments/media-types/media-types.xhtml
+    // Web-specific with extensions: https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types
+    match self {
+      Self::JavaScript => Some("text/javascript"),
+      Self::Jsx => Some("text/jsx"),
+      Self::Mjs => Some("text/javascript"),
+      Self::Cjs => Some("text/javascript"),
+      Self::TypeScript => Some("text/typescript"),
+      Self::Mts => Some("text/typescript"),
+      Self::Cts => Some("text/typescript"),
+      Self::Dts => Some("text/typescript"),
+      Self::Dmts => Some("text/typescript"),
+      Self::Dcts => Some("text/typescript"),
+      Self::Tsx => Some("text/tsx"),
+      Self::Json => Some("application/json"),
+      Self::Wasm => Some("application/wasm"),
+      Self::TsBuildInfo => Some("application/json"),
+      Self::SourceMap => Some("application/json"),
+      Self::Unknown => None,
     }
   }
 
@@ -160,6 +189,30 @@ impl MediaType {
     }
   }
 
+  /// Supports file extensions that are made up of multiple extensions,
+  /// eg. "ts" resolves to TypeScript and "d.ts" resolves to Dts.
+  /// `file_extension` must be lower case.
+  pub fn from_file_extension<S: AsRef<str>>(file_extension: S) -> Self {
+    match file_extension.as_ref() {
+      "ts" => Self::TypeScript,
+      "d.ts" => Self::Dts,
+      "mts" => Self::Mts,
+      "d.mts" => Self::Dmts,
+      "cts" => Self::Cts,
+      "d.cts" => Self::Dcts,
+      "tsx" => Self::Tsx,
+      "js" => Self::JavaScript,
+      "jsx" => Self::Jsx,
+      "mjs" => Self::Mjs,
+      "cjs" => Self::Cjs,
+      "json" => Self::Json,
+      "wasm" => Self::Wasm,
+      "tsbuildinfo" => Self::TsBuildInfo,
+      "map" => Self::SourceMap,
+      _ => Self::Unknown,
+    }
+  }
+
   fn from_path(path: &Path) -> Self {
     match path.extension() {
       None => match path.file_name() {
@@ -178,15 +231,7 @@ impl MediaType {
           Some("ts") => map_typescript_like(path, Self::TypeScript, Self::Dts),
           Some("mts") => map_typescript_like(path, Self::Mts, Self::Dmts),
           Some("cts") => map_typescript_like(path, Self::Cts, Self::Dcts),
-          Some("tsx") => Self::Tsx,
-          Some("js") => Self::JavaScript,
-          Some("jsx") => Self::Jsx,
-          Some("mjs") => Self::Mjs,
-          Some("cjs") => Self::Cjs,
-          Some("json") => Self::Json,
-          Some("wasm") => Self::Wasm,
-          Some("tsbuildinfo") => Self::TsBuildInfo,
-          Some("map") => Self::SourceMap,
+          Some(extension) => Self::from_file_extension(extension),
           _ => Self::Unknown,
         }
       }
