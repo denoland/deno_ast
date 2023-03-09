@@ -189,31 +189,7 @@ impl MediaType {
     }
   }
 
-  /// Supports file extensions that are made up of multiple extensions,
-  /// eg. "ts" resolves to TypeScript and "d.ts" resolves to Dts.
-  /// `file_extension` must be lower case.
-  pub fn from_file_extension<S: AsRef<str>>(file_extension: S) -> Self {
-    match file_extension.as_ref() {
-      "ts" => Self::TypeScript,
-      "d.ts" => Self::Dts,
-      "mts" => Self::Mts,
-      "d.mts" => Self::Dmts,
-      "cts" => Self::Cts,
-      "d.cts" => Self::Dcts,
-      "tsx" => Self::Tsx,
-      "js" => Self::JavaScript,
-      "jsx" => Self::Jsx,
-      "mjs" => Self::Mjs,
-      "cjs" => Self::Cjs,
-      "json" => Self::Json,
-      "wasm" => Self::Wasm,
-      "tsbuildinfo" => Self::TsBuildInfo,
-      "map" => Self::SourceMap,
-      _ => Self::Unknown,
-    }
-  }
-
-  fn from_path(path: &Path) -> Self {
+  pub fn from_path(path: &Path) -> Self {
     match path.extension() {
       None => match path.file_name() {
         None => Self::Unknown,
@@ -231,7 +207,15 @@ impl MediaType {
           Some("ts") => map_typescript_like(path, Self::TypeScript, Self::Dts),
           Some("mts") => map_typescript_like(path, Self::Mts, Self::Dmts),
           Some("cts") => map_typescript_like(path, Self::Cts, Self::Dcts),
-          Some(extension) => Self::from_file_extension(extension),
+          Some("tsx") => Self::Tsx,
+          Some("js") => Self::JavaScript,
+          Some("jsx") => Self::Jsx,
+          Some("mjs") => Self::Mjs,
+          Some("cjs") => Self::Cjs,
+          Some("json") => Self::Json,
+          Some("wasm") => Self::Wasm,
+          Some("tsbuildinfo") => Self::TsBuildInfo,
+          Some("map") => Self::SourceMap,
           _ => Self::Unknown,
         }
       }
