@@ -32,7 +32,11 @@ export class Repos {
     if (!skipLoadingCrates) {
       $.logStep("Loading repos...");
     }
-    const repos = await Promise.all(repoNames.map((n) => loadRepo(n)));
+    const repos = [];
+    for (const repoName of repoNames) {
+      $.logStep("Loading", repoName);
+      repos.push(await loadRepo(repoName));
+    }
     return new Repos(repos);
 
     function loadRepo(name: string) {

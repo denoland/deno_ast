@@ -693,6 +693,41 @@ function App() {
   }
 
   #[test]
+  fn test_transpile_jsx_import_source_empty_key() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source = r#"
+function App() {
+  return (
+    <div key><></></div>
+  );
+}"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Jsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let emit_options = EmitOptions {
+      jsx_automatic: true,
+      jsx_import_source: Some("jsx_lib".to_string()),
+      ..Default::default()
+    };
+    let code = module.transpile(&emit_options).unwrap().text;
+    let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
+function App() {
+    return /*#__PURE__*/ _jsx("div", {
+        children: /*#__PURE__*/ _jsx(_Fragment, {})
+    });
+}
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
   fn test_transpile_decorators() {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
