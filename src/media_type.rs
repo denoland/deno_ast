@@ -54,7 +54,7 @@ impl MediaType {
   ///
   /// *NOTE* This is defined in TypeScript as a string based enum.  Changes to
   /// that enum in TypeScript should be reflected here.
-  pub fn as_ts_extension(&self) -> &str {
+  pub fn as_ts_extension(&self) -> &'static str {
     match self {
       Self::JavaScript => ".js",
       Self::Jsx => ".jsx",
@@ -81,6 +81,35 @@ impl MediaType {
       // for mapping purposes, though in reality, it is unlikely to ever be
       // passed to the compiler.
       Self::Unknown => ".js",
+    }
+  }
+
+  /// Returns `None` only for `MediaType::Unknown`.
+  /// There is no 1:1 mapping between content types and MediaType.
+  /// Specifically, for some `MediaType m`
+  /// ```ignore
+  /// MediaType::from_content_type(module_specifier, m.as_content_type()) != m
+  /// ```
+  pub fn as_content_type(&self) -> Option<&'static str> {
+    // https://www.iana.org/assignments/media-types/media-types.xhtml
+    // Web-specific with extensions: https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types
+    match self {
+      Self::JavaScript => Some("text/javascript"),
+      Self::Jsx => Some("text/jsx"),
+      Self::Mjs => Some("text/javascript"),
+      Self::Cjs => Some("text/javascript"),
+      Self::TypeScript => Some("text/typescript"),
+      Self::Mts => Some("text/typescript"),
+      Self::Cts => Some("text/typescript"),
+      Self::Dts => Some("text/typescript"),
+      Self::Dmts => Some("text/typescript"),
+      Self::Dcts => Some("text/typescript"),
+      Self::Tsx => Some("text/tsx"),
+      Self::Json => Some("application/json"),
+      Self::Wasm => Some("application/wasm"),
+      Self::TsBuildInfo => Some("application/json"),
+      Self::SourceMap => Some("application/json"),
+      Self::Unknown => None,
     }
   }
 
@@ -160,7 +189,7 @@ impl MediaType {
     }
   }
 
-  fn from_path(path: &Path) -> Self {
+  pub fn from_path(path: &Path) -> Self {
     match path.extension() {
       None => match path.file_name() {
         None => Self::Unknown,
