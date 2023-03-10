@@ -39,6 +39,8 @@ jobs:
         run: |
           cargo clippy --all-targets --all-features --release
           deno lint
+      - name: Rust version
+        run: cargo --version
 
       - name: Build
         run: cargo build --all-targets --all-features --release
