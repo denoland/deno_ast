@@ -109,6 +109,7 @@ impl Default for EmitOptions {
 
 impl EmitOptions {
   fn as_typescript_strip_config(&self) -> typescript::strip::Config {
+    #![allow(deprecated)]
     typescript::strip::Config {
       pragma: Some(self.jsx_factory.clone()),
       pragma_frag: Some(self.jsx_fragment_factory.clone()),
@@ -507,6 +508,7 @@ var N;
     var Value = N.Value = 5;
 })(N || (N = {}));
 export class A {
+    d;
     b;
     c;
     e;
@@ -517,7 +519,6 @@ export class A {
         this.e = e;
         console.log(N.Value);
     }
-    d;
 }
 "#;
     assert_eq!(
