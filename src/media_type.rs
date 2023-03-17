@@ -229,6 +229,11 @@ impl MediaType {
     }
   }
 
+  #[allow(clippy::should_implement_trait)]
+  pub fn from_str(path: &str) -> Self {
+    Self::from_path(Path::new(path))
+  }
+
   #[cfg(feature = "module_specifier")]
   pub fn from_specifier(specifier: &ModuleSpecifier) -> MediaType {
     use data_url::DataUrl;
@@ -454,86 +459,33 @@ mod tests {
 
   #[test]
   fn test_map_file_extension() {
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.ts")),
-      MediaType::TypeScript
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.TS")),
-      MediaType::TypeScript
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.mts")),
-      MediaType::Mts
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.cts")),
-      MediaType::Cts
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.tsx")),
-      MediaType::Tsx
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.d.ts")),
-      MediaType::Dts
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.d.mts")),
-      MediaType::Dmts
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.d.cts")),
-      MediaType::Dcts
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.d.css.ts")),
-      MediaType::Dts
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.js")),
-      MediaType::JavaScript
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.mjs")),
-      MediaType::Mjs
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.cjs")),
-      MediaType::Cjs
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.jsx")),
-      MediaType::Jsx
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.json")),
-      MediaType::Json
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.wasm")),
-      MediaType::Wasm
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/.tsbuildinfo")),
-      MediaType::TsBuildInfo
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/.TSBUILDINFO")),
-      MediaType::TsBuildInfo
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.js.map")),
-      MediaType::SourceMap
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar.txt")),
-      MediaType::Unknown
-    );
-    assert_eq!(
-      MediaType::from_path(Path::new("foo/bar")),
-      MediaType::Unknown
-    );
+    let fixtures = vec![
+      ("file:///a/b/c.ts", MediaType::TypeScript),
+      ("foo/bar.ts", MediaType::TypeScript),
+      ("foo/bar.TS", MediaType::TypeScript),
+      ("foo/bar.mts", MediaType::Mts),
+      ("foo/bar.cts", MediaType::Cts),
+      ("foo/bar.tsx", MediaType::Tsx),
+      ("foo/bar.d.ts", MediaType::Dts),
+      ("foo/bar.d.mts", MediaType::Dmts),
+      ("foo/bar.d.cts", MediaType::Dcts),
+      ("foo/bar.d.css.ts", MediaType::Dts),
+      ("foo/bar.js", MediaType::JavaScript),
+      ("foo/bar.mjs", MediaType::Mjs),
+      ("foo/bar.cjs", MediaType::Cjs),
+      ("foo/bar.jsx", MediaType::Jsx),
+      ("foo/bar.json", MediaType::Json),
+      ("foo/bar.wasm", MediaType::Wasm),
+      ("foo/.tsbuildinfo", MediaType::TsBuildInfo),
+      ("foo/.TSBUILDINFO", MediaType::TsBuildInfo),
+      ("foo/bar.js.map", MediaType::SourceMap),
+      ("foo/bar.txt", MediaType::Unknown),
+    ];
+
+    for (specifier, expected) in fixtures {
+      assert_eq!(MediaType::from_path(Path::new(specifier)), expected);
+      assert_eq!(MediaType::from_str(specifier), expected);
+    }
   }
 
   #[cfg(feature = "module_specifier")]
