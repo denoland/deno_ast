@@ -4,6 +4,8 @@ use serde::Serialize;
 use serde::Serializer;
 use std::fmt;
 use std::path::Path;
+
+#[cfg(feature = "module_specifier")]
 use std::path::PathBuf;
 
 #[cfg(feature = "module_specifier")]
@@ -40,7 +42,12 @@ fn map_typescript_like(
     None => base_type,
     Some(os_str) => {
       if let Some(file_stem) = os_str.to_str() {
-        if file_stem.ends_with(".d") {
+        // .ts files that contain .d. in the file name are always considered a typescript declaration file.
+        // See: https://github.com/microsoft/TypeScript/issues/53319#issuecomment-1474174018
+        if file_stem.ends_with(".d")
+          || (path.to_string_lossy().ends_with(".ts")
+            && file_stem.contains(".d."))
+        {
           return definition_type;
         }
       }
@@ -142,10 +149,10 @@ impl MediaType {
       if let Some(content_type) = headers.get("content-type") {
         MediaType::from_content_type(specifier, content_type)
       } else {
-        MediaType::from(specifier)
+        MediaType::from_specifier(specifier)
       }
     } else {
-      MediaType::from(specifier)
+      MediaType::from_specifier(specifier)
     }
   }
 
@@ -183,7 +190,7 @@ impl MediaType {
       "text/plain" | "application/octet-stream"
         if specifier.scheme() != "data" =>
       {
-        Self::from(specifier)
+        Self::from_specifier(specifier)
       }
       _ => Self::Unknown,
     }
@@ -219,6 +226,20 @@ impl MediaType {
           _ => Self::Unknown,
         }
       }
+    }
+  }
+
+  #[cfg(feature = "module_specifier")]
+  pub fn from_specifier(specifier: &ModuleSpecifier) -> MediaType {
+    use data_url::DataUrl;
+
+    if specifier.scheme() != "data" {
+      let path = specifier_to_path(specifier);
+      Self::from_path(&path)
+    } else if let Ok(data_url) = DataUrl::process(specifier.as_str()) {
+      Self::from_content_type(specifier, data_url.mime_type().to_string())
+    } else {
+      Self::Unknown
     }
   }
 }
@@ -262,24 +283,6 @@ impl fmt::Display for MediaType {
   }
 }
 
-impl<'a> From<&'a Path> for MediaType {
-  fn from(path: &'a Path) -> Self {
-    Self::from_path(path)
-  }
-}
-
-impl<'a> From<&'a PathBuf> for MediaType {
-  fn from(path: &'a PathBuf) -> Self {
-    Self::from_path(path)
-  }
-}
-
-impl<'a> From<&'a String> for MediaType {
-  fn from(specifier: &'a String) -> Self {
-    Self::from_path(&PathBuf::from(specifier))
-  }
-}
-
 #[cfg(feature = "module_specifier")]
 #[cfg(not(target_arch = "wasm32"))]
 fn specifier_to_path(specifier: &ModuleSpecifier) -> PathBuf {
@@ -308,22 +311,6 @@ fn specifier_path_to_path(specifier: &ModuleSpecifier) -> PathBuf {
     }
   } else {
     PathBuf::from(path)
-  }
-}
-
-#[cfg(feature = "module_specifier")]
-impl<'a> From<&'a ModuleSpecifier> for MediaType {
-  fn from(specifier: &'a ModuleSpecifier) -> Self {
-    use data_url::DataUrl;
-
-    if specifier.scheme() != "data" {
-      let path = specifier_to_path(specifier);
-      Self::from_path(&path)
-    } else if let Ok(data_url) = DataUrl::process(specifier.as_str()) {
-      Self::from_content_type(specifier, data_url.mime_type().to_string())
-    } else {
-      Self::Unknown
-    }
   }
 }
 
@@ -468,45 +455,85 @@ mod tests {
   #[test]
   fn test_map_file_extension() {
     assert_eq!(
-      MediaType::from(Path::new("foo/bar.ts")),
+      MediaType::from_path(Path::new("foo/bar.ts")),
       MediaType::TypeScript
     );
     assert_eq!(
-      MediaType::from(Path::new("foo/bar.TS")),
+      MediaType::from_path(Path::new("foo/bar.TS")),
       MediaType::TypeScript
     );
-    assert_eq!(MediaType::from(Path::new("foo/bar.mts")), MediaType::Mts);
-    assert_eq!(MediaType::from(Path::new("foo/bar.cts")), MediaType::Cts);
-    assert_eq!(MediaType::from(Path::new("foo/bar.tsx")), MediaType::Tsx);
-    assert_eq!(MediaType::from(Path::new("foo/bar.d.ts")), MediaType::Dts);
-    assert_eq!(MediaType::from(Path::new("foo/bar.d.mts")), MediaType::Dmts);
-    assert_eq!(MediaType::from(Path::new("foo/bar.d.cts")), MediaType::Dcts);
     assert_eq!(
-      MediaType::from(Path::new("foo/bar.js")),
+      MediaType::from_path(Path::new("foo/bar.mts")),
+      MediaType::Mts
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.cts")),
+      MediaType::Cts
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.tsx")),
+      MediaType::Tsx
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.d.ts")),
+      MediaType::Dts
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.d.mts")),
+      MediaType::Dmts
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.d.cts")),
+      MediaType::Dcts
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.d.css.ts")),
+      MediaType::Dts
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.js")),
       MediaType::JavaScript
     );
-    assert_eq!(MediaType::from(Path::new("foo/bar.mjs")), MediaType::Mjs);
-    assert_eq!(MediaType::from(Path::new("foo/bar.cjs")), MediaType::Cjs);
-    assert_eq!(MediaType::from(Path::new("foo/bar.jsx")), MediaType::Jsx);
-    assert_eq!(MediaType::from(Path::new("foo/bar.json")), MediaType::Json);
-    assert_eq!(MediaType::from(Path::new("foo/bar.wasm")), MediaType::Wasm);
     assert_eq!(
-      MediaType::from(Path::new("foo/.tsbuildinfo")),
+      MediaType::from_path(Path::new("foo/bar.mjs")),
+      MediaType::Mjs
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.cjs")),
+      MediaType::Cjs
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.jsx")),
+      MediaType::Jsx
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.json")),
+      MediaType::Json
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar.wasm")),
+      MediaType::Wasm
+    );
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/.tsbuildinfo")),
       MediaType::TsBuildInfo
     );
     assert_eq!(
-      MediaType::from(Path::new("foo/.TSBUILDINFO")),
+      MediaType::from_path(Path::new("foo/.TSBUILDINFO")),
       MediaType::TsBuildInfo
     );
     assert_eq!(
-      MediaType::from(Path::new("foo/bar.js.map")),
+      MediaType::from_path(Path::new("foo/bar.js.map")),
       MediaType::SourceMap
     );
     assert_eq!(
-      MediaType::from(Path::new("foo/bar.txt")),
+      MediaType::from_path(Path::new("foo/bar.txt")),
       MediaType::Unknown
     );
-    assert_eq!(MediaType::from(Path::new("foo/bar")), MediaType::Unknown);
+    assert_eq!(
+      MediaType::from_path(Path::new("foo/bar")),
+      MediaType::Unknown
+    );
   }
 
   #[cfg(feature = "module_specifier")]
@@ -522,6 +549,7 @@ mod tests {
       ("file:///a/b/c.txt", MediaType::Unknown),
       ("file:///lib.deno.d.ts", MediaType::Dts),
       ("file:///lib.deno.ts", MediaType::TypeScript),
+      ("file:///file.d.css.ts", MediaType::Dts),
       ("file:///deno.js", MediaType::JavaScript),
       ("deno://lib.deno.d.ts", MediaType::Dts),
       ("deno://deno.ts", MediaType::TypeScript),
@@ -536,7 +564,7 @@ mod tests {
 
     for (specifier, expected) in fixtures {
       let actual = resolve_url_or_path(specifier);
-      assert_eq!(MediaType::from(&actual), expected);
+      assert_eq!(MediaType::from_specifier(&actual), expected);
 
       assert_eq!(
         MediaType::from_specifier_and_headers(&actual, None),
