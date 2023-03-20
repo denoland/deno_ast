@@ -229,42 +229,48 @@ fn parse_string_input(
 /// Gets the default `Syntax` used by `deno_ast` for the provided media type.
 pub fn get_syntax(media_type: MediaType) -> Syntax {
   match media_type {
-    MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-      Syntax::Es(get_es_config(false))
+    MediaType::TypeScript
+    | MediaType::Mts
+    | MediaType::Cts
+    | MediaType::Dts
+    | MediaType::Dmts
+    | MediaType::Dcts
+    | MediaType::Tsx => {
+      Syntax::Typescript(TsConfig {
+        decorators: true,
+        // should be true for mts and cts:
+        // https://babeljs.io/docs/babel-preset-typescript#disallowambiguousjsxlike
+        disallow_ambiguous_jsx_like: matches!(
+          media_type,
+          MediaType::Mts | MediaType::Cts
+        ),
+        dts: matches!(
+          media_type,
+          MediaType::Dts | MediaType::Dmts | MediaType::Dcts
+        ),
+        tsx: media_type == MediaType::Tsx,
+        no_early_errors: false,
+      })
     }
-    MediaType::Jsx => Syntax::Es(get_es_config(true)),
-    MediaType::TypeScript | MediaType::Mts | MediaType::Cts => {
-      Syntax::Typescript(get_ts_config(false, false))
-    }
-    MediaType::Dts | MediaType::Dmts | MediaType::Dcts => {
-      Syntax::Typescript(get_ts_config(false, true))
-    }
-    MediaType::Tsx => Syntax::Typescript(get_ts_config(true, false)),
-    _ => Syntax::Es(get_es_config(false)),
-  }
-}
-
-/// Gets the default `EsConfig` used by `deno_ast` for the provided options.
-pub fn get_es_config(jsx: bool) -> EsConfig {
-  EsConfig {
-    allow_return_outside_function: true,
-    allow_super_outside_method: true,
-    decorators: false,
-    decorators_before_export: false,
-    export_default_from: true,
-    fn_bind: false,
-    import_assertions: true,
-    jsx,
-  }
-}
-
-/// Gets the default `TsConfig` used by `deno_ast` for the provided options.
-pub fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
-  TsConfig {
-    decorators: true,
-    dts,
-    tsx,
-    no_early_errors: false,
+    MediaType::JavaScript
+    | MediaType::Mjs
+    | MediaType::Cjs
+    | MediaType::Jsx
+    | MediaType::Json
+    | MediaType::Wasm
+    | MediaType::TsBuildInfo
+    | MediaType::SourceMap
+    | MediaType::Unknown => Syntax::Es(EsConfig {
+      allow_return_outside_function: true,
+      allow_super_outside_method: true,
+      auto_accessors: true,
+      decorators: false,
+      decorators_before_export: false,
+      export_default_from: true,
+      fn_bind: false,
+      import_assertions: true,
+      jsx: media_type == MediaType::Jsx,
+    }),
   }
 }
 

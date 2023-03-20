@@ -426,7 +426,7 @@ fn get_prop_return_expr(prop: &Prop) -> Option<&Expr> {
     Prop::Method(method) => get_function_return_expr(&method.function),
     Prop::KeyValue(key_value) => match &*key_value.value {
       Expr::Fn(expr) => get_function_return_expr(&expr.function),
-      Expr::Arrow(expr) => match &expr.body {
+      Expr::Arrow(expr) => match &*expr.body {
         BlockStmtOrExpr::BlockStmt(stmt) => get_block_stmt_return_expr(stmt),
         BlockStmtOrExpr::Expr(expr) => Some(expr),
       },

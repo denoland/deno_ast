@@ -109,6 +109,7 @@ impl Default for EmitOptions {
 
 impl EmitOptions {
   fn as_typescript_strip_config(&self) -> typescript::strip::Config {
+    #![allow(deprecated)]
     typescript::strip::Config {
       pragma: Some(self.jsx_factory.clone()),
       pragma_frag: Some(self.jsx_fragment_factory.clone()),
@@ -124,15 +125,15 @@ impl EmitOptions {
           typescript::strip::ImportsNotUsedAsValues::Remove
         }
       },
+      // this property is deprecated, but we don't use it anyway because we target >ES2020
       use_define_for_class_fields: true,
-      // TODO(bartlomieju): this could be changed to `false` to provide `export {}`
-      // in Typescript files without manual changes
+      // no need for this to be false because we treat all files as modules
       no_empty_export: true,
       ts_enum_config: TsEnumConfig {
         treat_const_enum_as_enum: false,
         ts_enum_is_readonly: false,
       },
-      // we don't suport this, so leave it as-is so it errors
+      // we don't suport this, so leave it as-is so it errors in v8
       import_export_assign_config:
         typescript::TsImportExportAssignConfig::Preserve,
     }
@@ -507,6 +508,7 @@ var N;
     var Value = N.Value = 5;
 })(N || (N = {}));
 export class A {
+    d;
     b;
     c;
     e;
@@ -517,7 +519,6 @@ export class A {
         this.e = e;
         console.log(N.Value);
     }
-    d;
 }
 "#;
     assert_eq!(
