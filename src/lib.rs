@@ -7,7 +7,6 @@
 mod cjs_parse;
 mod comments;
 mod lexing;
-mod media_type;
 mod parsed_source;
 mod parsing;
 #[cfg(feature = "scopes")]
@@ -26,7 +25,7 @@ pub use dprint_swc_ext::common::*;
 pub use cjs_parse::*;
 pub use comments::*;
 pub use lexing::*;
-pub use media_type::*;
+pub use deno_media_type::*;
 pub use parsed_source::*;
 pub use parsing::*;
 #[cfg(feature = "scopes")]

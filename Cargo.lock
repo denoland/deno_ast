@@ -233,7 +233,7 @@ version = "0.25.0"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
- "data-url",
+ "deno_media_type",
  "dprint-swc-ext",
  "pretty_assertions",
  "serde",
@@ -257,6 +257,17 @@ dependencies = [
  "swc_ecma_utils",
  "swc_ecma_visit",
  "text_lines",
+ "url",
+]
+
+[[package]]
+name = "deno_media_type"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63772a60d740a41d97fbffb4788fc3779e6df47289e01892c12be38f4a5beded"
+dependencies = [
+ "data-url",
+ "serde",
  "url",
 ]
 
