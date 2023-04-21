@@ -24,8 +24,8 @@ pub use dprint_swc_ext::common::*;
 #[cfg(feature = "cjs")]
 pub use cjs_parse::*;
 pub use comments::*;
-pub use lexing::*;
 pub use deno_media_type::*;
+pub use lexing::*;
 pub use parsed_source::*;
 pub use parsing::*;
 #[cfg(feature = "scopes")]
