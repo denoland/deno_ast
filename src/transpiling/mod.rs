@@ -280,33 +280,6 @@ pub fn fold_program(
 
   let top_level_mark = Mark::fresh(Mark::root());
   let unresolved_mark = Mark::new();
-  #[allow(deprecated)]
-  let jsx_pass = react::react(
-    source_map.clone(),
-    Some(comments),
-    react::Options {
-      pragma: Some(options.jsx_factory.clone()),
-      pragma_frag: Some(options.jsx_fragment_factory.clone()),
-      // This will use `Object.assign()` instead of the `_extends` helper
-      // when spreading props (Note: this property is deprecated)
-      use_builtins: Some(true),
-      runtime: if options.jsx_automatic {
-        Some(react::Runtime::Automatic)
-      } else {
-        None
-      },
-      development: Some(options.jsx_development),
-      import_source: Some(
-        options.jsx_import_source.clone().unwrap_or_default(),
-      ),
-      next: None,
-      refresh: None,
-      throw_if_namespace: None,
-      use_spread: None,
-    },
-    top_level_mark,
-    unresolved_mark,
-  );
   let mut passes = chain!(
     Optional::new(
       transforms::ImportDeclsToVarDeclsFolder,
@@ -336,7 +309,36 @@ pub fn fold_program(
       ),
       options.transform_jsx
     ),
-    Optional::new(jsx_pass, options.transform_jsx),
+    Optional::new(
+      react::react(
+        source_map.clone(),
+        Some(comments),
+        #[allow(deprecated)]
+        react::Options {
+          pragma: Some(options.jsx_factory.clone()),
+          pragma_frag: Some(options.jsx_fragment_factory.clone()),
+          // This will use `Object.assign()` instead of the `_extends` helper
+          // when spreading props (Note: this property is deprecated)
+          use_builtins: Some(true),
+          runtime: if options.jsx_automatic {
+            Some(react::Runtime::Automatic)
+          } else {
+            None
+          },
+          development: Some(options.jsx_development),
+          import_source: Some(
+            options.jsx_import_source.clone().unwrap_or_default()
+          ),
+          next: None,
+          refresh: None,
+          throw_if_namespace: None,
+          use_spread: None,
+        },
+        top_level_mark,
+        unresolved_mark,
+      ),
+      options.transform_jsx
+    ),
     fixer(Some(comments)),
     hygiene(),
   );
