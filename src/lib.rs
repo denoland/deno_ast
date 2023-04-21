@@ -35,6 +35,9 @@ pub use text_changes::*;
 pub use transpiling::*;
 pub use types::*;
 
+#[cfg(feature = "module_specifier")]
+pub type ModuleSpecifier = url::Url;
+
 pub mod swc {
   pub use dprint_swc_ext::swc::atoms;
   pub use dprint_swc_ext::swc::common;
