@@ -80,7 +80,7 @@ pub struct EmitOptions {
   /// Should a corresponding .map file be created for the output. This should be
   /// false if inline_source_map is true. Defaults to `false`.
   pub source_map: bool,
-  /// Should JSX be transformed or preserved.  Defaults to `true`.
+  /// Should JSX be transformed. Defaults to `true`.
   pub transform_jsx: bool,
   /// Should import declarations be transformed to variable declarations using
   /// a dynamic import. This is useful for import & export declaration support
@@ -282,31 +282,6 @@ pub fn fold_program(
   ensure_no_fatal_diagnostics(diagnostics)?;
 
   let unresolved_mark = Mark::new();
-  let jsx_pass = react::react(
-    source_map.clone(),
-    Some(comments),
-    react::Options {
-      pragma: Some(options.jsx_factory.clone()),
-      pragma_frag: Some(options.jsx_fragment_factory.clone()),
-      // this will use `Object.assign()` instead of the `_extends` helper
-      // when spreading props.
-      use_builtins: Some(true),
-      runtime: if options.jsx_automatic {
-        Some(react::Runtime::Automatic)
-      } else {
-        None
-      },
-      development: Some(options.jsx_development),
-      import_source: Some(
-        options.jsx_import_source.clone().unwrap_or_default(),
-      ),
-      next: None,
-      refresh: None,
-      throw_if_namespace: None,
-      use_spread: None,
-    },
-    top_level_mark,
-  );
   let mut passes = chain!(
     Optional::new(
       transforms::ImportDeclsToVarDeclsFolder,
@@ -336,7 +311,36 @@ pub fn fold_program(
       ),
       options.transform_jsx
     ),
-    Optional::new(jsx_pass, options.transform_jsx),
+    Optional::new(
+      react::react(
+        source_map.clone(),
+        Some(comments),
+        #[allow(deprecated)]
+        react::Options {
+          pragma: Some(options.jsx_factory.clone()),
+          pragma_frag: Some(options.jsx_fragment_factory.clone()),
+          // This will use `Object.assign()` instead of the `_extends` helper
+          // when spreading props (Note: this property is deprecated)
+          use_builtins: Some(true),
+          runtime: if options.jsx_automatic {
+            Some(react::Runtime::Automatic)
+          } else {
+            None
+          },
+          development: Some(options.jsx_development),
+          import_source: Some(
+            options.jsx_import_source.clone().unwrap_or_default()
+          ),
+          next: None,
+          refresh: None,
+          throw_if_namespace: None,
+          use_spread: None,
+        },
+        top_level_mark,
+        unresolved_mark,
+      ),
+      options.transform_jsx
+    ),
     fixer(Some(comments)),
     hygiene(),
   );
@@ -725,12 +729,12 @@ function App() {
     })
     .unwrap();
     let code = module.transpile(&EmitOptions::default()).unwrap().text;
-    let expected = r#"var __decorate = this && this.__decorate || function(decorators, target, key, desc) {
+    let expected = r#"function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
     else for(var i = decorators.length - 1; i >= 0; i--)if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
-};
+}
 function enumerable(value) {
     return function(_target, _propertyKey, descriptor) {
         descriptor.enumerable = value;
@@ -741,7 +745,7 @@ export class A {
         Test.value;
     }
 }
-__decorate([
+_ts_decorate([
     enumerable(false)
 ], A.prototype, "a", null);"#;
     assert_eq!(&code[0..expected.len()], expected);
