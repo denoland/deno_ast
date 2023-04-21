@@ -188,11 +188,13 @@ impl ParsedSource {
     let comments = self.comments().as_single_threaded();
     let globals = Globals::new();
     crate::swc::common::GLOBALS.set(&globals, || {
+      let top_level_mark = Mark::fresh(Mark::root());
       let program = fold_program(
         program,
         options,
         source_map.clone(),
         &comments,
+        top_level_mark,
         self.diagnostics(),
       )?;
 
@@ -274,11 +276,11 @@ pub fn fold_program(
   options: &EmitOptions,
   source_map: Rc<SourceMap>,
   comments: &SingleThreadedComments,
+  top_level_mark: Mark,
   diagnostics: &[Diagnostic],
 ) -> Result<Program> {
   ensure_no_fatal_diagnostics(diagnostics)?;
 
-  let top_level_mark = Mark::fresh(Mark::root());
   let unresolved_mark = Mark::new();
   let mut passes = chain!(
     Optional::new(
