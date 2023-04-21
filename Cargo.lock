@@ -1107,6 +1107,7 @@ dependencies = [
  "is-macro",
  "num-bigint",
  "scoped-tls",
+ "serde",
  "string_enum",
  "swc_atoms",
  "swc_common",

@@ -282,14 +282,15 @@ pub fn fold_program(
   ensure_no_fatal_diagnostics(diagnostics)?;
 
   let unresolved_mark = Mark::new();
+  #[allow(deprecated)]
   let jsx_pass = react::react(
     source_map.clone(),
     Some(comments),
     react::Options {
       pragma: Some(options.jsx_factory.clone()),
       pragma_frag: Some(options.jsx_fragment_factory.clone()),
-      // this will use `Object.assign()` instead of the `_extends` helper
-      // when spreading props.
+      // This will use `Object.assign()` instead of the `_extends` helper
+      // when spreading props (Note: this property is deprecated)
       use_builtins: Some(true),
       runtime: if options.jsx_automatic {
         Some(react::Runtime::Automatic)
@@ -306,6 +307,7 @@ pub fn fold_program(
       use_spread: None,
     },
     top_level_mark,
+    unresolved_mark,
   );
   let mut passes = chain!(
     Optional::new(

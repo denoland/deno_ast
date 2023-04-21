@@ -45,7 +45,7 @@ url = { version = "2.3.1", features = ["serde"], optional = true }
 # pulling in new versions of swc crates
 swc_atoms = "=0.5.3"
 swc_common = "=0.31.4"
-swc_ecma_ast = "=0.103.4"
+swc_ecma_ast = { version = "=0.103.4", features = ["serde-impl"] }
 swc_ecma_codegen = { version = "=0.138.11", optional = true }
 swc_ecma_codegen_macros = { version = "=0.7.2", optional = true }
 swc_ecma_dep_graph = { version = "=0.105.10", optional = true }
