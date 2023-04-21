@@ -7,7 +7,6 @@
 mod cjs_parse;
 mod comments;
 mod lexing;
-mod media_type;
 mod parsed_source;
 mod parsing;
 #[cfg(feature = "scopes")]
@@ -25,8 +24,8 @@ pub use dprint_swc_ext::common::*;
 #[cfg(feature = "cjs")]
 pub use cjs_parse::*;
 pub use comments::*;
+pub use deno_media_type::*;
 pub use lexing::*;
-pub use media_type::*;
 pub use parsed_source::*;
 pub use parsing::*;
 #[cfg(feature = "scopes")]
@@ -35,6 +34,9 @@ pub use text_changes::*;
 #[cfg(feature = "transpiling")]
 pub use transpiling::*;
 pub use types::*;
+
+#[cfg(feature = "module_specifier")]
+pub type ModuleSpecifier = url::Url;
 
 pub mod swc {
   pub use dprint_swc_ext::swc::atoms;
