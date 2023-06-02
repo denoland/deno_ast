@@ -46,10 +46,7 @@ if (confirm(`Branch for deno?`)) {
 
 async function preAction(repo: Repo) {
   switch (repo.name) {
-    case "deno_graph":
-    case "deno_doc":
     case "deno_emit":
-    case "eszip":
       await repo.command("deno task build");
       break;
     default:
