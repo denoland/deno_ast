@@ -199,7 +199,7 @@ checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
 
 [[package]]
 name = "deno_ast"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "anyhow",
  "base64",
