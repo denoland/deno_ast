@@ -270,6 +270,7 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
       fn_bind: false,
       import_assertions: true,
       jsx: media_type == MediaType::Jsx,
+      using_decl: true,
     }),
   }
 }

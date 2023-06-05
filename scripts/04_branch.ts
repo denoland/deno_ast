@@ -19,7 +19,6 @@ for (const repo of nonDenoRepos) {
     )
   ) {
     await bumpDeps(repo);
-    await preAction(repo);
     for (const crate of repo.crates) {
       await crate.cargoCheck();
     }
@@ -42,19 +41,6 @@ if (confirm(`Branch for deno?`)) {
     `chore: upgrade to deno_ast ${deno_ast.version}`,
   );
   await denoRepo.gitPush();
-}
-
-async function preAction(repo: Repo) {
-  switch (repo.name) {
-    case "deno_graph":
-    case "deno_doc":
-    case "deno_emit":
-    case "eszip":
-      await repo.command("deno task build");
-      break;
-    default:
-      break;
-  }
 }
 
 async function bumpDeps(repo: Repo) {
