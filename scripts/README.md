@@ -25,5 +25,5 @@ crates on an swc version bump.
   and keep running this until everything builds.
 - `03_test.ts` - Tests each crate. If you encounter test failures, fix them and
   keep running this until all the tests pass.
-- `04_branch.ts` - Updates the dependency versions, creates a branch, commits,
+- `04_confirm.ts` - Updates the dependency versions, creates a branch, commits,
   and pushes a branch for every selected repo.

@@ -15,32 +15,52 @@ for (const repo of nonDenoRepos) {
   }
   if (
     confirm(
-      `Branch for ${repo.name}? (Note: do this after the dependency crates have PUBLISHED)`,
+      `Bump deps for ${repo.name}? (Note: do this after the dependency crates have PUBLISHED)`,
     )
   ) {
     await bumpDeps(repo);
     for (const crate of repo.crates) {
       await crate.cargoCheck();
     }
-    await repo.gitBranch("deno_ast_" + deno_ast.version);
-    await repo.gitAdd();
-    await repo.gitCommit(`feat: upgrade deno_ast to ${deno_ast.version}`);
-    await repo.gitPush();
+
+    if (
+      await repo.gitCurrentBranch() === "main" &&
+      confirm(`Branch for ${repo.name}?`)
+    ) {
+      await repo.gitBranch("deno_ast_" + deno_ast.version);
+    }
+    if (
+      await repo.hasLocalChanges() &&
+      confirm(`Commit and push for ${repo.name}?`)
+    ) {
+      await repo.gitAdd();
+      await repo.gitCommit(`feat: upgrade deno_ast to ${deno_ast.version}`);
+      await repo.gitPush();
+    }
   }
 }
 
 // now branch, commit, and push for the deno repo
-if (confirm(`Branch for deno?`)) {
+if (confirm(`Bump deps for deno?`)) {
   await bumpDeps(denoRepo);
   for (const crate of denoRepo.crates) {
     await crate.cargoCheck();
   }
-  await denoRepo.gitBranch("deno_ast_" + deno_ast.version);
-  await denoRepo.gitAdd();
-  await denoRepo.gitCommit(
-    `chore: upgrade to deno_ast ${deno_ast.version}`,
-  );
-  await denoRepo.gitPush();
+  if (
+    await denoRepo.gitCurrentBranch() === "main" &&
+    confirm(`Branch for deno?`)
+  ) {
+    await denoRepo.gitBranch("deno_ast_" + deno_ast.version);
+  }
+  if (
+    await denoRepo.hasLocalChanges() && confirm(`Commit and push for deno?`)
+  ) {
+    await denoRepo.gitAdd();
+    await denoRepo.gitCommit(
+      `chore: upgrade to deno_ast ${deno_ast.version}`,
+    );
+    await denoRepo.gitPush();
+  }
 }
 
 async function bumpDeps(repo: Repo) {
