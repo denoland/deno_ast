@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { Repo } from "./deps.ts";
+import { Repo, $ } from "./deps.ts";
 import { Repos } from "./repos.ts";
 
 const repos = await Repos.load();
@@ -13,9 +13,12 @@ for (const repo of nonDenoRepos) {
   if (!await repo.hasLocalChanges()) {
     continue;
   }
+  const currentBranch = await repo.gitCurrentBranch();
+  $.logStep("Analyzing", repo.name);
+  $.logLight("Branch:", currentBranch);
   if (
     confirm(
-      `Bump deps for ${repo.name}? (Note: do this after the dependency crates have PUBLISHED)`,
+      `Bump deps? (Note: do this after the dependency crates have PUBLISHED)`,
     )
   ) {
     await bumpDeps(repo);
@@ -24,7 +27,7 @@ for (const repo of nonDenoRepos) {
     }
 
     if (
-      await repo.gitCurrentBranch() === "main" &&
+      currentBranch === "main" &&
       confirm(`Branch for ${repo.name}?`)
     ) {
       await repo.gitBranch("deno_ast_" + deno_ast.version);
@@ -41,13 +44,16 @@ for (const repo of nonDenoRepos) {
 }
 
 // now branch, commit, and push for the deno repo
+$.logStep("Analyzing Deno");
+const currentBranch = await denoRepo.gitCurrentBranch();
+$.logLight("Branch:", currentBranch);
 if (confirm(`Bump deps for deno?`)) {
   await bumpDeps(denoRepo);
   for (const crate of denoRepo.crates) {
     await crate.cargoCheck();
   }
   if (
-    await denoRepo.gitCurrentBranch() === "main" &&
+    currentBranch === "main" &&
     confirm(`Branch for deno?`)
   ) {
     await denoRepo.gitBranch("deno_ast_" + deno_ast.version);
