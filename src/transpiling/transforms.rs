@@ -326,7 +326,7 @@ mod test {
     test_transform(
       ImportDeclsToVarDeclsFolder,
       r#"import mod from "./mod.ts";"#,
-      r#"const { "default": mod  } = await import("./mod.ts");"#,
+      r#"const { "default": mod } = await import("./mod.ts");"#,
     );
   }
 
@@ -335,19 +335,19 @@ mod test {
     test_transform(
       ImportDeclsToVarDeclsFolder,
       r#"import { A } from "./mod.ts";"#,
-      r#"const { A  } = await import("./mod.ts");"#,
+      r#"const { A } = await import("./mod.ts");"#,
     );
 
     test_transform(
       ImportDeclsToVarDeclsFolder,
-      r#"import { A, B, C  } from "./mod.ts";"#,
-      r#"const { A , B , C  } = await import("./mod.ts");"#,
+      r#"import { A, B, C } from "./mod.ts";"#,
+      r#"const { A, B, C } = await import("./mod.ts");"#,
     );
 
     test_transform(
       ImportDeclsToVarDeclsFolder,
-      r#"import { A as LocalA, B, C as LocalC  } from "./mod.ts";"#,
-      r#"const { "A": LocalA , B , "C": LocalC  } = await import("./mod.ts");"#,
+      r#"import { A as LocalA, B, C as LocalC } from "./mod.ts";"#,
+      r#"const { "A": LocalA, B, "C": LocalC } = await import("./mod.ts");"#,
     );
   }
 
@@ -365,13 +365,13 @@ mod test {
     test_transform(
       ImportDeclsToVarDeclsFolder,
       r#"import myDefault, { A, B as LocalB } from "./mod.ts";"#,
-      r#"const { "default": myDefault , A , "B": LocalB  } = await import("./mod.ts");"#,
+      r#"const { "default": myDefault, A, "B": LocalB } = await import("./mod.ts");"#,
     );
 
     test_transform(
       ImportDeclsToVarDeclsFolder,
       r#"import myDefault, * as mod from "./mod.ts";"#,
-      r#"const { "default": myDefault  } = await import("./mod.ts"), mod = await import("./mod.ts");"#,
+      r#"const { "default": myDefault } = await import("./mod.ts"), mod = await import("./mod.ts");"#,
     );
   }
 
@@ -380,7 +380,7 @@ mod test {
     test_transform(
       ImportDeclsToVarDeclsFolder,
       r#"import data from "./mod.json" assert { type: "json" };"#,
-      "const { \"default\": data  } = await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
+      "const { \"default\": data } = await import(\"./mod.json\", {\n  assert: {\n    type: \"json\"\n  }\n});",
     );
   }
 
@@ -409,7 +409,7 @@ mod test {
     test_transform(
       StripExportsFolder,
       r#"export { default as data } from "./mod.json" assert { type: "json" };"#,
-      "await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
+      "await import(\"./mod.json\", {\n  assert: {\n    type: \"json\"\n  }\n});",
     );
   }
 
@@ -419,7 +419,7 @@ mod test {
     test_transform(
       StripExportsFolder,
       r#"export * from "./mod.json" assert { type: "json" };"#,
-      "await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
+      "await import(\"./mod.json\", {\n  assert: {\n    type: \"json\"\n  }\n});",
     );
   }
 
@@ -478,10 +478,11 @@ mod test {
     test_transform(
       StripExportsFolder,
       "namespace Test { export class Test {} }",
-      "module Test {\n    export class Test {\n    }\n}",
+      "module Test {\n  export class Test {\n  }\n}",
     );
   }
 
+  #[track_caller]
   fn test_transform(
     mut transform: impl Fold,
     src: &str,
@@ -509,8 +510,9 @@ mod test {
   fn print(source_map: Rc<SourceMap>, module: Module) -> String {
     let mut buf = vec![];
     {
-      let writer =
+      let mut writer =
         Box::new(JsWriter::new(source_map.clone(), "\n", &mut buf, None));
+      writer.set_indent_str("  "); // two spaces
       let config = crate::swc::codegen::Config {
         minify: false,
         ascii_only: false,
