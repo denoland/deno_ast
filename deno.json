@@ -1,18 +1,14 @@
 {
   "lock": false,
   "fmt": {
-    "files": {
-      "include": [
-        "./README.md",
-        "./scripts"
-      ]
-    }
+    "include": [
+      "./README.md",
+      "./scripts"
+    ]
   },
   "lint": {
-    "files": {
-      "include": [
-        "./scripts"
-      ]
-    }
+    "include": [
+      "./scripts"
+    ]
   }
 }

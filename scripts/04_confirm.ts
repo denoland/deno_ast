@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { Repo, $ } from "./deps.ts";
+import { $, Repo } from "./deps.ts";
 import { Repos } from "./repos.ts";
 
 const repos = await Repos.load();
