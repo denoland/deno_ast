@@ -201,12 +201,13 @@ impl ParsedSource {
       let mut src_map_buf = vec![];
       let mut buf = vec![];
       {
-        let writer = Box::new(JsWriter::new(
+        let mut writer = Box::new(JsWriter::new(
           source_map.clone(),
           "\n",
           &mut buf,
           Some(&mut src_map_buf),
         ));
+        writer.set_indent_str("  "); // two spaces
         let config = crate::swc::codegen::Config {
           minify: false,
           ascii_only: false,
@@ -500,29 +501,29 @@ export class A {
     let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
     let expected_text = r#"var D;
 (function(D) {
-    D[D["A"] = 0] = "A";
-    D[D["B"] = 1] = "B";
+  D[D["A"] = 0] = "A";
+  D[D["B"] = 1] = "B";
 })(D || (D = {}));
 var N;
 (function(N) {
-    let D;
-    (function(D) {
-        D["A"] = "value";
-    })(D = N.D || (N.D = {}));
-    var Value = N.Value = 5;
+  let D;
+  (function(D) {
+    D["A"] = "value";
+  })(D = N.D || (N.D = {}));
+  var Value = N.Value = 5;
 })(N || (N = {}));
 export class A {
-    d;
-    b;
-    c;
-    e;
-    constructor(d = D.A){
-        this.d = d;
-        this.c = 1;
-        const e = "foo";
-        this.e = e;
-        console.log(N.Value);
-    }
+  d;
+  b;
+  c;
+  e;
+  constructor(d = D.A){
+    this.d = d;
+    this.c = 1;
+    const e = "foo";
+    this.e = e;
+    console.log(N.Value);
+  }
 }
 "#;
     assert_eq!(
@@ -587,7 +588,7 @@ function App() {
     let code = module.transpile(&EmitOptions::default()).unwrap().text;
     let expected = r#"/** @jsx h */ /** @jsxFrag Fragment */ import { h, Fragment } from "https://deno.land/x/mod.ts";
 function App() {
-    return /*#__PURE__*/ h("div", null, /*#__PURE__*/ h(Fragment, null));
+  return /*#__PURE__*/ h("div", null, /*#__PURE__*/ h(Fragment, null));
 }"#;
     assert_eq!(&code[..expected.len()], expected);
   }
@@ -616,9 +617,9 @@ function App() {
     let code = module.transpile(&EmitOptions::default()).unwrap().text;
     let expected = r#"/** @jsxImportSource jsx_lib */ import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
-    return /*#__PURE__*/ _jsx("div", {
-        children: /*#__PURE__*/ _jsx(_Fragment, {})
-    });
+  return /*#__PURE__*/ _jsx("div", {
+    children: /*#__PURE__*/ _jsx(_Fragment, {})
+  });
 "#;
     assert_eq!(&code[..expected.len()], expected);
   }
@@ -650,9 +651,9 @@ function App() {
     let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
-    return /*#__PURE__*/ _jsx("div", {
-        children: /*#__PURE__*/ _jsx(_Fragment, {})
-    });
+  return /*#__PURE__*/ _jsx("div", {
+    children: /*#__PURE__*/ _jsx(_Fragment, {})
+  });
 }
 "#;
     assert_eq!(&code[..expected.len()], expected);
@@ -685,13 +686,13 @@ function App() {
     let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
 function App() {
-    return /*#__PURE__*/ _jsxDEV("div", {
-        children: /*#__PURE__*/ _jsxDEV(_Fragment, {}, void 0, false)
-    }, void 0, false, {
-        fileName: "https://deno.land/x/mod.tsx",
-        lineNumber: 3,
-        columnNumber: 5
-    }, this);
+  return /*#__PURE__*/ _jsxDEV("div", {
+    children: /*#__PURE__*/ _jsxDEV(_Fragment, {}, void 0, false)
+  }, void 0, false, {
+    fileName: "https://deno.land/x/mod.tsx",
+    lineNumber: 3,
+    columnNumber: 5
+  }, this);
 }
 "#;
     assert_eq!(&code[..expected.len()], expected);
@@ -730,23 +731,23 @@ function App() {
     .unwrap();
     let code = module.transpile(&EmitOptions::default()).unwrap().text;
     let expected = r#"function _ts_decorate(decorators, target, key, desc) {
-    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
-    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
-    else for(var i = decorators.length - 1; i >= 0; i--)if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
-    return c > 3 && r && Object.defineProperty(target, key, r), r;
+  var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+  if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+  else for(var i = decorators.length - 1; i >= 0; i--)if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+  return c > 3 && r && Object.defineProperty(target, key, r), r;
 }
 function enumerable(value) {
-    return function(_target, _propertyKey, descriptor) {
-        descriptor.enumerable = value;
-    };
+  return function(_target, _propertyKey, descriptor) {
+    descriptor.enumerable = value;
+  };
 }
 export class A {
-    a() {
-        Test.value;
-    }
+  a() {
+    Test.value;
+  }
 }
 _ts_decorate([
-    enumerable(false)
+  enumerable(false)
 ], A.prototype, "a", null);"#;
     assert_eq!(&code[0..expected.len()], expected);
   }
@@ -781,9 +782,9 @@ export function g() {
     };
     let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"export function g() {
-    let algorithm;
-    algorithm = {};
-    return test(algorithm, false, keyUsages);
+  let algorithm;
+  algorithm = {};
+  return test(algorithm, false, keyUsages);
 }"#;
     assert_eq!(&code[..expected.len()], expected);
   }
