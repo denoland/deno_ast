@@ -47,7 +47,7 @@ swc_atoms = "=0.5.6"
 swc_common = "=0.31.12"
 swc_ecma_ast = { version = "=0.104.5", features = ["serde-impl"] }
 swc_ecma_codegen = { version = "=0.139.17", optional = true }
-swc_ecma_codegen_macros = { version = "=0.7.2", optional = true }
+swc_ecma_codegen_macros = { version = "=0.7.3", optional = true }
 swc_ecma_dep_graph = { version = "=0.106.12", optional = true }
 swc_ecma_loader = { version = "=0.43.14", optional = true }
 swc_ecma_parser = "=0.134.12"
