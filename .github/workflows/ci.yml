@@ -28,8 +28,9 @@ jobs:
       - uses: denoland/setup-deno@v1
       - uses: dsherret/rust-toolchain-file@v1
 
-      - name: Cache
-        uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Format
         run: |
