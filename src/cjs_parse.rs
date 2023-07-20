@@ -131,6 +131,44 @@ impl CjsVisitor {
       _ => {}
     }
   }
+
+  fn visit_exports_right_expr(&mut self, right_expr: &Expr) {
+    match right_expr {
+      Expr::Object(object_lit) => {
+        for prop in &object_lit.props {
+          match prop {
+            PropOrSpread::Prop(prop) => {
+              if let Some(prop_name) = get_prop_name(prop) {
+                if is_supported_object_prop(prop) {
+                  self.add_export(prop_name);
+                } else {
+                  self.add_unsafe_getter(prop_name);
+                }
+              }
+            }
+            PropOrSpread::Spread(spread) => {
+              if let Some(require_value) = get_expr_require_value(&spread.expr)
+              {
+                self.add_reexport(require_value);
+              }
+            }
+          }
+        }
+      }
+      Expr::Call(call_expr) => {
+        // module.exports = require(...);
+        if let Some(require_value) = get_call_expr_require_value(call_expr) {
+          self.set_reexport_assignment_value(require_value);
+        }
+      }
+      Expr::Assign(right_assign_expr) => {
+        if right_assign_expr.op == AssignOp::Assign {
+          self.visit_exports_right_expr(&right_assign_expr.right);
+        }
+      }
+      _ => {}
+    };
+  }
 }
 
 impl Visit for CjsVisitor {
@@ -221,42 +259,17 @@ impl Visit for CjsVisitor {
     let left_expr =
       match assign_expr.left.as_pat().and_then(|pat| pat.as_expr()) {
         Some(expr) => expr,
-        _ => return,
+        _ => {
+          if let Some(right_expr) = assign_expr.right.as_assign() {
+            self.visit_assign_expr(right_expr);
+          }
+          return;
+        }
       };
 
     // check if left hand side is "module.exports = " or "exports ="
     if is_module_exports_or_exports(left_expr) {
-      match &*assign_expr.right {
-        Expr::Object(object_lit) => {
-          for prop in &object_lit.props {
-            match prop {
-              PropOrSpread::Prop(prop) => {
-                if let Some(prop_name) = get_prop_name(prop) {
-                  if is_supported_object_prop(prop) {
-                    self.add_export(prop_name);
-                  } else {
-                    self.add_unsafe_getter(prop_name);
-                  }
-                }
-              }
-              PropOrSpread::Spread(spread) => {
-                if let Some(require_value) =
-                  get_expr_require_value(&spread.expr)
-                {
-                  self.add_reexport(require_value);
-                }
-              }
-            }
-          }
-        }
-        Expr::Call(call_expr) => {
-          // module.exports = require(...);
-          if let Some(require_value) = get_call_expr_require_value(call_expr) {
-            self.set_reexport_assignment_value(require_value);
-          }
-        }
-        _ => {}
-      };
+      self.visit_exports_right_expr(&assign_expr.right);
     } else if let Some(left_member) = left_expr.as_member() {
       if is_module_exports_or_exports(&left_member.obj) {
         // check for:
@@ -1248,5 +1261,39 @@ mod test {
     );
 
     tester.assert_exports(vec!["x", "extract"]);
+  }
+
+  #[test]
+  fn multiple_assigns_before_module_exports() {
+    let tester = parse_cjs(
+      r#"
+        (function(){
+          const BigInteger = 1;
+          const SecureRandom = 2;
+          if (typeof exports !== 'undefined') {
+            a= exports = module.exports = {
+                  default: BigInteger,
+                  BigInteger: BigInteger,
+                  SecureRandom: SecureRandom,
+              };
+          }
+        }).call(this)
+    "#,
+    );
+    tester.assert_exports(vec!["BigInteger", "SecureRandom", "default"]);
+  }
+
+  #[test]
+  fn chain_assigns_after_module_exports() {
+    let tester = parse_cjs(
+      r#"
+      module.exports = a = b = exports = {
+        a: 1,
+        b: 2,
+        c,
+      }
+    "#,
+    );
+    tester.assert_exports(vec!["a", "b", "c"]);
   }
 }
