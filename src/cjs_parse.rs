@@ -41,7 +41,6 @@ struct CjsVisitor {
   reexports: HashSet<String>,
   unsafe_getters: HashSet<String>,
   var_assignments: HashMap<String, String>,
-  in_module_exports: bool,
 }
 
 impl CjsVisitor {
@@ -163,9 +162,9 @@ impl CjsVisitor {
         }
       }
       Expr::Assign(right_assign_expr) => {
-        self.in_module_exports = true;
-        self.visit_assign_expr(right_assign_expr);
-        self.in_module_exports = false;
+        if right_assign_expr.op == AssignOp::Assign {
+          self.visit_exports_right_expr(&right_assign_expr.right);
+        }
       }
       _ => {}
     };
@@ -254,11 +253,6 @@ impl Visit for CjsVisitor {
 
   fn visit_assign_expr(&mut self, assign_expr: &AssignExpr) {
     if assign_expr.op != AssignOp::Assign {
-      return;
-    }
-
-    if self.in_module_exports {
-      self.visit_exports_right_expr(&assign_expr.right);
       return;
     }
 
