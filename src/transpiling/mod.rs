@@ -162,6 +162,7 @@ impl crate::swc::common::source_map::SourceMapGenConfig for SourceMapConfig {
 }
 
 /// Source transpiled based on the emit options.
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
 pub struct TranspiledSource {
   /// Transpiled text.
   pub text: String,
