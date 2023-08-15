@@ -14,7 +14,6 @@ const repoNames = [
   "deno_doc",
   "eszip",
   "deno_emit",
-  "deno_core",
   "deno",
 ];
 
