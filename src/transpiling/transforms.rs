@@ -29,7 +29,7 @@ impl Fold for ImportDeclsToVarDeclsFolder {
 
         // The initializer (ex. `await import('./mod.ts')`)
         let initializer =
-          create_await_import_expr(&import_decl.src.value, import_decl.asserts);
+          create_await_import_expr(&import_decl.src.value, import_decl.with);
 
         // Handle imports for the side effects
         // ex. `import "module.ts"` -> `await import("module.ts");`
@@ -133,7 +133,7 @@ impl Fold for StripExportsFolder {
           span: DUMMY_SP,
           expr: create_await_import_expr(
             &export_all.src.value,
-            export_all.asserts,
+            export_all.with,
           ),
         }))
       }
@@ -141,7 +141,7 @@ impl Fold for StripExportsFolder {
         if let Some(src) = export_named.src {
           ModuleItem::Stmt(Stmt::Expr(ExprStmt {
             span: DUMMY_SP,
-            expr: create_await_import_expr(&src.value, export_named.asserts),
+            expr: create_await_import_expr(&src.value, export_named.with),
           }))
         } else {
           create_empty_stmt()

@@ -268,9 +268,9 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
       decorators_before_export: false,
       export_default_from: true,
       fn_bind: false,
-      import_assertions: true,
+      import_attributes: true,
       jsx: media_type == MediaType::Jsx,
-      using_decl: true,
+      explicit_resource_management: true,
     }),
   }
 }
