@@ -587,9 +587,7 @@ export class A {
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"my:tag\", null"));
-    assert!(transpiled_source
-      .text
-      .contains("\"my:attr\": \"this\""));
+    assert!(transpiled_source.text.contains("\"my:attr\": \"this\""));
   }
 
   #[test]
