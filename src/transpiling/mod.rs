@@ -335,7 +335,7 @@ pub fn fold_program(
           ),
           next: None,
           refresh: None,
-          throw_if_namespace: None,
+          throw_if_namespace: Some(false),
           use_spread: None,
         },
         top_level_mark,
@@ -561,6 +561,33 @@ export class A {
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"div\", null"));
+  }
+
+  #[test]
+  fn test_transpile_tsx_with_namespace() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"
+    export class A {
+      render() {
+        return <my:tag><span my:attr="this"></span></my:tag>
+      }
+    }
+    "#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true, // ensure scope analysis doesn't conflict with a second resolver pass
+    })
+    .unwrap();
+    let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
+    assert!(transpiled_source
+      .text
+      .contains("React.createElement(\"my:tag\", null"));
+    assert!(transpiled_source.text.contains("\"my:attr\": \"this\""));
   }
 
   #[test]
