@@ -313,6 +313,7 @@ pub fn fold_program(
       ),
       options.transform_jsx
     ),
+    proposal::explicit_resource_management::explicit_resource_management(),
     Optional::new(
       react::react(
         source_map.clone(),
@@ -535,6 +536,37 @@ export class A {
       .text
       .contains("\n//# sourceMappingURL=data:application/json;base64,"));
     assert!(transpiled_source.source_map.is_none());
+  }
+
+  #[test]
+  fn test_explicit_resource_management() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = "using data = create();\nconsole.log(data);";
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
+    let expected_text = r#"try {
+  var _stack = [];
+  var data = _using(_stack, create());
+  console.log(data);
+} catch (_) {
+  var _error = _;
+  var _hasError = true;
+} finally{
+  _dispose(_stack, _error, _hasError);
+}"#;
+    assert_eq!(
+      &transpiled_source.text[..expected_text.len()],
+      expected_text
+    );
   }
 
   #[test]
