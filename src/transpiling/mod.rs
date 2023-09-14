@@ -4,7 +4,6 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use proposal::explicit_resource_management;
 
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
@@ -314,7 +313,7 @@ pub fn fold_program(
       ),
       options.transform_jsx
     ),
-    explicit_resource_management::explicit_resource_management(),
+    proposal::explicit_resource_management::explicit_resource_management(),
     Optional::new(
       react::react(
         source_map.clone(),
