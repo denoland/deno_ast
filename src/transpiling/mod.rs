@@ -296,6 +296,7 @@ pub fn fold_program(
       emit_metadata: options.emit_metadata,
       use_define_for_class_fields: true,
     }),
+    proposal::explicit_resource_management::explicit_resource_management(),
     helpers::inject_helpers(top_level_mark),
     Optional::new(
       typescript::strip::strip_with_config(
@@ -313,7 +314,6 @@ pub fn fold_program(
       ),
       options.transform_jsx
     ),
-    proposal::explicit_resource_management::explicit_resource_management(),
     Optional::new(
       react::react(
         source_map.clone(),
@@ -553,7 +553,67 @@ export class A {
     })
     .unwrap();
     let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
-    let expected_text = r#"try {
+    let expected_text = r#"function dispose_SuppressedError(suppressed, error) {
+  if (typeof SuppressedError !== "undefined") {
+    dispose_SuppressedError = SuppressedError;
+  } else {
+    dispose_SuppressedError = function SuppressedError(suppressed, error) {
+      this.suppressed = suppressed;
+      this.error = error;
+      this.stack = new Error().stack;
+    };
+    dispose_SuppressedError.prototype = Object.create(Error.prototype, {
+      constructor: {
+        value: dispose_SuppressedError,
+        writable: true,
+        configurable: true
+      }
+    });
+  }
+  return new dispose_SuppressedError(suppressed, error);
+}
+function _dispose(stack, error, hasError) {
+  function next() {
+    while(stack.length > 0){
+      try {
+        var r = stack.pop();
+        var p = r.d.call(r.v);
+        if (r.a) return Promise.resolve(p).then(next, err);
+      } catch (e) {
+        return err(e);
+      }
+    }
+    if (hasError) throw error;
+  }
+  function err(e) {
+    error = hasError ? new dispose_SuppressedError(e, error) : e;
+    hasError = true;
+    return next();
+  }
+  return next();
+}
+function _using(stack, value, isAwait) {
+  if (value === null || value === void 0) return value;
+  if (typeof value !== "object") {
+    throw new TypeError("using declarations can only be used with objects, null, or undefined.");
+  }
+  if (isAwait) {
+    var dispose = value[Symbol.asyncDispose || Symbol.for("Symbol.asyncDispose")];
+  }
+  if (dispose === null || dispose === void 0) {
+    dispose = value[Symbol.dispose || Symbol.for("Symbol.dispose")];
+  }
+  if (typeof dispose !== "function") {
+    throw new TypeError(`Property [Symbol.dispose] is not a function.`);
+  }
+  stack.push({
+    v: value,
+    d: dispose,
+    a: isAwait
+  });
+  return value;
+}
+try {
   var _stack = [];
   var data = _using(_stack, create());
   console.log(data);
