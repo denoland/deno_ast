@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use swc_ast::Ident;
-
 use crate::swc::ast as swc_ast;
 use crate::swc::common::DUMMY_SP;
 use crate::swc::visit::noop_fold_type;
