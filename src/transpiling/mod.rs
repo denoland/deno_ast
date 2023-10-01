@@ -285,10 +285,6 @@ pub fn fold_program(
 
   let unresolved_mark = Mark::new();
   let mut passes = chain!(
-    Optional::new(
-      transforms::ImportDeclsToVarDeclsFolder,
-      options.var_decl_imports
-    ),
     Optional::new(transforms::StripExportsFolder, options.var_decl_imports),
     resolver(unresolved_mark, top_level_mark, true),
     proposal::decorators::decorators(proposal::decorators::Config {
@@ -343,6 +339,10 @@ pub fn fold_program(
         unresolved_mark,
       ),
       options.transform_jsx
+    ),
+    Optional::new(
+      transforms::ImportDeclsToVarDeclsFolder,
+      options.var_decl_imports
     ),
     fixer(Some(comments)),
     hygiene(),
@@ -814,6 +814,41 @@ function App() {
     columnNumber: 5
   }, this);
 }
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
+  fn test_transpile_jsx_import_source_pragma_var_decl_imports() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source = r#"
+/** @jsxImportSource jsx_lib */
+
+function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Jsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let emit_options = EmitOptions {
+      var_decl_imports: true,
+      ..Default::default()
+    };
+    let code = module.transpile(&emit_options).unwrap().text;
+    let expected = r#"/** @jsxImportSource jsx_lib */ const { "jsx": _jsx1, "Fragment": _Fragment1 } = await import("jsx_lib/jsx-runtime");
+function App() {
+  return /*#__PURE__*/ _jsx("div", {
+    children: /*#__PURE__*/ _jsx(_Fragment, {})
+  });
 "#;
     assert_eq!(&code[..expected.len()], expected);
   }

@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use swc_ast::Ident;
+
 use crate::swc::ast as swc_ast;
 use crate::swc::common::DUMMY_SP;
 use crate::swc::visit::noop_fold_type;
@@ -58,7 +60,7 @@ impl Fold for ImportDeclsToVarDeclsFolder {
                   },
                   specifier.local.sym.to_string(),
                 ),
-                None => create_assignment(specifier.local.sym.to_string()),
+                None => create_assignment(specifier.local.clone()),
               })
             }
             ImportSpecifier::Namespace(_) => None,
@@ -69,9 +71,10 @@ impl Fold for ImportDeclsToVarDeclsFolder {
             .specifiers
             .iter()
             .find_map(|specifier| match specifier {
-              ImportSpecifier::Namespace(specifier) => {
-                Some(create_binding_ident(specifier.local.sym.to_string()))
-              }
+              ImportSpecifier::Namespace(specifier) => Some(BindingIdent {
+                id: specifier.local.clone(),
+                type_ann: None,
+              }),
               _ => None,
             });
 
@@ -190,13 +193,6 @@ fn create_empty_stmt() -> swc_ast::ModuleItem {
   ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP }))
 }
 
-fn create_binding_ident(name: String) -> swc_ast::BindingIdent {
-  swc_ast::BindingIdent {
-    id: create_ident(name),
-    type_ann: None,
-  }
-}
-
 fn create_ident(name: String) -> swc_ast::Ident {
   swc_ast::Ident {
     span: DUMMY_SP,
@@ -269,10 +265,10 @@ fn create_await_import_expr(
   }))
 }
 
-fn create_assignment(key: String) -> swc_ast::ObjectPatProp {
+fn create_assignment(key: Ident) -> swc_ast::ObjectPatProp {
   swc_ast::ObjectPatProp::Assign(swc_ast::AssignPatProp {
     span: DUMMY_SP,
-    key: create_ident(key),
+    key,
     value: None,
   })
 }
