@@ -265,7 +265,7 @@ fn create_await_import_expr(
   }))
 }
 
-fn create_assignment(key: Ident) -> swc_ast::ObjectPatProp {
+fn create_assignment(key: swc_ast::Ident) -> swc_ast::ObjectPatProp {
   swc_ast::ObjectPatProp::Assign(swc_ast::AssignPatProp {
     span: DUMMY_SP,
     key,
