@@ -199,7 +199,10 @@ fn create_ident(name: String) -> swc_ast::Ident {
   }
 }
 
-fn create_key_value(key: String, value: swc_ast::Ident) -> swc_ast::ObjectPatProp {
+fn create_key_value(
+  key: String,
+  value: swc_ast::Ident,
+) -> swc_ast::ObjectPatProp {
   swc_ast::ObjectPatProp::KeyValue(swc_ast::KeyValuePatProp {
     // use a string literal because it will work in more scenarios than an identifier
     key: swc_ast::PropName::Str(swc_ast::Str {
