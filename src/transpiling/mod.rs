@@ -844,7 +844,7 @@ function App() {
       ..Default::default()
     };
     let code = module.transpile(&emit_options).unwrap().text;
-    let expected = r#"/** @jsxImportSource jsx_lib */ const { "jsx": _jsx1, "Fragment": _Fragment1 } = await import("jsx_lib/jsx-runtime");
+    let expected = r#"/** @jsxImportSource jsx_lib */ const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
 function App() {
   return /*#__PURE__*/ _jsx("div", {
     children: /*#__PURE__*/ _jsx(_Fragment, {})
