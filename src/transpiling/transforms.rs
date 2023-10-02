@@ -47,7 +47,7 @@ impl Fold for ImportDeclsToVarDeclsFolder {
           .filter_map(|specifier| match specifier {
             ImportSpecifier::Default(specifier) => Some(create_key_value(
               "default".to_string(),
-              specifier.local.sym.to_string(),
+              specifier.local.clone(),
             )),
             ImportSpecifier::Named(specifier) => {
               Some(match specifier.imported.as_ref() {
@@ -56,7 +56,7 @@ impl Fold for ImportDeclsToVarDeclsFolder {
                     ModuleExportName::Ident(ident) => ident.sym.to_string(),
                     ModuleExportName::Str(str) => str.value.to_string(),
                   },
-                  specifier.local.sym.to_string(),
+                  specifier.local.clone(),
                 ),
                 None => create_assignment(specifier.local.clone()),
               })
@@ -199,7 +199,10 @@ fn create_ident(name: String) -> swc_ast::Ident {
   }
 }
 
-fn create_key_value(key: String, value: String) -> swc_ast::ObjectPatProp {
+fn create_key_value(
+  key: String,
+  value: swc_ast::Ident,
+) -> swc_ast::ObjectPatProp {
   swc_ast::ObjectPatProp::KeyValue(swc_ast::KeyValuePatProp {
     // use a string literal because it will work in more scenarios than an identifier
     key: swc_ast::PropName::Str(swc_ast::Str {
@@ -208,11 +211,7 @@ fn create_key_value(key: String, value: String) -> swc_ast::ObjectPatProp {
       raw: None,
     }),
     value: Box::new(swc_ast::Pat::Ident(swc_ast::BindingIdent {
-      id: swc_ast::Ident {
-        span: DUMMY_SP,
-        sym: value.into(),
-        optional: false,
-      },
+      id: value,
       type_ann: None,
     })),
   })
