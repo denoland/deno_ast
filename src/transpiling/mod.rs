@@ -290,10 +290,7 @@ pub fn fold_program(
     proposal::explicit_resource_management::explicit_resource_management(),
     helpers::inject_helpers(top_level_mark),
     Optional::new(
-      typescript::typescript(
-        options.as_typescript_config(),
-        top_level_mark
-      ),
+      typescript::typescript(options.as_typescript_config(), top_level_mark),
       !options.transform_jsx
     ),
     Optional::new(
@@ -447,7 +444,6 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
         SyntaxError::Expected(_, _)
   )
 }
-
 
 pub(crate) fn swc_codegen_config() -> crate::swc::codegen::Config {
   // NOTICE ON UPGRADE: This struct has #[non_exhaustive] on it,
