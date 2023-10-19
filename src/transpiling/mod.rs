@@ -32,6 +32,7 @@ use crate::ParsedSource;
 
 use std::cell::RefCell;
 
+mod jsx_string;
 mod transforms;
 
 #[derive(Debug, Clone, Hash)]
