@@ -284,7 +284,6 @@ mod test {
   use crate::swc::visit::Fold;
   use crate::swc::visit::FoldWith;
   use crate::ModuleSpecifier;
-  use crate::ES_VERSION;
   use pretty_assertions::assert_eq;
   use std::rc::Rc;
 
@@ -506,14 +505,8 @@ mod test {
       let mut writer =
         Box::new(JsWriter::new(source_map.clone(), "\n", &mut buf, None));
       writer.set_indent_str("  "); // two spaces
-      let config = crate::swc::codegen::Config {
-        minify: false,
-        ascii_only: false,
-        omit_last_semi: false,
-        target: ES_VERSION,
-      };
       let mut emitter = crate::swc::codegen::Emitter {
-        cfg: config,
+        cfg: crate::swc_codegen_config(),
         comments: None,
         cm: source_map,
         wr: writer,

@@ -24,13 +24,11 @@ use crate::swc::transforms::proposal;
 use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
-use crate::swc::transforms::typescript::TsEnumConfig;
 use crate::swc::visit::FoldWith;
 use crate::Diagnostic;
 use crate::DiagnosticsError;
 use crate::ModuleSpecifier;
 use crate::ParsedSource;
-use crate::ES_VERSION;
 
 use std::cell::RefCell;
 
@@ -108,34 +106,36 @@ impl Default for EmitOptions {
 }
 
 impl EmitOptions {
-  fn as_typescript_strip_config(&self) -> typescript::strip::Config {
-    #![allow(deprecated)]
-    typescript::strip::Config {
+  fn as_tsx_config(&self) -> typescript::TsxConfig {
+    typescript::TsxConfig {
       pragma: Some(self.jsx_factory.clone()),
       pragma_frag: Some(self.jsx_fragment_factory.clone()),
+    }
+  }
+
+  fn as_typescript_config(&self) -> typescript::Config {
+    typescript::Config {
+      verbatim_module_syntax: false,
       import_not_used_as_values: match self.imports_not_used_as_values {
         ImportsNotUsedAsValues::Remove => {
-          typescript::strip::ImportsNotUsedAsValues::Remove
+          typescript::ImportsNotUsedAsValues::Remove
         }
         ImportsNotUsedAsValues::Preserve => {
-          typescript::strip::ImportsNotUsedAsValues::Preserve
+          typescript::ImportsNotUsedAsValues::Preserve
         }
         // `Error` only affects the type-checking stage. Fall back to `Remove` here.
         ImportsNotUsedAsValues::Error => {
-          typescript::strip::ImportsNotUsedAsValues::Remove
+          typescript::ImportsNotUsedAsValues::Remove
         }
       },
-      // this property is deprecated, but we don't use it anyway because we target >ES2020
-      use_define_for_class_fields: true,
       // no need for this to be false because we treat all files as modules
       no_empty_export: true,
-      ts_enum_config: TsEnumConfig {
-        treat_const_enum_as_enum: false,
-        ts_enum_is_readonly: false,
-      },
       // we don't suport this, so leave it as-is so it errors in v8
       import_export_assign_config:
         typescript::TsImportExportAssignConfig::Preserve,
+      // Do not opt into swc's optimization to inline enum member values
+      // in the same module as it might cause bugs in certain code.
+      ts_enum_is_mutable: true,
     }
   }
 }
@@ -209,14 +209,9 @@ impl ParsedSource {
           Some(&mut src_map_buf),
         ));
         writer.set_indent_str("  "); // two spaces
-        let config = crate::swc::codegen::Config {
-          minify: false,
-          ascii_only: false,
-          omit_last_semi: false,
-          target: ES_VERSION,
-        };
+
         let mut emitter = crate::swc::codegen::Emitter {
-          cfg: config,
+          cfg: swc_codegen_config(),
           comments: Some(&comments),
           cm: source_map.clone(),
           wr: writer,
@@ -295,16 +290,14 @@ pub fn fold_program(
     proposal::explicit_resource_management::explicit_resource_management(),
     helpers::inject_helpers(top_level_mark),
     Optional::new(
-      typescript::strip::strip_with_config(
-        options.as_typescript_strip_config(),
-        top_level_mark
-      ),
+      typescript::typescript(options.as_typescript_config(), top_level_mark),
       !options.transform_jsx
     ),
     Optional::new(
-      typescript::strip::strip_with_jsx(
+      typescript::tsx(
         source_map.clone(),
-        options.as_typescript_strip_config(),
+        options.as_typescript_config(),
+        options.as_tsx_config(),
         comments,
         top_level_mark
       ),
@@ -452,6 +445,20 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
   )
 }
 
+pub(crate) fn swc_codegen_config() -> crate::swc::codegen::Config {
+  // NOTICE ON UPGRADE: This struct has #[non_exhaustive] on it,
+  // which prevents creating a struct expr here. For that reason,
+  // inspect the struct on swc upgrade and explicitly specify any
+  // new options here in order to ensure we maintain these settings.
+  let mut config = crate::swc::codegen::Config::default();
+  config.minify = false;
+  config.ascii_only = false;
+  config.omit_last_semi = false;
+  config.target = crate::ES_VERSION;
+  config.emit_assert_for_import_attributes = false;
+  config
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -512,7 +519,7 @@ var N;
   (function(D) {
     D["A"] = "value";
   })(D = N.D || (N.D = {}));
-  var Value = N.Value = 5;
+  N.Value = 5;
 })(N || (N = {}));
 export class A {
   d;
