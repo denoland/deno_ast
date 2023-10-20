@@ -75,9 +75,7 @@ fn null_arg() -> ExprOrSpread {
 fn get_attr_name(jsx_attr: &JSXAttr) -> String {
   match &jsx_attr.name {
     // Case: <button class="btn">
-    JSXAttrName::Ident(ident) => {
-      normalize_dom_attr_name(&ident.sym.to_string())
-    }
+    JSXAttrName::Ident(ident) => normalize_dom_attr_name(&ident.sym.as_ref()),
     // Case (svg only): <a xlink:href="#">...</a>
     JSXAttrName::JSXNamespacedName(_namespace_name) => {
       // TODO: Only support "xlink:href", but convert it to "href"
@@ -91,7 +89,7 @@ impl JsxString {
     &mut self,
     el: JSXElement,
     strings: &mut Vec<String>,
-    dynamic_exprs: &mut Vec<Box<Expr>>,
+    dynamic_exprs: &mut Vec<Expr>,
   ) {
     let ident = match el.opening.name {
       // Case: <div />
@@ -134,7 +132,7 @@ impl JsxString {
         for attr in el.opening.attrs.iter() {
           match attr {
             JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-              let attr_name = get_attr_name(&jsx_attr);
+              let attr_name = get_attr_name(jsx_attr);
 
               let prop_name = PropName::Str(Str {
                 span: DUMMY_SP,
@@ -205,12 +203,12 @@ impl JsxString {
       }
 
       // TODO: support raw function call option: <Foo /> -> Foo()
-      let expr = Box::new(Expr::Call(CallExpr {
+      let expr = Expr::Call(CallExpr {
         span: DUMMY_SP,
         callee: Callee::Expr(Box::new(Expr::Ident(jsx_ident))),
         args: args,
         type_args: None,
-      }));
+      });
       strings.push("".to_string());
       dynamic_exprs.push(expr);
       return;
@@ -230,7 +228,7 @@ impl JsxString {
         // Case: <button class="btn">
         match attr {
           JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-            let attr_name = get_attr_name(&jsx_attr);
+            let attr_name = get_attr_name(jsx_attr);
 
             serialized_attr.push_str(attr_name.as_str());
 
@@ -268,7 +266,7 @@ impl JsxString {
                   // This is treated as a syntax error in attributes
                   JSXExpr::JSXEmptyExpr(_) => todo!(),
                   JSXExpr::Expr(expr) => {
-                    let obj_expr = Box::new(Expr::Object(ObjectLit {
+                    let obj_expr = Expr::Object(ObjectLit {
                       span: DUMMY_SP,
                       props: vec![PropOrSpread::Prop(Box::new(
                         Prop::KeyValue(KeyValueProp {
@@ -280,7 +278,7 @@ impl JsxString {
                           value: expr.clone(),
                         }),
                       ))],
-                    }));
+                    });
                     dynamic_exprs.push(obj_expr);
                   }
                 }
@@ -295,13 +293,13 @@ impl JsxString {
           JSXAttrOrSpread::SpreadElement(jsx_spread_element) => {
             strings.last_mut().unwrap().push_str(" ");
             strings.push("".to_string());
-            let obj_expr = Box::new(Expr::Object(ObjectLit {
+            let obj_expr = Expr::Object(ObjectLit {
               span: DUMMY_SP,
               props: vec![PropOrSpread::Spread(SpreadElement {
                 dot3_token: DUMMY_SP,
                 expr: jsx_spread_element.expr.clone(),
               })],
-            }));
+            });
             dynamic_exprs.push(obj_expr);
             continue;
           }
@@ -312,7 +310,7 @@ impl JsxString {
           strings
             .last_mut()
             .unwrap()
-            .push_str(&serialized_attr.as_str());
+            .push_str(serialized_attr.as_str());
         }
       }
     }
@@ -349,7 +347,7 @@ impl JsxString {
             JSXExpr::Expr(expr) => match &**expr {
               Expr::Ident(ident) => {
                 strings.push("".to_string());
-                dynamic_exprs.push(Box::new(Expr::Ident(ident.clone())));
+                dynamic_exprs.push(Expr::Ident(ident.clone()));
               }
               _ => todo!(),
             },
@@ -384,7 +382,7 @@ impl JsxString {
     let span = el.span();
 
     let mut static_strs: Vec<String> = vec![];
-    let mut dynamic_exprs: Vec<Box<Expr>> = vec![];
+    let mut dynamic_exprs: Vec<Expr> = vec![];
     self.serialize_jsx_element_to_string_vec(
       el,
       &mut static_strs,
@@ -405,7 +403,7 @@ impl JsxString {
       for dynamic_expr in dynamic_exprs.into_iter() {
         args.push(ExprOrSpread {
           spread: None,
-          expr: dynamic_expr,
+          expr: Box::new(dynamic_expr),
         });
       }
     }
@@ -546,9 +544,7 @@ impl VisitMut for JsxString {
       // TODO: This optimization is only valid if we're the topmost
       // jsx element
       if frag.children.is_empty() {
-        *expr = Expr::Lit(Lit::Null(Null {
-          span: frag.span.clone(),
-        }));
+        *expr = Expr::Lit(Lit::Null(Null { span: frag.span }));
         return;
       }
 
@@ -653,7 +649,7 @@ const a = _jsxssr($$_tpl_1, null);"#,
           .as_str(),
         format!(
           "{}\nconst $$_tpl_1 = [\n  '<label {}=\"foo\">label</label>'\n];\nconst a = _jsxssr($$_tpl_1, null);",
-          "import { jsxssr as _jsxssr } from \"react/jsx-runtime\";".to_string(),
+          "import { jsxssr as _jsxssr } from \"react/jsx-runtime\";",
           &mapping.1
         )
         .as_str(),
