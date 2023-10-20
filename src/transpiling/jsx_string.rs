@@ -58,11 +58,23 @@ fn normalize_dom_attr_name(name: &str) -> String {
 
 // See: https://developer.mozilla.org/en-US/docs/Glossary/Void_element
 fn is_void_element(name: &str) -> bool {
-  match name {
-    "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input"
-    | "link" | "meta" | "param" | "source" | "track" | "wbr" => true,
-    _ => false,
-  }
+  matches!(
+    name,
+    "area"
+      | "base"
+      | "br"
+      | "col"
+      | "embed"
+      | "hr"
+      | "img"
+      | "input"
+      | "link"
+      | "meta"
+      | "param"
+      | "source"
+      | "track"
+      | "wbr"
+  )
 }
 
 fn null_arg() -> ExprOrSpread {
@@ -75,7 +87,7 @@ fn null_arg() -> ExprOrSpread {
 fn get_attr_name(jsx_attr: &JSXAttr) -> String {
   match &jsx_attr.name {
     // Case: <button class="btn">
-    JSXAttrName::Ident(ident) => normalize_dom_attr_name(&ident.sym.as_ref()),
+    JSXAttrName::Ident(ident) => normalize_dom_attr_name(ident.sym.as_ref()),
     // Case (svg only): <a xlink:href="#">...</a>
     JSXAttrName::JSXNamespacedName(_namespace_name) => {
       // TODO: Only support "xlink:href", but convert it to "href"
