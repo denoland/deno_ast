@@ -11,21 +11,22 @@ use swc_common::{
   Spanned,
 };
 use swc_ecma_ast::*;
-// use swc_ecma_utils::{
-//   drop_span, member_expr, prepend_stmt, private_ident, quote_ident, undefined,
-//   ExprFactory,
-// };
+use swc_ecma_utils::prepend_stmt;
 use swc_ecma_visit::{
   as_folder, noop_visit_mut_type, Fold, VisitMut, VisitMutWith,
 };
 
 struct JsxString {
   next_index: usize,
+  templates: Vec<(usize, JSXElement)>,
 }
 
 impl Default for JsxString {
   fn default() -> Self {
-    Self { next_index: 0 }
+    Self {
+      next_index: 0,
+      templates: vec![],
+    }
   }
 }
 
@@ -34,9 +35,15 @@ fn create_tpl_binding_name(index: usize) -> String {
 }
 
 impl JsxString {
-  fn generate_tpl_join(&self, el: JSXElement) -> Expr {
-    let name = create_tpl_binding_name(self.next_index);
+  fn generate_template_join(
+    &mut self,
+    template_index: usize,
+    el: JSXElement,
+  ) -> Expr {
+    let name = create_tpl_binding_name(template_index);
     let span = el.span();
+
+    self.templates.push((template_index, el.clone()));
 
     // $$_tpl_1.join("");
     Expr::Call(CallExpr {
@@ -65,49 +72,60 @@ impl VisitMut for JsxString {
   fn visit_mut_module(&mut self, module: &mut Module) {
     eprintln!("ast {:#?}", module);
     module.visit_mut_children_with(self);
+    for (idx, template) in self.templates.iter().rev() {
+      prepend_stmt(
+        &mut module.body,
+        ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(VarDecl {
+          span: DUMMY_SP,
+          kind: VarDeclKind::Const,
+          declare: false,
+          decls: vec![VarDeclarator {
+            span: DUMMY_SP,
+            name: Pat::Ident(BindingIdent {
+              id: Ident::new(create_tpl_binding_name(*idx).into(), DUMMY_SP),
+              type_ann: None,
+            }),
+            init: Some(Box::new(Expr::Array(ArrayLit {
+              span: DUMMY_SP,
+              elems: vec![Some(ExprOrSpread {
+                spread: None,
+                expr: Box::new(Expr::Lit(Lit::Str(Str {
+                  span: DUMMY_SP,
+                  value: "FIXME".into(),
+                  raw: None,
+                }))),
+              })],
+            }))),
+            definite: false,
+          }],
+        })))),
+      )
+    }
   }
 
   fn visit_mut_expr(&mut self, expr: &mut Expr) {
-    // let top_level_node = self.top_level_node;
-    // let mut did_work = false;
-
     if let Expr::JSXElement(el) = expr {
       // TODO:
       // 1. create a `_tpl_<name>` which is an array literal
       // 2. transform the element into a list of string literals and
       //    push them to the `_tpl_<name>` literal node
       // 3. change the `expr` to be `_tpl_<name>.join("");`
-
       self.next_index += 1;
-
-      //   did_work = true;
-      //   // <div></div> => React.createElement('div', null);
-      *expr = self.generate_tpl_join(*el.take());
-    } else if let Expr::JSXFragment(frag) = expr {
-      //   // <></> => React.createElement(React.Fragment, null);
-      //   did_work = true;
-      //   *expr = self.jsx_frag_to_expr(frag.take());
+      *expr = self.generate_template_join(self.next_index, *el.take());
+    } else if let Expr::JSXFragment(_frag) = expr {
+      todo!();
     } else if let Expr::Paren(ParenExpr {
       expr: inner_expr, ..
     }) = expr
     {
-      if let Expr::JSXElement(el) = &mut **inner_expr {
-        // did_work = true;
-        // *expr = self.jsx_elem_to_expr(*el.take());
-      } else if let Expr::JSXFragment(frag) = &mut **inner_expr {
-        // <></> => React.createElement(React.Fragment, null);
-        // did_work = true;
-        // *expr = self.jsx_frag_to_expr(frag.take());
+      if let Expr::JSXElement(_el) = &mut **inner_expr {
+        todo!();
+      } else if let Expr::JSXFragment(_frag) = &mut **inner_expr {
+        todo!();
       }
     }
 
-    // if did_work {
-    //   self.top_level_node = false;
-    // }
-
     expr.visit_mut_children_with(self);
-
-    // self.top_level_node = top_level_node;
   }
 }
 
