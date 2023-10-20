@@ -18,7 +18,7 @@ use swc_ecma_visit::{
 
 struct JsxString {
   next_index: usize,
-  templates: Vec<(usize, JSXElement)>,
+  templates: Vec<(usize, (Vec<String>, Vec<String>))>,
 }
 
 impl Default for JsxString {
@@ -34,6 +34,103 @@ fn create_tpl_binding_name(index: usize) -> String {
   format!("$$_tpl_{index}")
 }
 
+fn serialize_jsx_element_to_string_vec(
+  el: JSXElement,
+) -> (Vec<String>, Vec<String>) {
+  let name = match el.opening.name {
+    JSXElementName::Ident(ident) => ident.sym.to_string(),
+    _ => todo!(),
+  };
+
+  let mut s = String::from("<");
+  s.push_str(name.as_str());
+
+  if !el.opening.attrs.is_empty() {
+    for attr in el.opening.attrs.iter() {
+      let mut is_dynamic = false;
+      let mut serialized_attr = String::new();
+      // <button class="btn">
+      match attr {
+        JSXAttrOrSpread::JSXAttr(jsx_attr) => {
+          match &jsx_attr.name {
+            JSXAttrName::Ident(ident) => {
+              serialized_attr.push_str(ident.sym.to_string().as_str());
+              serialized_attr.push_str("=\"");
+            }
+            JSXAttrName::JSXNamespacedName(_) => todo!(),
+          };
+          let Some(attr_value) = &jsx_attr.value else {
+            continue;
+          };
+          match attr_value {
+            JSXAttrValue::Lit(lit) => match lit {
+              Lit::Str(string_lit) => {
+                serialized_attr.push_str(string_lit.value.to_string().as_str());
+              }
+              Lit::Bool(_) => todo!(),
+              Lit::Null(_) => todo!(),
+              Lit::Num(_) => todo!(),
+              Lit::BigInt(_) => todo!(),
+              Lit::Regex(_) => todo!(),
+              Lit::JSXText(_) => todo!(),
+            },
+            JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
+              is_dynamic = true;
+              eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
+            }
+            JSXAttrValue::JSXElement(_) => todo!(),
+            JSXAttrValue::JSXFragment(_) => todo!(),
+          }
+        }
+        JSXAttrOrSpread::SpreadElement(_) => todo!(),
+      };
+      serialized_attr.push_str("\"");
+      if !is_dynamic {
+        s.push_str(" ");
+        s.push_str(&serialized_attr.as_str());
+      }
+    }
+  }
+
+  if el.opening.self_closing {
+    s.push_str(" />");
+    return (vec![s], vec![]);
+  }
+
+  let mut strings: Vec<String> = vec![];
+  let mut dynamic_exprs: Vec<String> = vec![];
+
+  s.push_str(">");
+  strings.push(s);
+
+  for child in el.children.iter() {
+    match child {
+      JSXElementChild::JSXText(jsx_text) => {
+        strings.push(jsx_text.value.to_string());
+      }
+      JSXElementChild::JSXExprContainer(jsx_expr_container) => {
+        match &jsx_expr_container.expr {
+          JSXExpr::JSXEmptyExpr(_jsx_empty_expr) => todo!(),
+          JSXExpr::Expr(expr) => match &**expr {
+            Expr::Ident(ident) => {
+              dynamic_exprs.push(ident.sym.to_string());
+            }
+            _ => todo!(),
+          },
+        }
+      }
+      JSXElementChild::JSXSpreadChild(_) => todo!(),
+      JSXElementChild::JSXElement(_) => todo!(),
+      JSXElementChild::JSXFragment(_) => todo!(),
+    }
+  }
+
+  let closing_tag = format!("</{}>", name);
+  strings.push(closing_tag);
+
+  (strings, dynamic_exprs)
+}
+
 impl JsxString {
   fn generate_template_join(
     &mut self,
@@ -43,7 +140,9 @@ impl JsxString {
     let name = create_tpl_binding_name(template_index);
     let span = el.span();
 
-    self.templates.push((template_index, el.clone()));
+    self
+      .templates
+      .push((template_index, serialize_jsx_element_to_string_vec(el)));
 
     // $$_tpl_1.join("");
     Expr::Call(CallExpr {
@@ -72,7 +171,21 @@ impl VisitMut for JsxString {
   fn visit_mut_module(&mut self, module: &mut Module) {
     eprintln!("ast {:#?}", module);
     module.visit_mut_children_with(self);
-    for (idx, template) in self.templates.iter().rev() {
+    for (idx, (strings, dynamic_exprs)) in self.templates.iter().rev() {
+      let elems: Vec<Option<ExprOrSpread>> = strings
+        .iter()
+        .map(|el| {
+          Some(ExprOrSpread {
+            spread: None,
+            expr: Box::new(Expr::Lit(Lit::Str(Str {
+              span: DUMMY_SP,
+              value: el.as_str().into(),
+              raw: None,
+            }))),
+          })
+        })
+        .collect();
+
       prepend_stmt(
         &mut module.body,
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(VarDecl {
@@ -87,14 +200,7 @@ impl VisitMut for JsxString {
             }),
             init: Some(Box::new(Expr::Array(ArrayLit {
               span: DUMMY_SP,
-              elems: vec![Some(ExprOrSpread {
-                spread: None,
-                expr: Box::new(Expr::Lit(Lit::Str(Str {
-                  span: DUMMY_SP,
-                  value: "FIXME".into(),
-                  raw: None,
-                }))),
-              })],
+              elems,
             }))),
             definite: false,
           }],
@@ -154,13 +260,32 @@ mod tests {
     test_transform(
       JsxString::default(),
       r#"const a = <div>Hello!</div>;
-const b = <div>Hello!</div>;"#,
+const b = <div>Hello {name}!</div>;
+const c = <button class="btn" onClick={onClick}>Hello {name}!</button>;
+"#,
       r#"const $$_tpl_1 = ["<div>Hello!</div>"];
-const $$_tpl_2 = ["<div>Hello!</div>"];
+const $$_tpl_2 = ["<div>Hello", "!</div>"];
+const $$_tpl_3 = ["<button class=\"btn\"", ">Hello ", "!</button>];
 const a = $$_tpl_1.join("");
-const b = $$_tpl_2.join("");"#,
+const b = renderFunction($$_tpl_2, name);
+const c = renderFunction($$_tpl_3, { onClick }, name);"#,
     );
   }
+
+  //   #[test]
+  //   fn basic_test_with_imports() {
+  //     test_transform(
+  //       JsxString::default(),
+  //       r#"import * as assert from "https://deno.land/std/assert/mod.ts";
+  // const a = <div>Hello!</div>;
+  // const b = <div>Hello!</div>;"#,
+  //       r#"const $$_tpl_1 = ["<div>Hello!</div>"];
+  // const $$_tpl_2 = ["<div>Hello!</div>"];
+  // import * as assert from "https://deno.land/std/assert/mod.ts";
+  // const a = $$_tpl_1.join("");
+  // const b = $$_tpl_2.join("");"#,
+  //     );
+  //   }
 
   #[track_caller]
   fn test_transform(
