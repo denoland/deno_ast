@@ -118,7 +118,19 @@ fn serialize_jsx_element_to_string_vec(
             JSXAttrValue::JSXFragment(_) => todo!(),
           }
         }
-        JSXAttrOrSpread::SpreadElement(_) => todo!(),
+        JSXAttrOrSpread::SpreadElement(jsx_spread_element) => {
+          strings.last_mut().unwrap().push_str(" ");
+          strings.push("".to_string());
+          let obj_expr = Box::new(Expr::Object(ObjectLit {
+            span: DUMMY_SP,
+            props: vec![PropOrSpread::Spread(SpreadElement {
+              dot3_token: DUMMY_SP,
+              expr: jsx_spread_element.expr.clone(),
+            })],
+          }));
+          dynamic_exprs.push(obj_expr);
+          continue;
+        }
       };
       serialized_attr.push_str("\"");
       if !is_dynamic {
@@ -443,6 +455,36 @@ const a = renderFunction($$_tpl_1, null);"#,
   <div>foo<p>bar</p></div>
 ];
 const a = renderFunction($$_tpl_1, null);"#,
+    );
+  }
+
+  #[test]
+  fn prop_spread_without_children_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div {...props} />;"#,
+      r#"const $$_tpl_1 = [
+  "<div ",
+  "></div>"
+];
+const a = renderFunction($$_tpl_1, {
+  ...props
+});"#,
+    );
+  }
+
+  #[test]
+  fn prop_spread_with_children_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div {...props}>hello</div>;"#,
+      r#"const $$_tpl_1 = [
+  "<div ",
+  ">hello</div>"
+];
+const a = renderFunction($$_tpl_1, {
+  ...props
+});"#,
     );
   }
 
