@@ -18,7 +18,7 @@ use swc_ecma_visit::{
 
 struct JsxString {
   next_index: usize,
-  templates: Vec<(usize, (Vec<String>, Vec<String>))>,
+  templates: Vec<(usize, Vec<String>)>,
 }
 
 impl Default for JsxString {
@@ -36,17 +36,14 @@ fn create_tpl_binding_name(index: usize) -> String {
 
 fn serialize_jsx_element_to_string_vec(
   el: JSXElement,
-) -> (Vec<String>, Vec<String>) {
+) -> (Vec<String>, Vec<Box<Expr>>) {
   let name = match el.opening.name {
     JSXElementName::Ident(ident) => ident.sym.to_string(),
     _ => todo!(),
   };
 
-
-  let mut strings: Vec<String> = vec![
-    String::from("<")
-  ];
-  let mut dynamic_exprs: Vec<String> = vec![];
+  let mut strings: Vec<String> = vec![String::from("<")];
+  let mut dynamic_exprs: Vec<Box<Expr>> = vec![];
 
   strings.last_mut().unwrap().push_str(name.as_str());
 
@@ -54,12 +51,14 @@ fn serialize_jsx_element_to_string_vec(
     for attr in el.opening.attrs.iter() {
       let mut is_dynamic = false;
       let mut serialized_attr = String::new();
+      let mut name = "".to_string();
       // <button class="btn">
       match attr {
         JSXAttrOrSpread::JSXAttr(jsx_attr) => {
           match &jsx_attr.name {
             JSXAttrName::Ident(ident) => {
-              serialized_attr.push_str(ident.sym.to_string().as_str());
+              name = ident.sym.to_string();
+              serialized_attr.push_str(name.as_str());
               serialized_attr.push_str("=\"");
             }
             JSXAttrName::JSXNamespacedName(_) => todo!(),
@@ -83,6 +82,25 @@ fn serialize_jsx_element_to_string_vec(
               strings.push("".to_string());
               is_dynamic = true;
               eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
+              match &jsx_expr_container.expr {
+                JSXExpr::JSXEmptyExpr(_) => todo!(),
+                JSXExpr::Expr(expr) => {
+                  let obj_expr = Box::new(Expr::Object(ObjectLit {
+                    span: DUMMY_SP,
+                    props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                      KeyValueProp {
+                        key: PropName::Str(Str {
+                          span: DUMMY_SP,
+                          value: name.into(),
+                          raw: None,
+                        }),
+                        value: expr.clone(),
+                      },
+                    )))],
+                  }));
+                  dynamic_exprs.push(obj_expr);
+                }
+              }
             }
             JSXAttrValue::JSXElement(_) => todo!(),
             JSXAttrValue::JSXFragment(_) => todo!(),
@@ -93,7 +111,10 @@ fn serialize_jsx_element_to_string_vec(
       serialized_attr.push_str("\"");
       if !is_dynamic {
         strings.last_mut().unwrap().push_str(" ");
-        strings.last_mut().unwrap().push_str(&serialized_attr.as_str());
+        strings
+          .last_mut()
+          .unwrap()
+          .push_str(&serialized_attr.as_str());
       }
     }
   }
@@ -108,7 +129,10 @@ fn serialize_jsx_element_to_string_vec(
   for child in el.children.iter() {
     match child {
       JSXElementChild::JSXText(jsx_text) => {
-        strings.last_mut().unwrap().push_str(jsx_text.value.to_string().as_str());
+        strings
+          .last_mut()
+          .unwrap()
+          .push_str(jsx_text.value.to_string().as_str());
       }
       JSXElementChild::JSXExprContainer(jsx_expr_container) => {
         match &jsx_expr_container.expr {
@@ -116,7 +140,7 @@ fn serialize_jsx_element_to_string_vec(
           JSXExpr::Expr(expr) => match &**expr {
             Expr::Ident(ident) => {
               strings.push("".to_string());
-              dynamic_exprs.push(ident.sym.to_string());
+              dynamic_exprs.push(Box::new(Expr::Ident(ident.clone())));
             }
             _ => todo!(),
           },
@@ -143,26 +167,38 @@ impl JsxString {
     let name = create_tpl_binding_name(template_index);
     let span = el.span();
 
-    self
-      .templates
-      .push((template_index, serialize_jsx_element_to_string_vec(el)));
+    let (static_strs, dynamic_exprs) = serialize_jsx_element_to_string_vec(el);
 
-    // $$_tpl_1.join("");
+    self.templates.push((template_index, static_strs));
+
+    let mut args: Vec<ExprOrSpread> =
+      Vec::with_capacity(1 + std::cmp::max(1, dynamic_exprs.len()));
+    args.push(ExprOrSpread {
+      spread: None,
+      expr: Box::new(Expr::Ident(Ident::new(name.into(), DUMMY_SP))),
+    });
+    if dynamic_exprs.is_empty() {
+      args.push(ExprOrSpread {
+        spread: None,
+        expr: Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))),
+      });
+    } else {
+      for dynamic_expr in dynamic_exprs.into_iter() {
+        args.push(ExprOrSpread {
+          spread: None,
+          expr: dynamic_expr,
+        });
+      }
+    }
+
+    // renderFunction($$_tpl_1, null);
     Expr::Call(CallExpr {
       span,
-      callee: Callee::Expr(Box::new(Expr::Member(MemberExpr {
-        span: DUMMY_SP,
-        obj: Box::new(Expr::Ident(Ident::new(name.into(), DUMMY_SP))),
-        prop: MemberProp::Ident(Ident::new("join".into(), DUMMY_SP)),
-      }))),
-      args: vec![ExprOrSpread {
-        spread: None,
-        expr: Box::new(Expr::Lit(Lit::Str(Str {
-          span: DUMMY_SP,
-          value: "".into(),
-          raw: None,
-        }))),
-      }],
+      callee: Callee::Expr(Box::new(Expr::Ident(Ident::new(
+        "renderFunction".into(),
+        DUMMY_SP,
+      )))),
+      args,
       type_args: Default::default(),
     })
   }
@@ -174,7 +210,7 @@ impl VisitMut for JsxString {
   fn visit_mut_module(&mut self, module: &mut Module) {
     eprintln!("ast {:#?}", module);
     module.visit_mut_children_with(self);
-    for (idx, (strings, dynamic_exprs)) in self.templates.iter().rev() {
+    for (idx, strings) in self.templates.iter().rev() {
       let elems: Vec<Option<ExprOrSpread>> = strings
         .iter()
         .map(|el| {
@@ -266,12 +302,23 @@ mod tests {
 const b = <div>Hello {name}!</div>;
 const c = <button class="btn" onClick={onClick}>Hello {name}!</button>;
 "#,
-      r#"const $$_tpl_1 = ["<div>Hello!</div>"];
-const $$_tpl_2 = ["<div>Hello", "!</div>"];
-const $$_tpl_3 = ["<button class=\"btn\"", ">Hello ", "!</button>];
-const a = $$_tpl_1.join("");
+      r#"const $$_tpl_1 = [
+  "<div>Hello!</div>"
+];
+const $$_tpl_2 = [
+  "<div>Hello ",
+  "!</div>"
+];
+const $$_tpl_3 = [
+  '<button class="btn"',
+  ">Hello ",
+  "!</button>"
+];
+const a = renderFunction($$_tpl_1, null);
 const b = renderFunction($$_tpl_2, name);
-const c = renderFunction($$_tpl_3, { onClick }, name);"#,
+const c = renderFunction($$_tpl_3, {
+  "onClick": onClick
+}, name);"#,
     );
   }
 
