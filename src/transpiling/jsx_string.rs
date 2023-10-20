@@ -390,7 +390,6 @@ impl JsxString {
     template_index: usize,
     el: JSXElement,
   ) -> Expr {
-    let name = create_tpl_binding_name(template_index);
     let span = el.span();
 
     let mut static_strs: Vec<String> = vec![];
@@ -400,6 +399,15 @@ impl JsxString {
       &mut static_strs,
       &mut dynamic_exprs,
     );
+
+    // If both vectors have the same length, then we only
+    // serialized a top level component node and can skip
+    // the template wrapper.
+    if dynamic_exprs.len() == 1 && static_strs.len() == dynamic_exprs.len() {
+      return dynamic_exprs.into_iter().nth(0).unwrap();
+    }
+
+    let name = create_tpl_binding_name(template_index);
 
     self.templates.push((template_index, static_strs));
 
@@ -808,19 +816,41 @@ const a = _jsxssr($$_tpl_1, _jsx(Foo, null));"#,
   }
 
   #[test]
+  fn component_outer_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, null);"#,
+    );
+  }
+
+  #[test]
   fn component_with_props_test() {
     test_transform(
       JsxString::default(),
       r#"const a = <Foo required foo="1" bar={2} />;"#,
-      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
-const $$_tpl_1 = [
-  ""
-];
-const a = _jsxssr($$_tpl_1, _jsx(Foo, {
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
   "required": true,
   "foo": "1",
   "bar": 2
-}));"#,
+});"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn component_with_children_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo>bar</Foo>;"#,
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>",
+  "</div>"
+];
+const a = _jsxssr($$_tpl_1, _jsx(Foo, null));"#,
     );
   }
 
