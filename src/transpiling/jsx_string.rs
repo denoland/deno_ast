@@ -446,19 +446,6 @@ const a = renderFunction($$_tpl_1, null);"#,
     );
   }
 
-  #[ignore]
-  #[test]
-  fn nested_elements_test() {
-    test_transform(
-      JsxString::default(),
-      r#"const a = <div>foo<p>bar</p></div>;"#,
-      r#"const $$_tpl_1 = [
-  <div>foo<p>bar</p></div>
-];
-const a = renderFunction($$_tpl_1, null);"#,
-    );
-  }
-
   // TODO: What to do with keys?
   // TODO: What to do with components?
   //       1. Convert to function calls, this would make it insanely fast,
