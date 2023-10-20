@@ -67,16 +67,20 @@ fn is_void_element(name: &str) -> bool {
 
 fn serialize_jsx_element_to_string_vec(
   el: JSXElement,
-) -> (Vec<String>, Vec<Box<Expr>>) {
+  strings: &mut Vec<String>,
+  dynamic_exprs: &mut Vec<Box<Expr>>,
+) {
   let name = match el.opening.name {
     // Case: <div />
     JSXElementName::Ident(ident) => ident.sym.to_string(),
     _ => todo!(),
   };
 
-  let mut strings: Vec<String> = vec![String::from("<")];
-  let mut dynamic_exprs: Vec<Box<Expr>> = vec![];
-
+  if strings.is_empty() {
+    strings.push("<".to_string());
+  } else {
+    strings.last_mut().unwrap().push_str("<");
+  }
   strings.last_mut().unwrap().push_str(name.as_str());
 
   if !el.opening.attrs.is_empty() {
@@ -190,7 +194,7 @@ fn serialize_jsx_element_to_string_vec(
   // Case: <meta />
   if is_void_element(&name) {
     strings.last_mut().unwrap().push_str(" />");
-    return (strings, dynamic_exprs);
+    return;
   }
 
   strings.last_mut().unwrap().push_str(">");
@@ -221,7 +225,13 @@ fn serialize_jsx_element_to_string_vec(
         }
       }
       // Case: <div><span /></div>
-      JSXElementChild::JSXElement(_) => todo!(),
+      JSXElementChild::JSXElement(jsx_element) => {
+        serialize_jsx_element_to_string_vec(
+          *jsx_element.clone(),
+          strings,
+          dynamic_exprs,
+        )
+      }
       // Case: <div><></></div>
       JSXElementChild::JSXFragment(_) => todo!(),
       // Invalid, was part of an earlier JSX iteration, but no
@@ -233,8 +243,6 @@ fn serialize_jsx_element_to_string_vec(
 
   let closing_tag = format!("</{}>", name);
   strings.last_mut().unwrap().push_str(closing_tag.as_str());
-
-  (strings, dynamic_exprs)
 }
 
 impl JsxString {
@@ -246,7 +254,13 @@ impl JsxString {
     let name = create_tpl_binding_name(template_index);
     let span = el.span();
 
-    let (static_strs, dynamic_exprs) = serialize_jsx_element_to_string_vec(el);
+    let mut static_strs: Vec<String> = vec![];
+    let mut dynamic_exprs: Vec<Box<Expr>> = vec![];
+    serialize_jsx_element_to_string_vec(
+      el,
+      &mut static_strs,
+      &mut dynamic_exprs,
+    );
 
     self.templates.push((template_index, static_strs));
 
@@ -543,14 +557,13 @@ const a = renderFunction($$_tpl_1, null);"#,
     );
   }
 
-  #[ignore]
   #[test]
   fn nested_elements_test() {
     test_transform(
       JsxString::default(),
       r#"const a = <div>foo<p>bar</p></div>;"#,
       r#"const $$_tpl_1 = [
-  <div>foo<p>bar</p></div>
+  "<div>foo<p>bar</p></div>"
 ];
 const a = renderFunction($$_tpl_1, null);"#,
     );
