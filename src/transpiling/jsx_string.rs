@@ -22,8 +22,8 @@ struct JsxString {
   import_jsx: Option<Ident>,
   import_jsxs: Option<Ident>,
   import_fragment: Option<Ident>,
-  import_jsxssr: Option<Ident>,
-  import_jsxattr: Option<Ident>,
+  import_jsx_ssr: Option<Ident>,
+  import_jsx_attr: Option<Ident>,
 }
 
 impl Default for JsxString {
@@ -36,8 +36,8 @@ impl Default for JsxString {
       import_jsx: None,
       import_jsxs: None,
       import_fragment: None,
-      import_jsxssr: None,
-      import_jsxattr: None,
+      import_jsx_ssr: None,
+      import_jsx_attr: None,
     }
   }
 }
@@ -132,12 +132,9 @@ impl JsxString {
       } else {
         let mut props: Vec<PropOrSpread> = vec![];
         for attr in el.opening.attrs.iter() {
-          eprintln!("attr {:#?}", attr);
-
           match attr {
             JSXAttrOrSpread::JSXAttr(jsx_attr) => {
               let attr_name = get_attr_name(&jsx_attr);
-              println!("name {}", &attr_name);
 
               let prop_name = PropName::Str(Str {
                 span: DUMMY_SP,
@@ -413,26 +410,74 @@ impl JsxString {
       }
     }
 
-    // renderFunction($$_tpl_1, null);
+    // Case: _jsxssr($$_tpl_1, null);
+    let jsx_ident = match &self.import_jsx_ssr {
+      Some(ident) => ident.clone(),
+      None => {
+        let ident = Ident::new("_jsxssr".into(), DUMMY_SP);
+        self.import_jsx_ssr = Some(ident.clone());
+        ident
+      }
+    };
+
     Expr::Call(CallExpr {
       span,
-      callee: Callee::Expr(Box::new(Expr::Ident(Ident::new(
-        "renderFunction".into(),
-        DUMMY_SP,
-      )))),
+      callee: Callee::Expr(Box::new(Expr::Ident(jsx_ident))),
       args,
       type_args: Default::default(),
     })
   }
 
-  fn inject_runtime(&mut self) {
-    let imports: Vec<(Ident, Ident)> = vec![];
-    if self.development {
-      if let Some(_jsx_ident) = &self.import_jsx {
-        // imports.
-      }
+  fn inject_runtime(&mut self, stmts: &mut Vec<ModuleItem>) {
+    let mut imports: Vec<(Ident, Ident)> = vec![];
+
+    if let Some(jsx_ident) = &self.import_jsx {
+      let jsx_imported = if self.development { "jsxDev" } else { "jsx" };
+      imports
+        .push((jsx_ident.clone(), Ident::new(jsx_imported.into(), DUMMY_SP)))
     }
-    eprintln!("inject {:#?}", imports);
+
+    if let Some(jsx_ident) = &self.import_jsx_ssr {
+      imports.push((jsx_ident.clone(), Ident::new("jsxssr".into(), DUMMY_SP)))
+    }
+
+    if !imports.is_empty() {
+      let jsx_runtime = if self.development {
+        "jsx-dev-runtime"
+      } else {
+        "jsx-runtime"
+      };
+
+      let src = format!("{}/{}", self.import_source, jsx_runtime);
+
+      let specifiers = imports
+        .into_iter()
+        .map(|(local, imported)| {
+          ImportSpecifier::Named(ImportNamedSpecifier {
+            span: DUMMY_SP,
+            local,
+            imported: Some(ModuleExportName::Ident(imported)),
+            is_type_only: false,
+          })
+        })
+        .collect();
+
+      prepend_stmt(
+        stmts,
+        ModuleItem::ModuleDecl(ModuleDecl::Import(ImportDecl {
+          span: DUMMY_SP,
+          specifiers,
+          src: Str {
+            span: DUMMY_SP,
+            raw: None,
+            value: src.into(),
+          }
+          .into(),
+          type_only: Default::default(),
+          with: Default::default(),
+        })),
+      );
+    }
   }
 }
 
@@ -479,7 +524,7 @@ impl VisitMut for JsxString {
       )
     }
 
-    self.inject_runtime();
+    self.inject_runtime(&mut module.body);
   }
 
   fn visit_mut_expr(&mut self, expr: &mut Expr) {
@@ -549,7 +594,8 @@ mod tests {
 const b = <div>Hello {name}!</div>;
 const c = <button class="btn" onClick={onClick}>Hello {name}!</button>;
 "#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   "<div>Hello!</div>"
 ];
 const $$_tpl_2 = [
@@ -561,9 +607,9 @@ const $$_tpl_3 = [
   ">Hello ",
   "!</button>"
 ];
-const a = renderFunction($$_tpl_1, null);
-const b = renderFunction($$_tpl_2, name);
-const c = renderFunction($$_tpl_3, {
+const a = _jsxssr($$_tpl_1, null);
+const b = _jsxssr($$_tpl_2, name);
+const c = _jsxssr($$_tpl_3, {
   "onClick": onClick
 }, name);"#,
     );
@@ -574,20 +620,22 @@ const c = renderFunction($$_tpl_3, {
     test_transform(
       JsxString::default(),
       r#"const a = <div />;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   "<div></div>"
 ];
-const a = renderFunction($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1, null);"#,
     );
 
     // Void elements
     test_transform(
       JsxString::default(),
       r#"const a = <br></br>;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   "<br />"
 ];
-const a = renderFunction($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1, null);"#,
     );
   }
 
@@ -604,7 +652,8 @@ const a = renderFunction($$_tpl_1, null);"#,
         format!("const a = <label {}=\"foo\">label</label>", &mapping.0)
           .as_str(),
         format!(
-          "const $$_tpl_1 = [\n  '<label {}=\"foo\">label</label>'\n];\nconst a = renderFunction($$_tpl_1, null);",
+          "{}\nconst $$_tpl_1 = [\n  '<label {}=\"foo\">label</label>'\n];\nconst a = _jsxssr($$_tpl_1, null);",
+          "import { jsxssr as _jsxssr } from \"react/jsx-runtime\";".to_string(),
           &mapping.1
         )
         .as_str(),
@@ -617,10 +666,11 @@ const a = renderFunction($$_tpl_1, null);"#,
     test_transform(
       JsxString::default(),
       r#"const a = <input type="checkbox" checked />;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   '<input type="checkbox" checked />'
 ];
-const a = renderFunction($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1, null);"#,
     );
   }
 
@@ -630,10 +680,11 @@ const a = renderFunction($$_tpl_1, null);"#,
     test_transform(
       JsxString::default(),
       r#"const a = <a xlink:href="foo">foo</a>;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   '<a href="foo">foo</a>',
 ];
-const a = renderFunction($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1, null);"#,
     );
   }
 
@@ -642,11 +693,12 @@ const a = renderFunction($$_tpl_1, null);"#,
     test_transform(
       JsxString::default(),
       r#"const a = <div foo="1" {...props} bar="2">foo</div>;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   '<div foo="1" ',
   ' bar="2">foo</div>'
 ];
-const a = renderFunction($$_tpl_1, {
+const a = _jsxssr($$_tpl_1, {
   ...props
 });"#,
     );
@@ -657,10 +709,11 @@ const a = renderFunction($$_tpl_1, {
     test_transform(
       JsxString::default(),
       r#"const a = <p>{}</p>;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   "<p></p>"
 ];
-const a = renderFunction($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1, null);"#,
     );
   }
 
@@ -679,10 +732,11 @@ const a = renderFunction($$_tpl_1, null);"#,
     test_transform(
       JsxString::default(),
       r#"const a = <>foo</>;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   'foo'
 ];
-const a = renderFunction($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1, null);"#,
     );
   }
 
@@ -691,10 +745,11 @@ const a = renderFunction($$_tpl_1, null);"#,
     test_transform(
       JsxString::default(),
       r#"const a = <div>foo<p>bar</p></div>;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   "<div>foo<p>bar</p></div>"
 ];
-const a = renderFunction($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1, null);"#,
     );
   }
 
@@ -703,11 +758,12 @@ const a = renderFunction($$_tpl_1, null);"#,
     test_transform(
       JsxString::default(),
       r#"const a = <div {...props} />;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   "<div ",
   "></div>"
 ];
-const a = renderFunction($$_tpl_1, {
+const a = _jsxssr($$_tpl_1, {
   ...props
 });"#,
     );
@@ -718,11 +774,12 @@ const a = renderFunction($$_tpl_1, {
     test_transform(
       JsxString::default(),
       r#"const a = <div {...props}>hello</div>;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   "<div ",
   ">hello</div>"
 ];
-const a = renderFunction($$_tpl_1, {
+const a = _jsxssr($$_tpl_1, {
   ...props
 });"#,
     );
@@ -733,11 +790,12 @@ const a = renderFunction($$_tpl_1, {
     test_transform(
       JsxString::default(),
       r#"const a = <div><Foo /></div>;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   "<div>",
   "</div>"
 ];
-const a = renderFunction($$_tpl_1, _jsx(Foo, null));"#,
+const a = _jsxssr($$_tpl_1, _jsx(Foo, null));"#,
     );
   }
 
@@ -746,10 +804,11 @@ const a = renderFunction($$_tpl_1, _jsx(Foo, null));"#,
     test_transform(
       JsxString::default(),
       r#"const a = <Foo required foo="1" bar={2} />;"#,
-      r#"const $$_tpl_1 = [
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
   ""
 ];
-const a = renderFunction($$_tpl_1, _jsx(Foo, {
+const a = _jsxssr($$_tpl_1, _jsx(Foo, {
   "required": true,
   "foo": "1",
   "bar": 2
