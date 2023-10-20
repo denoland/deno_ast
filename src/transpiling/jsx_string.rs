@@ -83,16 +83,13 @@ fn serialize_jsx_element_to_string_vec(
     for attr in el.opening.attrs.iter() {
       let mut is_dynamic = false;
       let mut serialized_attr = String::new();
-      let mut name = "".to_string();
       // Case: <button class="btn">
       match attr {
         JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-          match &jsx_attr.name {
+          let attr_name = match &jsx_attr.name {
             // Case: <button class="btn">
             JSXAttrName::Ident(ident) => {
-              name = ident.sym.to_string();
-              let serialized = normalize_dom_attr_name(&name);
-              serialized_attr.push_str(serialized.as_str());
+              normalize_dom_attr_name(&ident.sym.to_string())
             }
             // Case (svg only): <a xlink:href="#">...</a>
             JSXAttrName::JSXNamespacedName(_namespace_name) => {
@@ -100,6 +97,8 @@ fn serialize_jsx_element_to_string_vec(
               todo!()
             }
           };
+
+          serialized_attr.push_str(attr_name.as_str());
 
           // Case: <input required />
           let Some(attr_value) = &jsx_attr.value else {
@@ -140,7 +139,7 @@ fn serialize_jsx_element_to_string_vec(
                       KeyValueProp {
                         key: PropName::Str(Str {
                           span: DUMMY_SP,
-                          value: name.into(),
+                          value: attr_name.into(),
                           raw: None,
                         }),
                         value: expr.clone(),
@@ -286,7 +285,7 @@ impl JsxString {
   fn inject_runtime(&mut self) {
     let imports: Vec<(Ident, Ident)> = vec![];
     if self.development {
-      if let Some(jsx_ident) = &self.import_jsx {
+      if let Some(_jsx_ident) = &self.import_jsx {
         // imports.
       }
     }
