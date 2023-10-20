@@ -166,11 +166,11 @@ impl JsxString {
                 continue;
               };
 
-              // Case: <div class="btn">
-              // Case: <div class={"foo"}>
-              // Case: <div class={2}>
-              // Case: <div class={true}>
-              // Case: <div class={null}>
+              // Case: <Foo class="btn">
+              // Case: <Foo class={"foo"}>
+              // Case: <Foo class={2}>
+              // Case: <Foo class={true}>
+              // Case: <Foo class={null}>
               match attr_value {
                 JSXAttrValue::Lit(lit) => {
                   props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
@@ -194,9 +194,7 @@ impl JsxString {
                     }
                   }
                 }
-                // Cannot occur on DOM elements
                 JSXAttrValue::JSXElement(_) => todo!(),
-                // Cannot occur on DOM elements
                 JSXAttrValue::JSXFragment(_) => todo!(),
               }
             }
@@ -841,24 +839,79 @@ const a = _jsx(Foo, {
 
   #[ignore]
   #[test]
+  fn component_with_spread_props_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo {...props} foo="1" />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  ...props,
+  foo: "1"
+});"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
   fn component_with_children_test() {
     test_transform(
       JsxString::default(),
       r#"const a = <Foo>bar</Foo>;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, { children: "bar" }));"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn component_with_children_jsx_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo><span>hello</span></Foo>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
   "<div>",
   "</div>"
 ];
-const a = _jsxssr($$_tpl_1, _jsx(Foo, null));"#,
+const a = _jsx(Foo, {
+  children: _jsxssr($$_tpl_1, null)
+}));"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn component_with_jsx_attr() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo bar={<div>hello</div>} />;"#,
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>hello</div>"
+];
+const a = _jsx(Foo, {
+  children: _jsxssr($$_tpl_1, null)
+}));"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn component_with_jsx_frag_attr() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo bar={<>foo</>} />;"#,
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "foo"
+];
+const a = _jsx(Foo, {
+  bar: _jsxssr($$_tpl_1, null)
+}));"#,
     );
   }
 
   // TODO: What to do with keys?
-  // TODO: What to do with components?
-  //       1. Convert to function calls, this would make it insanely fast,
-  //          but not sure how to handle that with islands.
-  //       2. Call with normal transform (may be best for compat with Fresh)
   // TODO: Should we go with function calls for dynamic attributes instead
   //       of an object for DOM nodes? Would allow us to skip an allocation.
   //       { onClick: onClick } -> someFn("onClick", onClick)
