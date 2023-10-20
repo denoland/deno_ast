@@ -34,6 +34,14 @@ fn create_tpl_binding_name(index: usize) -> String {
   format!("$$_tpl_{index}")
 }
 
+fn normalize_dom_attr_name(name: &str) -> String {
+  match name {
+    "htmlFor" => "for".to_string(),
+    "className" => "class".to_string(),
+    _ => name.to_string(),
+  }
+}
+
 fn serialize_jsx_element_to_string_vec(
   el: JSXElement,
 ) -> (Vec<String>, Vec<Box<Expr>>) {
@@ -58,17 +66,21 @@ fn serialize_jsx_element_to_string_vec(
           match &jsx_attr.name {
             JSXAttrName::Ident(ident) => {
               name = ident.sym.to_string();
-              serialized_attr.push_str(name.as_str());
-              serialized_attr.push_str("=\"");
+              let serialized = normalize_dom_attr_name(&name);
+              serialized_attr.push_str(serialized.as_str());
             }
             JSXAttrName::JSXNamespacedName(_) => todo!(),
           };
           let Some(attr_value) = &jsx_attr.value else {
+            // <input required />
+            strings.last_mut().unwrap().push_str(" ");
+            strings.last_mut().unwrap().push_str(&serialized_attr);
             continue;
           };
           match attr_value {
             JSXAttrValue::Lit(lit) => match lit {
               Lit::Str(string_lit) => {
+                serialized_attr.push_str("=\"");
                 serialized_attr.push_str(string_lit.value.to_string().as_str());
               }
               Lit::Bool(_) => todo!(),
@@ -120,12 +132,13 @@ fn serialize_jsx_element_to_string_vec(
   }
 
   // TODO: hoist out or make it as an option to the transform
+  // See: https://developer.mozilla.org/en-US/docs/Glossary/Void_element
   let void_elements = vec![
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
     "param", "source", "track", "wbr",
   ];
 
-  if (void_elements.iter().any(|&item| item == name)) {
+  if void_elements.iter().any(|&item| item == name) {
     strings.last_mut().unwrap().push_str(" />");
     return (strings, dynamic_exprs);
   }
@@ -263,7 +276,22 @@ impl VisitMut for JsxString {
       // 3. change the `expr` to be `_tpl_<name>.join("");`
       self.next_index += 1;
       *expr = self.generate_template_join(self.next_index, *el.take());
-    } else if let Expr::JSXFragment(_frag) = expr {
+    } else if let Expr::JSXFragment(frag) = expr {
+      // Empty fragments can be replaced with null. This is a minor
+      // optimization, because Fragments are a special node type that
+      // would need to be rendered. Most developers think of this as
+      // rendering "nothing", which is true visually, but would still
+      // render a Fragment for nothing
+      // Case: <></>
+      // TODO: This optimization is only valid if we're the topmost
+      // jsx element
+      if frag.children.is_empty() {
+        *expr = Expr::Lit(Lit::Null(Null {
+          span: frag.span.clone(),
+        }));
+        return;
+      }
+
       todo!();
     } else if let Expr::Paren(ParenExpr {
       expr: inner_expr, ..
@@ -349,6 +377,101 @@ const a = renderFunction($$_tpl_1, null);"#,
 const a = renderFunction($$_tpl_1, null);"#,
     );
   }
+
+  #[test]
+  fn normalize_attr_name_test() {
+    let mappings: Vec<(String, String)> = vec![
+      ("htmlFor".to_string(), "for".to_string()),
+      ("className".to_string(), "class".to_string()),
+    ];
+
+    for mapping in mappings.iter() {
+      test_transform(
+        JsxString::default(),
+        format!("const a = <label {}=\"foo\">label</label>", &mapping.0)
+          .as_str(),
+        format!(
+          "const $$_tpl_1 = [\n  '<label {}=\"foo\">label</label>'\n];\nconst a = renderFunction($$_tpl_1, null);",
+          &mapping.1
+        )
+        .as_str(),
+      );
+    }
+  }
+
+  #[test]
+  fn boolean_attr_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <input type="checkbox" checked />;"#,
+      r#"const $$_tpl_1 = [
+  '<input type="checkbox" checked />'
+];
+const a = renderFunction($$_tpl_1, null);"#,
+    );
+  }
+
+  #[test]
+  fn empty_fragment_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <></>;"#,
+      r#"const a = null;"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn fragment_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <>foo</>;"#,
+      r#"const $$_tpl_1 = [
+  'foo'
+];
+const a = renderFunction($$_tpl_1, null);"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn nested_elements_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div>foo<p>bar</p></div>;"#,
+      r#"const $$_tpl_1 = [
+  <div>foo<p>bar</p></div>
+];
+const a = renderFunction($$_tpl_1, null);"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn nested_elements_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div>foo<p>bar</p></div>;"#,
+      r#"const $$_tpl_1 = [
+  <div>foo<p>bar</p></div>
+];
+const a = renderFunction($$_tpl_1, null);"#,
+    );
+  }
+
+  // TODO: What to do with keys?
+  // TODO: What to do with components?
+  //       1. Convert to function calls, this would make it insanely fast,
+  //          but not sure how to handle that with islands.
+  //       2. Call with normal transform (may be best for compat with Fresh)
+  // TODO: Should we go with function calls for dynamic attributes instead
+  //       of an object for DOM nodes? Would allow us to skip an allocation.
+  //       { onClick: onClick } -> someFn("onClick", onClick)
+  // TODO: HTMLEscape attribute names + text children
+  // TODO: What to do with "dangerouslySetInnerHTML"?
+  // TODO: Fresh specific: <Head> opt out? Or maybe move Fresh users to a
+  //       different pattern
+  // TODO: Fresh specific: what about island detection?
 
   //   #[test]
   //   fn basic_test_with_imports() {
