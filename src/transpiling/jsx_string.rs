@@ -69,6 +69,7 @@ fn serialize_jsx_element_to_string_vec(
   el: JSXElement,
 ) -> (Vec<String>, Vec<Box<Expr>>) {
   let name = match el.opening.name {
+    // Case: <div />
     JSXElementName::Ident(ident) => ident.sym.to_string(),
     _ => todo!(),
   };
@@ -188,7 +189,7 @@ fn serialize_jsx_element_to_string_vec(
   // See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
   // Case: <br />
   // Case: <meta />
-  if is_void_element(name) {
+  if is_void_element(&name) {
     strings.last_mut().unwrap().push_str(" />");
     return (strings, dynamic_exprs);
   }
@@ -210,7 +211,7 @@ fn serialize_jsx_element_to_string_vec(
           // Empty JSX expressions can be ignored as they have no content
           // Case: <div>{}</div>
           // Case: <div>{/* fooo */}</div>
-          JSXExpr::JSXEmptyExpr(_jsx_empty_expr) => continue,
+          JSXExpr::JSXEmptyExpr(_) => continue,
           JSXExpr::Expr(expr) => match &**expr {
             Expr::Ident(ident) => {
               strings.push("".to_string());
