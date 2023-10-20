@@ -65,187 +65,319 @@ fn is_void_element(name: &str) -> bool {
   }
 }
 
-fn serialize_jsx_element_to_string_vec(
-  el: JSXElement,
-  strings: &mut Vec<String>,
-  dynamic_exprs: &mut Vec<Box<Expr>>,
-) {
-  let name = match el.opening.name {
-    // Case: <div />
-    JSXElementName::Ident(ident) => ident.sym.to_string(),
-    _ => todo!(),
-  };
-
-  if strings.is_empty() {
-    strings.push("<".to_string());
-  } else {
-    strings.last_mut().unwrap().push_str("<");
+fn null_arg() -> ExprOrSpread {
+  ExprOrSpread {
+    spread: None,
+    expr: Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))),
   }
-  strings.last_mut().unwrap().push_str(name.as_str());
+}
 
-  if !el.opening.attrs.is_empty() {
-    for attr in el.opening.attrs.iter() {
-      let mut is_dynamic = false;
-      let mut serialized_attr = String::new();
-      // Case: <button class="btn">
-      match attr {
-        JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-          let attr_name = match &jsx_attr.name {
-            // Case: <button class="btn">
-            JSXAttrName::Ident(ident) => {
-              normalize_dom_attr_name(&ident.sym.to_string())
-            }
-            // Case (svg only): <a xlink:href="#">...</a>
-            JSXAttrName::JSXNamespacedName(_namespace_name) => {
-              // TODO: Only support "xlink:href", but convert it to "href"
-              todo!()
-            }
-          };
-
-          serialized_attr.push_str(attr_name.as_str());
-
-          // Case: <input required />
-          let Some(attr_value) = &jsx_attr.value else {
-            strings.last_mut().unwrap().push_str(" ");
-            strings.last_mut().unwrap().push_str(&serialized_attr);
-            continue;
-          };
-
-          // Case: <div class="btn">
-          // Case: <div class={"foo"}>
-          // Case: <div class={2}>
-          // Case: <div class={true}>
-          // Case: <div class={null}>
-          match attr_value {
-            JSXAttrValue::Lit(lit) => match lit {
-              Lit::Str(string_lit) => {
-                serialized_attr.push_str("=\"");
-                serialized_attr.push_str(string_lit.value.to_string().as_str());
-              }
-              Lit::Bool(_) => todo!(),
-              Lit::Null(_) => todo!(),
-              Lit::Num(_) => todo!(),
-              Lit::BigInt(_) => todo!(),
-              Lit::Regex(_) => todo!(),
-              Lit::JSXText(_) => todo!(),
-            },
-            JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
-              strings.push("".to_string());
-              is_dynamic = true;
-              // eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
-              match &jsx_expr_container.expr {
-                // This is treated as a syntax error in attributes
-                JSXExpr::JSXEmptyExpr(_) => todo!(),
-                JSXExpr::Expr(expr) => {
-                  let obj_expr = Box::new(Expr::Object(ObjectLit {
-                    span: DUMMY_SP,
-                    props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
-                      KeyValueProp {
-                        key: PropName::Str(Str {
-                          span: DUMMY_SP,
-                          value: attr_name.into(),
-                          raw: None,
-                        }),
-                        value: expr.clone(),
-                      },
-                    )))],
-                  }));
-                  dynamic_exprs.push(obj_expr);
-                }
-              }
-            }
-            // Cannot occur on DOM elements
-            JSXAttrValue::JSXElement(_) => todo!(),
-            // Cannot occur on DOM elements
-            JSXAttrValue::JSXFragment(_) => todo!(),
-          }
-        }
-        // Case: <div {...props} />
-        JSXAttrOrSpread::SpreadElement(jsx_spread_element) => {
-          strings.last_mut().unwrap().push_str(" ");
-          strings.push("".to_string());
-          let obj_expr = Box::new(Expr::Object(ObjectLit {
-            span: DUMMY_SP,
-            props: vec![PropOrSpread::Spread(SpreadElement {
-              dot3_token: DUMMY_SP,
-              expr: jsx_spread_element.expr.clone(),
-            })],
-          }));
-          dynamic_exprs.push(obj_expr);
-          continue;
-        }
-      };
-      serialized_attr.push_str("\"");
-      if !is_dynamic {
-        strings.last_mut().unwrap().push_str(" ");
-        strings
-          .last_mut()
-          .unwrap()
-          .push_str(&serialized_attr.as_str());
-      }
+fn get_attr_name(jsx_attr: &JSXAttr) -> String {
+  match &jsx_attr.name {
+    // Case: <button class="btn">
+    JSXAttrName::Ident(ident) => {
+      normalize_dom_attr_name(&ident.sym.to_string())
+    }
+    // Case (svg only): <a xlink:href="#">...</a>
+    JSXAttrName::JSXNamespacedName(_namespace_name) => {
+      // TODO: Only support "xlink:href", but convert it to "href"
+      todo!()
     }
   }
-
-  // There are no self closing elements in HTML, only void elements.
-  // Void elements are a fixed list of elements that cannot have
-  // child nodes.
-  // See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
-  // Case: <br />
-  // Case: <meta />
-  if is_void_element(&name) {
-    strings.last_mut().unwrap().push_str(" />");
-    return;
-  }
-
-  strings.last_mut().unwrap().push_str(">");
-
-  for child in el.children.iter() {
-    match child {
-      // Case: <div>foo</div>
-      JSXElementChild::JSXText(jsx_text) => {
-        strings
-          .last_mut()
-          .unwrap()
-          .push_str(jsx_text.value.to_string().as_str());
-      }
-      // Case: <div>{2 + 2}</div>
-      JSXElementChild::JSXExprContainer(jsx_expr_container) => {
-        match &jsx_expr_container.expr {
-          // Empty JSX expressions can be ignored as they have no content
-          // Case: <div>{}</div>
-          // Case: <div>{/* fooo */}</div>
-          JSXExpr::JSXEmptyExpr(_) => continue,
-          JSXExpr::Expr(expr) => match &**expr {
-            Expr::Ident(ident) => {
-              strings.push("".to_string());
-              dynamic_exprs.push(Box::new(Expr::Ident(ident.clone())));
-            }
-            _ => todo!(),
-          },
-        }
-      }
-      // Case: <div><span /></div>
-      JSXElementChild::JSXElement(jsx_element) => {
-        serialize_jsx_element_to_string_vec(
-          *jsx_element.clone(),
-          strings,
-          dynamic_exprs,
-        )
-      }
-      // Case: <div><></></div>
-      JSXElementChild::JSXFragment(_) => todo!(),
-      // Invalid, was part of an earlier JSX iteration, but no
-      // transform supports it. Babel and TypeScript error when they
-      // encounter this.
-      JSXElementChild::JSXSpreadChild(_) => todo!(),
-    }
-  }
-
-  let closing_tag = format!("</{}>", name);
-  strings.last_mut().unwrap().push_str(closing_tag.as_str());
 }
 
 impl JsxString {
+  fn serialize_jsx_element_to_string_vec(
+    &mut self,
+    el: JSXElement,
+    strings: &mut Vec<String>,
+    dynamic_exprs: &mut Vec<Box<Expr>>,
+  ) {
+    let ident = match el.opening.name {
+      // Case: <div />
+      JSXElementName::Ident(ident) => ident,
+      _ => todo!(),
+    };
+
+    let name = ident.sym.to_string();
+
+    // Components are serialized differently, because it is framework
+    // specific.
+    // Components are detected by checking if the character of the
+    // opening identifier is an uppercase character.
+    // Case: <Foo bar="123" />
+    if name.chars().next().unwrap().is_ascii_uppercase() {
+      let jsx_ident = match &self.import_jsx {
+        Some(ident) => ident.clone(),
+        None => {
+          let jsx = if self.development { "_jsxDEV" } else { "_jsx" };
+          let ident = Ident::new(jsx.into(), DUMMY_SP);
+          self.import_jsx = Some(ident.clone());
+          ident
+        }
+      };
+
+      let mut args: Vec<ExprOrSpread> = vec![];
+      args.push(ExprOrSpread {
+        spread: None,
+        expr: Box::new(Expr::Ident(ident)),
+      });
+
+      // Serialize component attributes
+      // Case: <Foo />
+      // Case: <Foo foo="1" bar={2} />
+      // Case: <Foo baz={<div />} />
+      if el.opening.attrs.is_empty() {
+        args.push(null_arg())
+      } else {
+        let mut props: Vec<PropOrSpread> = vec![];
+        for attr in el.opening.attrs.iter() {
+          eprintln!("attr {:#?}", attr);
+
+          match attr {
+            JSXAttrOrSpread::JSXAttr(jsx_attr) => {
+              let attr_name = get_attr_name(&jsx_attr);
+              println!("name {}", &attr_name);
+
+              let prop_name = PropName::Str(Str {
+                span: DUMMY_SP,
+                value: attr_name.into(),
+                raw: None,
+              });
+
+              // Case: <Foo required />
+              let Some(attr_value) = &jsx_attr.value else {
+                props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                  KeyValueProp {
+                    key: prop_name,
+                    value: Box::new(Expr::Lit(Lit::Bool(Bool {
+                      span: DUMMY_SP,
+                      value: true,
+                    }))),
+                  },
+                ))));
+                continue;
+              };
+
+              // Case: <div class="btn">
+              // Case: <div class={"foo"}>
+              // Case: <div class={2}>
+              // Case: <div class={true}>
+              // Case: <div class={null}>
+              match attr_value {
+                JSXAttrValue::Lit(lit) => {
+                  props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                    KeyValueProp {
+                      key: prop_name,
+                      value: Box::new(Expr::Lit(lit.clone())),
+                    },
+                  ))));
+                }
+                JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
+                  match &jsx_expr_container.expr {
+                    // This is treated as a syntax error in attributes
+                    JSXExpr::JSXEmptyExpr(_) => continue,
+                    JSXExpr::Expr(expr) => {
+                      props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                        KeyValueProp {
+                          key: prop_name,
+                          value: expr.clone(),
+                        },
+                      ))));
+                    }
+                  }
+                }
+                // Cannot occur on DOM elements
+                JSXAttrValue::JSXElement(_) => todo!(),
+                // Cannot occur on DOM elements
+                JSXAttrValue::JSXFragment(_) => todo!(),
+              }
+            }
+            JSXAttrOrSpread::SpreadElement(_) => todo!(),
+          }
+        }
+
+        let obj_expr = Box::new(Expr::Object(ObjectLit {
+          span: DUMMY_SP,
+          props: props,
+        }));
+        args.push(ExprOrSpread {
+          spread: None,
+          expr: obj_expr,
+        });
+      }
+
+      // TODO: support raw function call option: <Foo /> -> Foo()
+      let expr = Box::new(Expr::Call(CallExpr {
+        span: DUMMY_SP,
+        callee: Callee::Expr(Box::new(Expr::Ident(jsx_ident))),
+        args: args,
+        type_args: None,
+      }));
+      strings.push("".to_string());
+      dynamic_exprs.push(expr);
+      return;
+    }
+
+    if strings.is_empty() {
+      strings.push("<".to_string());
+    } else {
+      strings.last_mut().unwrap().push_str("<");
+    }
+    strings.last_mut().unwrap().push_str(name.as_str());
+
+    if !el.opening.attrs.is_empty() {
+      for attr in el.opening.attrs.iter() {
+        let mut is_dynamic = false;
+        let mut serialized_attr = String::new();
+        // Case: <button class="btn">
+        match attr {
+          JSXAttrOrSpread::JSXAttr(jsx_attr) => {
+            let attr_name = get_attr_name(&jsx_attr);
+
+            serialized_attr.push_str(attr_name.as_str());
+
+            // Case: <input required />
+            let Some(attr_value) = &jsx_attr.value else {
+              strings.last_mut().unwrap().push_str(" ");
+              strings.last_mut().unwrap().push_str(&serialized_attr);
+              continue;
+            };
+
+            // Case: <div class="btn">
+            // Case: <div class={"foo"}>
+            // Case: <div class={2}>
+            // Case: <div class={true}>
+            // Case: <div class={null}>
+            match attr_value {
+              JSXAttrValue::Lit(lit) => match lit {
+                Lit::Str(string_lit) => {
+                  serialized_attr.push_str("=\"");
+                  serialized_attr
+                    .push_str(string_lit.value.to_string().as_str());
+                }
+                Lit::Bool(_) => todo!(),
+                Lit::Null(_) => todo!(),
+                Lit::Num(_) => todo!(),
+                Lit::BigInt(_) => todo!(),
+                Lit::Regex(_) => todo!(),
+                Lit::JSXText(_) => todo!(),
+              },
+              JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
+                strings.push("".to_string());
+                is_dynamic = true;
+                // eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
+                match &jsx_expr_container.expr {
+                  // This is treated as a syntax error in attributes
+                  JSXExpr::JSXEmptyExpr(_) => todo!(),
+                  JSXExpr::Expr(expr) => {
+                    let obj_expr = Box::new(Expr::Object(ObjectLit {
+                      span: DUMMY_SP,
+                      props: vec![PropOrSpread::Prop(Box::new(
+                        Prop::KeyValue(KeyValueProp {
+                          key: PropName::Str(Str {
+                            span: DUMMY_SP,
+                            value: attr_name.into(),
+                            raw: None,
+                          }),
+                          value: expr.clone(),
+                        }),
+                      ))],
+                    }));
+                    dynamic_exprs.push(obj_expr);
+                  }
+                }
+              }
+              // Cannot occur on DOM elements
+              JSXAttrValue::JSXElement(_) => todo!(),
+              // Cannot occur on DOM elements
+              JSXAttrValue::JSXFragment(_) => todo!(),
+            }
+          }
+          // Case: <div {...props} />
+          JSXAttrOrSpread::SpreadElement(jsx_spread_element) => {
+            strings.last_mut().unwrap().push_str(" ");
+            strings.push("".to_string());
+            let obj_expr = Box::new(Expr::Object(ObjectLit {
+              span: DUMMY_SP,
+              props: vec![PropOrSpread::Spread(SpreadElement {
+                dot3_token: DUMMY_SP,
+                expr: jsx_spread_element.expr.clone(),
+              })],
+            }));
+            dynamic_exprs.push(obj_expr);
+            continue;
+          }
+        };
+        serialized_attr.push_str("\"");
+        if !is_dynamic {
+          strings.last_mut().unwrap().push_str(" ");
+          strings
+            .last_mut()
+            .unwrap()
+            .push_str(&serialized_attr.as_str());
+        }
+      }
+    }
+
+    // There are no self closing elements in HTML, only void elements.
+    // Void elements are a fixed list of elements that cannot have
+    // child nodes.
+    // See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
+    // Case: <br />
+    // Case: <meta />
+    if is_void_element(&name) {
+      strings.last_mut().unwrap().push_str(" />");
+      return;
+    }
+
+    strings.last_mut().unwrap().push_str(">");
+
+    for child in el.children.iter() {
+      match child {
+        // Case: <div>foo</div>
+        JSXElementChild::JSXText(jsx_text) => {
+          strings
+            .last_mut()
+            .unwrap()
+            .push_str(jsx_text.value.to_string().as_str());
+        }
+        // Case: <div>{2 + 2}</div>
+        JSXElementChild::JSXExprContainer(jsx_expr_container) => {
+          match &jsx_expr_container.expr {
+            // Empty JSX expressions can be ignored as they have no content
+            // Case: <div>{}</div>
+            // Case: <div>{/* fooo */}</div>
+            JSXExpr::JSXEmptyExpr(_) => continue,
+            JSXExpr::Expr(expr) => match &**expr {
+              Expr::Ident(ident) => {
+                strings.push("".to_string());
+                dynamic_exprs.push(Box::new(Expr::Ident(ident.clone())));
+              }
+              _ => todo!(),
+            },
+          }
+        }
+        // Case: <div><span /></div>
+        JSXElementChild::JSXElement(jsx_element) => self
+          .serialize_jsx_element_to_string_vec(
+            *jsx_element.clone(),
+            strings,
+            dynamic_exprs,
+          ),
+        // Case: <div><></></div>
+        JSXElementChild::JSXFragment(_) => todo!(),
+        // Invalid, was part of an earlier JSX iteration, but no
+        // transform supports it. Babel and TypeScript error when they
+        // encounter this.
+        JSXElementChild::JSXSpreadChild(_) => todo!(),
+      }
+    }
+
+    let closing_tag = format!("</{}>", name);
+    strings.last_mut().unwrap().push_str(closing_tag.as_str());
+  }
+
   fn generate_template_join(
     &mut self,
     template_index: usize,
@@ -256,7 +388,7 @@ impl JsxString {
 
     let mut static_strs: Vec<String> = vec![];
     let mut dynamic_exprs: Vec<Box<Expr>> = vec![];
-    serialize_jsx_element_to_string_vec(
+    self.serialize_jsx_element_to_string_vec(
       el,
       &mut static_strs,
       &mut dynamic_exprs,
@@ -271,10 +403,7 @@ impl JsxString {
       expr: Box::new(Expr::Ident(Ident::new(name.into(), DUMMY_SP))),
     });
     if dynamic_exprs.is_empty() {
-      args.push(ExprOrSpread {
-        spread: None,
-        expr: Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))),
-      });
+      args.push(null_arg());
     } else {
       for dynamic_expr in dynamic_exprs.into_iter() {
         args.push(ExprOrSpread {
@@ -596,6 +725,35 @@ const a = renderFunction($$_tpl_1, {
 const a = renderFunction($$_tpl_1, {
   ...props
 });"#,
+    );
+  }
+
+  #[test]
+  fn component_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div><Foo /></div>;"#,
+      r#"const $$_tpl_1 = [
+  "<div>",
+  "</div>"
+];
+const a = renderFunction($$_tpl_1, _jsx(Foo, null));"#,
+    );
+  }
+
+  #[test]
+  fn component_with_props_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo required foo="1" bar={2} />;"#,
+      r#"const $$_tpl_1 = [
+  ""
+];
+const a = renderFunction($$_tpl_1, _jsx(Foo, {
+  "required": true,
+  "foo": "1",
+  "bar": 2
+}));"#,
     );
   }
 
