@@ -42,8 +42,13 @@ fn serialize_jsx_element_to_string_vec(
     _ => todo!(),
   };
 
-  let mut s = String::from("<");
-  s.push_str(name.as_str());
+
+  let mut strings: Vec<String> = vec![
+    String::from("<")
+  ];
+  let mut dynamic_exprs: Vec<String> = vec![];
+
+  strings.last_mut().unwrap().push_str(name.as_str());
 
   if !el.opening.attrs.is_empty() {
     for attr in el.opening.attrs.iter() {
@@ -75,6 +80,7 @@ fn serialize_jsx_element_to_string_vec(
               Lit::JSXText(_) => todo!(),
             },
             JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
+              strings.push("".to_string());
               is_dynamic = true;
               eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
             }
@@ -86,33 +92,30 @@ fn serialize_jsx_element_to_string_vec(
       };
       serialized_attr.push_str("\"");
       if !is_dynamic {
-        s.push_str(" ");
-        s.push_str(&serialized_attr.as_str());
+        strings.last_mut().unwrap().push_str(" ");
+        strings.last_mut().unwrap().push_str(&serialized_attr.as_str());
       }
     }
   }
 
   if el.opening.self_closing {
-    s.push_str(" />");
-    return (vec![s], vec![]);
+    strings.last_mut().unwrap().push_str(" />");
+    return (strings, dynamic_exprs);
   }
 
-  let mut strings: Vec<String> = vec![];
-  let mut dynamic_exprs: Vec<String> = vec![];
-
-  s.push_str(">");
-  strings.push(s);
+  strings.last_mut().unwrap().push_str(">");
 
   for child in el.children.iter() {
     match child {
       JSXElementChild::JSXText(jsx_text) => {
-        strings.push(jsx_text.value.to_string());
+        strings.last_mut().unwrap().push_str(jsx_text.value.to_string().as_str());
       }
       JSXElementChild::JSXExprContainer(jsx_expr_container) => {
         match &jsx_expr_container.expr {
           JSXExpr::JSXEmptyExpr(_jsx_empty_expr) => todo!(),
           JSXExpr::Expr(expr) => match &**expr {
             Expr::Ident(ident) => {
+              strings.push("".to_string());
               dynamic_exprs.push(ident.sym.to_string());
             }
             _ => todo!(),
@@ -126,7 +129,7 @@ fn serialize_jsx_element_to_string_vec(
   }
 
   let closing_tag = format!("</{}>", name);
-  strings.push(closing_tag);
+  strings.last_mut().unwrap().push_str(closing_tag.as_str());
 
   (strings, dynamic_exprs)
 }
