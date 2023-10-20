@@ -81,7 +81,7 @@ fn serialize_jsx_element_to_string_vec(
             JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
               strings.push("".to_string());
               is_dynamic = true;
-              eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
+              // eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
               match &jsx_expr_container.expr {
                 JSXExpr::JSXEmptyExpr(_) => todo!(),
                 JSXExpr::Expr(expr) => {
@@ -119,7 +119,13 @@ fn serialize_jsx_element_to_string_vec(
     }
   }
 
-  if el.opening.self_closing {
+  // TODO: hoist out or make it as an option to the transform
+  let void_elements = vec![
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+    "param", "source", "track", "wbr",
+  ];
+
+  if (void_elements.iter().any(|&item| item == name)) {
     strings.last_mut().unwrap().push_str(" />");
     return (strings, dynamic_exprs);
   }
@@ -208,7 +214,7 @@ impl VisitMut for JsxString {
   noop_visit_mut_type!();
 
   fn visit_mut_module(&mut self, module: &mut Module) {
-    eprintln!("ast {:#?}", module);
+    // eprintln!("ast {:#?}", module);
     module.visit_mut_children_with(self);
     for (idx, strings) in self.templates.iter().rev() {
       let elems: Vec<Option<ExprOrSpread>> = strings
@@ -319,6 +325,28 @@ const b = renderFunction($$_tpl_2, name);
 const c = renderFunction($$_tpl_3, {
   "onClick": onClick
 }, name);"#,
+    );
+  }
+
+  #[test]
+  fn convert_self_closing_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div />;"#,
+      r#"const $$_tpl_1 = [
+  "<div></div>"
+];
+const a = renderFunction($$_tpl_1, null);"#,
+    );
+
+    // Void elements
+    test_transform(
+      JsxString::default(),
+      r#"const a = <br></br>;"#,
+      r#"const $$_tpl_1 = [
+  "<br />"
+];
+const a = renderFunction($$_tpl_1, null);"#,
     );
   }
 
