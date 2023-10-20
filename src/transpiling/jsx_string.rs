@@ -7,18 +7,23 @@ use swc_common::{
   //   sync::Lrc,
   util::take::Take,
   //   FileName, Mark, SourceMap,
-  Span,
+  // Span,
   Spanned,
 };
 use swc_ecma_ast::*;
 use swc_ecma_utils::prepend_stmt;
-use swc_ecma_visit::{
-  as_folder, noop_visit_mut_type, Fold, VisitMut, VisitMutWith,
-};
+use swc_ecma_visit::{as_folder, noop_visit_mut_type, VisitMut, VisitMutWith};
 
 struct JsxString {
   next_index: usize,
   templates: Vec<(usize, Vec<String>)>,
+  development: bool,
+  import_source: String,
+  import_jsx: Option<Ident>,
+  import_jsxs: Option<Ident>,
+  import_fragment: Option<Ident>,
+  import_jsxssr: Option<Ident>,
+  import_jsxattr: Option<Ident>,
 }
 
 impl Default for JsxString {
@@ -26,6 +31,13 @@ impl Default for JsxString {
     Self {
       next_index: 0,
       templates: vec![],
+      development: false,
+      import_source: "react".to_string(),
+      import_jsx: None,
+      import_jsxs: None,
+      import_fragment: None,
+      import_jsxssr: None,
+      import_jsxattr: None,
     }
   }
 }
@@ -38,7 +50,18 @@ fn normalize_dom_attr_name(name: &str) -> String {
   match name {
     "htmlFor" => "for".to_string(),
     "className" => "class".to_string(),
+    // xlink:href was removed from SVG and isn't needed
+    "xlinkHref" => "href".to_string(),
     _ => name.to_string(),
+  }
+}
+
+// See: https://developer.mozilla.org/en-US/docs/Glossary/Void_element
+fn is_void_element(name: &str) -> bool {
+  match name {
+    "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input"
+    | "link" | "meta" | "param" | "source" | "track" | "wbr" => true,
+    _ => false,
   }
 }
 
@@ -60,23 +83,35 @@ fn serialize_jsx_element_to_string_vec(
       let mut is_dynamic = false;
       let mut serialized_attr = String::new();
       let mut name = "".to_string();
-      // <button class="btn">
+      // Case: <button class="btn">
       match attr {
         JSXAttrOrSpread::JSXAttr(jsx_attr) => {
           match &jsx_attr.name {
+            // Case: <button class="btn">
             JSXAttrName::Ident(ident) => {
               name = ident.sym.to_string();
               let serialized = normalize_dom_attr_name(&name);
               serialized_attr.push_str(serialized.as_str());
             }
-            JSXAttrName::JSXNamespacedName(_) => todo!(),
+            // Case (svg only): <a xlink:href="#">...</a>
+            JSXAttrName::JSXNamespacedName(_namespace_name) => {
+              // TODO: Only support "xlink:href", but convert it to "href"
+              todo!()
+            }
           };
+
+          // Case: <input required />
           let Some(attr_value) = &jsx_attr.value else {
-            // <input required />
             strings.last_mut().unwrap().push_str(" ");
             strings.last_mut().unwrap().push_str(&serialized_attr);
             continue;
           };
+
+          // Case: <div class="btn">
+          // Case: <div class={"foo"}>
+          // Case: <div class={2}>
+          // Case: <div class={true}>
+          // Case: <div class={null}>
           match attr_value {
             JSXAttrValue::Lit(lit) => match lit {
               Lit::Str(string_lit) => {
@@ -95,6 +130,7 @@ fn serialize_jsx_element_to_string_vec(
               is_dynamic = true;
               // eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
               match &jsx_expr_container.expr {
+                // This is treated as a syntax error in attributes
                 JSXExpr::JSXEmptyExpr(_) => todo!(),
                 JSXExpr::Expr(expr) => {
                   let obj_expr = Box::new(Expr::Object(ObjectLit {
@@ -114,10 +150,13 @@ fn serialize_jsx_element_to_string_vec(
                 }
               }
             }
+            // Cannot occur on DOM elements
             JSXAttrValue::JSXElement(_) => todo!(),
+            // Cannot occur on DOM elements
             JSXAttrValue::JSXFragment(_) => todo!(),
           }
         }
+        // Case: <div {...props} />
         JSXAttrOrSpread::SpreadElement(jsx_spread_element) => {
           strings.last_mut().unwrap().push_str(" ");
           strings.push("".to_string());
@@ -143,14 +182,13 @@ fn serialize_jsx_element_to_string_vec(
     }
   }
 
-  // TODO: hoist out or make it as an option to the transform
-  // See: https://developer.mozilla.org/en-US/docs/Glossary/Void_element
-  let void_elements = vec![
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
-    "param", "source", "track", "wbr",
-  ];
-
-  if void_elements.iter().any(|&item| item == name) {
+  // There are no self closing elements in HTML, only void elements.
+  // Void elements are a fixed list of elements that cannot have
+  // child nodes.
+  // See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
+  // Case: <br />
+  // Case: <meta />
+  if is_void_element(name) {
     strings.last_mut().unwrap().push_str(" />");
     return (strings, dynamic_exprs);
   }
@@ -159,15 +197,20 @@ fn serialize_jsx_element_to_string_vec(
 
   for child in el.children.iter() {
     match child {
+      // Case: <div>foo</div>
       JSXElementChild::JSXText(jsx_text) => {
         strings
           .last_mut()
           .unwrap()
           .push_str(jsx_text.value.to_string().as_str());
       }
+      // Case: <div>{2 + 2}</div>
       JSXElementChild::JSXExprContainer(jsx_expr_container) => {
         match &jsx_expr_container.expr {
-          JSXExpr::JSXEmptyExpr(_jsx_empty_expr) => todo!(),
+          // Empty JSX expressions can be ignored as they have no content
+          // Case: <div>{}</div>
+          // Case: <div>{/* fooo */}</div>
+          JSXExpr::JSXEmptyExpr(_jsx_empty_expr) => continue,
           JSXExpr::Expr(expr) => match &**expr {
             Expr::Ident(ident) => {
               strings.push("".to_string());
@@ -177,9 +220,14 @@ fn serialize_jsx_element_to_string_vec(
           },
         }
       }
-      JSXElementChild::JSXSpreadChild(_) => todo!(),
+      // Case: <div><span /></div>
       JSXElementChild::JSXElement(_) => todo!(),
+      // Case: <div><></></div>
       JSXElementChild::JSXFragment(_) => todo!(),
+      // Invalid, was part of an earlier JSX iteration, but no
+      // transform supports it. Babel and TypeScript error when they
+      // encounter this.
+      JSXElementChild::JSXSpreadChild(_) => todo!(),
     }
   }
 
@@ -233,6 +281,16 @@ impl JsxString {
       type_args: Default::default(),
     })
   }
+
+  fn inject_runtime(&mut self) {
+    let imports: Vec<(Ident, Ident)> = vec![];
+    if self.development {
+      if let Some(jsx_ident) = &self.import_jsx {
+        // imports.
+      }
+    }
+    eprintln!("inject {:#?}", imports);
+  }
 }
 
 impl VisitMut for JsxString {
@@ -277,6 +335,8 @@ impl VisitMut for JsxString {
         })))),
       )
     }
+
+    self.inject_runtime();
   }
 
   fn visit_mut_expr(&mut self, expr: &mut Expr) {
@@ -331,10 +391,8 @@ mod tests {
   use crate::swc::parser::StringInput;
   use crate::swc::parser::Syntax;
   use crate::swc::parser::TsConfig;
-  use crate::swc::visit::Fold;
   use crate::swc::visit::FoldWith;
   use crate::ModuleSpecifier;
-  use crate::ES_VERSION;
   use pretty_assertions::assert_eq;
   use std::rc::Rc;
 
@@ -418,6 +476,46 @@ const a = renderFunction($$_tpl_1, null);"#,
       r#"const a = <input type="checkbox" checked />;"#,
       r#"const $$_tpl_1 = [
   '<input type="checkbox" checked />'
+];
+const a = renderFunction($$_tpl_1, null);"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn namespace_attr_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <a xlink:href="foo">foo</a>;"#,
+      r#"const $$_tpl_1 = [
+  '<a href="foo">foo</a>',
+];
+const a = renderFunction($$_tpl_1, null);"#,
+    );
+  }
+
+  #[test]
+  fn mixed_static_dynamic_props_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div foo="1" {...props} bar="2">foo</div>;"#,
+      r#"const $$_tpl_1 = [
+  '<div foo="1" ',
+  ' bar="2">foo</div>'
+];
+const a = renderFunction($$_tpl_1, {
+  ...props
+});"#,
+    );
+  }
+
+  #[test]
+  fn empty_jsx_child_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <p>{}</p>;"#,
+      r#"const $$_tpl_1 = [
+  "<p></p>"
 ];
 const a = renderFunction($$_tpl_1, null);"#,
     );
