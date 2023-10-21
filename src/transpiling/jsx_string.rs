@@ -1139,7 +1139,6 @@ const a = _jsx(ctx.Provider, {
   // TODO: What to do with "dangerouslySetInnerHTML"?
   // TODO: Fresh specific: <Head> opt out? Or maybe move Fresh users to a
   //       different pattern
-  // TODO: Fresh specific: what about island detection?
 
   //   #[test]
   //   fn basic_test_with_imports() {
