@@ -102,11 +102,17 @@ fn jsx_member_expr_to_normal(jsx_member_expr: &JSXMemberExpr) -> MemberExpr {
   }
 }
 
-fn contains_jsx_spread_attr(opening: &JSXOpeningElement) -> bool {
-  !opening.attrs.is_empty()
-    && opening.attrs.clone().iter().any(|attr| match attr {
+fn is_serializable(opening: &JSXOpeningElement) -> bool {
+  opening.attrs.is_empty()
+    || !opening.attrs.clone().iter().any(|attr| match attr {
       JSXAttrOrSpread::SpreadElement(_) => true,
-      _ => false,
+      JSXAttrOrSpread::JSXAttr(attr) => {
+        let name = get_attr_name(&attr);
+        match name.as_str() {
+          "dangerouslySetInnerHTML" => true,
+          _ => false,
+        }
+      }
     })
 }
 
@@ -371,7 +377,7 @@ impl JsxString {
     // Case: <div {...props} />
     // Case: <div class="foo" {...{ class: "bar"}} />
     // Case: <div {...{ class: "foo"}} class="bar"}>foo</div>
-    if contains_jsx_spread_attr(&el.opening) {
+    if !is_serializable(&el.opening) {
       let expr = Expr::Call(self.serialize_jsx_to_call_expr(&el));
       strings.push("".to_string());
       dynamic_exprs.push(expr);
@@ -607,7 +613,7 @@ impl JsxString {
           // When the element has a spread attribute it's not safe
           // to be serialized.
           // Case: <div {...props} />
-          if contains_jsx_spread_attr(&el.opening) {
+          if !is_serializable(&el.opening) {
             Expr::Call(self.serialize_jsx_to_call_expr(&el))
           } else {
             // These are now safe to be serialized
@@ -920,6 +926,21 @@ const a = _jsx("div", {
   }
 
   #[test]
+  fn dangerously_html_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div dangerouslySetInnerHTML={{__html: "foo"}}>foo</div>;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx("div", {
+  "dangerouslySetInnerHTML": {
+    __html: "foo"
+  },
+  "children": "foo"
+});"#,
+    );
+  }
+
+  #[test]
   fn empty_jsx_child_test() {
     test_transform(
       JsxString::default(),
@@ -1158,7 +1179,6 @@ const a = _jsx(ctx.Provider, {
 
   // TODO: What to do with keys?
   // TODO: HTMLEscape attribute names + text children
-  // TODO: What to do with "dangerouslySetInnerHTML"?
   // TODO: Fresh specific: <Head> opt out? Or maybe move Fresh users to a
   //       different pattern
 
