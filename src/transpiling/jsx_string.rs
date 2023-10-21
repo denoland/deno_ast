@@ -471,21 +471,20 @@ impl JsxString {
       }
     }
 
+    strings.last_mut().unwrap().push_str(">");
+
     // There are no self closing elements in HTML, only void elements.
     // Void elements are a fixed list of elements that cannot have
     // child nodes.
     // See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
-    // Case: <br />
-    // Case: <meta />
+    // Case: <br /> -> <br>
+    // Case: <meta /> -> <meta>
     if is_void_element(&name) {
       // Since self closing tags don't exist in HTML we don't need to
       // add the "/" character. If the "/" character is present,
       // browsers will ignore it anyway.
-      strings.last_mut().unwrap().push_str(">");
       return;
     }
-
-    strings.last_mut().unwrap().push_str(">");
 
     for child in el.children.iter() {
       match child {
