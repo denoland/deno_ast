@@ -332,6 +332,28 @@ impl JsxString {
     }
   }
 
+  fn convert_to_jsx_attr_call(&mut self, name: &str, expr: &Expr) -> CallExpr {
+    let mut args: Vec<ExprOrSpread> = vec![];
+    args.push(ExprOrSpread {
+      spread: None,
+      expr: string_lit_expr(name.to_string()),
+    });
+
+    args.push(ExprOrSpread {
+      spread: None,
+      expr: Box::new(expr.clone()),
+    });
+
+    CallExpr {
+      span: DUMMY_SP,
+      callee: Callee::Expr(Box::new(Expr::Ident(
+        self.get_jsx_attr_identifier(),
+      ))),
+      args,
+      type_args: None,
+    }
+  }
+
   fn serialize_jsx_element_to_string_vec(
     &mut self,
     el: JSXElement,
@@ -384,7 +406,6 @@ impl JsxString {
 
     if !el.opening.attrs.is_empty() {
       for attr in el.opening.attrs.iter() {
-        let mut is_dynamic = false;
         let mut serialized_attr = String::new();
         // Case: <button class="btn">
         match attr {
@@ -408,9 +429,32 @@ impl JsxString {
             match attr_value {
               JSXAttrValue::Lit(lit) => match lit {
                 Lit::Str(string_lit) => {
+                  // Edge Case: The "key" attribute is a special one in
+                  // most frameworks. Some frameworks may want to
+                  // serialize it, other's don't. To support both use
+                  // cases we'll always pass it to `jsxattr()` so that
+                  // they can decide for themselves what to do with it.
+                  // Case: <div key="123" />
+                  if attr_name == "key" {
+                    strings.last_mut().unwrap().push_str(" ");
+                    strings.push("".to_string());
+                    let expr = self.convert_to_jsx_attr_call(
+                      &attr_name,
+                      &*string_lit_expr(string_lit.value.to_string()),
+                    );
+                    dynamic_exprs.push(Expr::Call(expr));
+                    continue;
+                  }
+
                   serialized_attr.push_str("=\"");
                   serialized_attr
                     .push_str(string_lit.value.to_string().as_str());
+                  serialized_attr.push_str("\"");
+                  strings.last_mut().unwrap().push_str(" ");
+                  strings
+                    .last_mut()
+                    .unwrap()
+                    .push_str(serialized_attr.as_str());
                 }
                 Lit::Bool(_) => todo!(),
                 Lit::Null(_) => todo!(),
@@ -422,7 +466,6 @@ impl JsxString {
               JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
                 strings.last_mut().unwrap().push_str(" ");
                 strings.push("".to_string());
-                is_dynamic = true;
                 // eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
                 match &jsx_expr_container.expr {
                   // This is treated as a syntax error in attributes
@@ -463,14 +506,6 @@ impl JsxString {
             panic!();
           }
         };
-        serialized_attr.push_str("\"");
-        if !is_dynamic {
-          strings.last_mut().unwrap().push_str(" ");
-          strings
-            .last_mut()
-            .unwrap()
-            .push_str(serialized_attr.as_str());
-        }
       }
     }
 
@@ -944,6 +979,20 @@ const a = _jsx("div", {
   }
 
   #[test]
+  fn key_attr_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div key="foo">foo</div>;"#,
+      r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div ",
+  ">foo</div>"
+];
+const a = _jsxssr($$_tpl_1, _jsxattr("key", "foo"));"#,
+    );
+  }
+
+  #[test]
   fn empty_jsx_child_test() {
     test_transform(
       JsxString::default(),
@@ -1180,7 +1229,6 @@ const a = _jsx(ctx.Provider, {
     );
   }
 
-  // TODO: What to do with keys?
   // TODO: HTMLEscape attribute names + text children
   // TODO: Fresh specific: <Head> opt out? Or maybe move Fresh users to a
   //       different pattern
