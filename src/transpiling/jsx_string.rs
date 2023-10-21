@@ -188,7 +188,7 @@ impl JsxString {
     // Case: <Foo />
     // Case: <Foo foo="1" bar={2} />
     // Case: <Foo baz={<div />} />
-    if el.opening.attrs.is_empty() {
+    if el.opening.attrs.is_empty() && el.children.is_empty() {
       args.push(null_arg())
     } else {
       let mut props: Vec<PropOrSpread> = vec![];
@@ -256,6 +256,59 @@ impl JsxString {
         }
       }
 
+      // Add children as a "children" prop.
+      // TODO: Not sure if we should serialize all of them as one big
+      // Fragment or serialize each child individually. Serializing
+      // each child individually might increase compatibility because
+      // of `React.Children` API, but it's not good for performance.
+      let child_len = el.children.len();
+      let children_name = PropName::Str(Str {
+        span: DUMMY_SP,
+        value: "children".into(),
+        raw: None,
+      });
+      for child in el.children.iter() {
+        match child {
+          // Case: <div>foo</div>
+          JSXElementChild::JSXText(jsx_text) => {
+            if child_len == 1 {
+              props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                KeyValueProp {
+                  key: children_name.clone(),
+                  value: Box::new(Expr::Lit(Lit::Str(Str {
+                    span: DUMMY_SP,
+                    value: jsx_text.value.to_string().as_str().into(),
+                    raw: None,
+                  }))),
+                },
+              ))));
+            }
+          }
+          // Case: <div>{2 + 2}</div>
+          JSXElementChild::JSXExprContainer(jsx_expr_container) => {
+            match &jsx_expr_container.expr {
+              // Empty JSX expressions can be ignored as they have no content
+              // Case: <div>{}</div>
+              // Case: <div>{/* fooo */}</div>
+              JSXExpr::JSXEmptyExpr(_) => continue,
+              JSXExpr::Expr(expr) => {
+                todo!()
+              }
+            }
+          }
+          // Case: <div><span /></div>
+          JSXElementChild::JSXElement(jsx_element) => {
+            todo!()
+          }
+          // Case: <div><></></div>
+          JSXElementChild::JSXFragment(_) => todo!(),
+          // Invalid, was part of an earlier JSX iteration, but no
+          // transform supports it. Babel and TypeScript error when they
+          // encounter this.
+          JSXElementChild::JSXSpreadChild(_) => todo!(),
+        }
+      }
+
       let obj_expr = Box::new(Expr::Object(ObjectLit {
         span: DUMMY_SP,
         props: props,
@@ -300,10 +353,6 @@ impl JsxString {
       return;
     }
 
-    if strings.is_empty() {
-      strings.push("".to_string());
-    }
-
     // Edge case: If the JSX opening element contains a spread attribute
     // then it's not safe to serialize it. This is because existing code
     // relies on the object spread semantics where it can overwrite
@@ -321,6 +370,8 @@ impl JsxString {
       dynamic_exprs.push(expr);
 
       return;
+    } else if strings.is_empty() {
+      strings.push("".to_string());
     }
 
     strings.last_mut().unwrap().push_str("<");
@@ -532,6 +583,43 @@ impl JsxString {
     })
   }
 
+  fn serialize_jsx(&mut self, el: &JSXElement) -> Expr {
+    // Check if the topmost element is a component or an HTML element
+    match el.opening.name.clone() {
+      // Case: <div />
+      // Case: <Foo />
+      JSXElementName::Ident(ident) => {
+        let name = ident.sym.to_string();
+        // Component identifiers start with an uppercase character and
+        // they cannot be safely serialized. So we'll apply the default
+        // JSX transform
+        // Case: <Foo bar="123" />
+        if name.chars().next().unwrap().is_ascii_uppercase() {
+          Expr::Call(self.serialize_jsx_to_call_expr(&el))
+        } else {
+          // When the element has a spread attribute it's not safe
+          // to be serialized.
+          // Case: <div {...props} />
+          if contains_jsx_spread_attr(&el.opening) {
+            Expr::Call(self.serialize_jsx_to_call_expr(&el))
+          } else {
+            // These are now safe to be serialized
+            // Case: <div foo="1" />
+            self.next_index += 1;
+            self.generate_template_join(self.next_index, el.clone())
+          }
+        }
+      }
+      // Case: <ctx.Provider />
+      JSXElementName::JSXMemberExpr(_) => {
+        Expr::Call(self.serialize_jsx_to_call_expr(&el))
+      }
+      JSXElementName::JSXNamespacedName(_) => {
+        todo!();
+      }
+    }
+  }
+
   fn inject_runtime(&mut self, stmts: &mut Vec<ModuleItem>) {
     let mut imports: Vec<(Ident, Ident)> = vec![];
 
@@ -633,47 +721,12 @@ impl VisitMut for JsxString {
 
   fn visit_mut_expr(&mut self, expr: &mut Expr) {
     if let Expr::JSXElement(el) = expr {
-      // Check if the topmost element is a component or an HTML element
-      let transformed_expr = match el.opening.name.clone() {
-        // Case: <div />
-        // Case: <Foo />
-        JSXElementName::Ident(ident) => {
-          let name = ident.sym.to_string();
-          // Component identifiers start with an uppercase character and
-          // they cannot be safely serialized. So we'll apply the default
-          // JSX transform
-          // Case: <Foo bar="123" />
-          if name.chars().next().unwrap().is_ascii_uppercase() {
-            Expr::Call(self.serialize_jsx_to_call_expr(&el))
-          } else {
-            // When the element has a spread attribute it's not safe
-            // to be serialized.
-            // Case: <div {...props} />
-            if contains_jsx_spread_attr(&el.opening) {
-              Expr::Call(self.serialize_jsx_to_call_expr(&el))
-            } else {
-              // These are now safe to be serialized
-              // Case: <div foo="1" />
-              self.next_index += 1;
-              self.generate_template_join(self.next_index, *el.take())
-            }
-          }
-        }
-        // Case: <ctx.Provider />
-        JSXElementName::JSXMemberExpr(_) => {
-          Expr::Call(self.serialize_jsx_to_call_expr(&el))
-        }
-        JSXElementName::JSXNamespacedName(_) => {
-          todo!();
-        }
-      };
-
       // TODO:
       // 1. create a `_tpl_<name>` which is an array literal
       // 2. transform the element into a list of string literals and
       //    push them to the `_tpl_<name>` literal node
       // 3. change the `expr` to be `_tpl_<name>.join("");`
-      *expr = transformed_expr;
+      *expr = self.serialize_jsx(&el);
     } else if let Expr::JSXFragment(frag) = expr {
       // Empty fragments can be replaced with null. This is a minor
       // optimization, because Fragments are a special node type that
@@ -833,7 +886,8 @@ const a = _jsxssr($$_tpl_1, null);"#,
 const a = _jsx("div", {
   "foo": "1",
   ...props,
-  "bar": "2"
+  "bar": "2",
+  "children": "foo"
 });"#,
     );
   }
@@ -906,7 +960,8 @@ const a = _jsx("div", {
       r#"const a = <div {...props}>hello</div>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
-  ...props
+  ...props,
+  "children": "hello"
 });"#,
     );
   }
@@ -920,7 +975,8 @@ const a = _jsx("div", {
 const a = _jsx("div", {
   "foo": "1",
   ...props,
-  "bar": "2"
+  "bar": "2",
+  "children": "hello"
 });"#,
     );
   }
@@ -995,8 +1051,7 @@ const a = _jsx(Foo, { children: "bar" }));"#,
       r#"const a = <Foo><span>hello</span></Foo>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  "<div>",
-  "</div>"
+  "<span>hello</span>"
 ];
 const a = _jsx(Foo, {
   children: _jsxssr($$_tpl_1, null)
