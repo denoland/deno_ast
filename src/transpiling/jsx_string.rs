@@ -44,6 +44,7 @@ fn normalize_dom_attr_name(name: &str) -> String {
     "className" => "class".to_string(),
     // xlink:href was removed from SVG and isn't needed
     "xlinkHref" => "href".to_string(),
+    "xlink:href" => "href".to_string(),
     _ => name.to_string(),
   }
 }
@@ -80,10 +81,12 @@ fn get_attr_name(jsx_attr: &JSXAttr) -> String {
   match &jsx_attr.name {
     // Case: <button class="btn">
     JSXAttrName::Ident(ident) => normalize_dom_attr_name(ident.sym.as_ref()),
-    // Case (svg only): <a xlink:href="#">...</a>
-    JSXAttrName::JSXNamespacedName(_namespace_name) => {
-      // TODO: Only support "xlink:href", but convert it to "href"
-      todo!()
+    // Case: <a xlink:href="#">...</a>
+    JSXAttrName::JSXNamespacedName(namespace_name) => {
+      let ns = namespace_name.ns.sym.to_string();
+      let name = namespace_name.name.sym.to_string();
+      let combined = format!("{}:{}", ns, name);
+      normalize_dom_attr_name(&combined)
     }
   }
 }
@@ -218,19 +221,18 @@ impl JsxString {
         if name.chars().next().unwrap().is_ascii_uppercase() {
           Expr::Ident(ident)
         } else {
-          Expr::Lit(Lit::Str(Str {
-            span: DUMMY_SP,
-            value: name.into(),
-            raw: None,
-          }))
+          string_lit_expr(name)
         }
       }
       // Case: <ctx.Provider />
       JSXElementName::JSXMemberExpr(jsx_member_expr) => {
         Expr::Member(jsx_member_expr_to_normal(&jsx_member_expr))
       }
-      JSXElementName::JSXNamespacedName(_jsx_namespaced_name) => {
-        todo!()
+      JSXElementName::JSXNamespacedName(namespace_name) => {
+        let ns = namespace_name.ns.sym.to_string();
+        let name = namespace_name.name.sym.to_string();
+        let combined = format!("{}:{}", ns, name);
+        string_lit_expr(combined)
       }
     };
 
@@ -466,7 +468,9 @@ impl JsxString {
     let ident = match el.opening.name.clone() {
       // Case: <div />
       JSXElementName::Ident(ident) => ident,
-      _ => todo!(),
+      _ => {
+        unreachable!("serialize_jsx_element_to_string_vec(JSXNamespacedName)")
+      }
     };
 
     let name = ident.sym.to_string();
@@ -1001,7 +1005,6 @@ const a = _jsxssr($$_tpl_1, _jsxattr("bar", 2));"#,
     );
   }
 
-  #[ignore]
   #[test]
   fn namespace_attr_test() {
     test_transform(
@@ -1009,7 +1012,17 @@ const a = _jsxssr($$_tpl_1, _jsxattr("bar", 2));"#,
       r#"const a = <a xlink:href="foo">foo</a>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  '<a href="foo">foo</a>',
+  '<a href="foo">foo</a>'
+];
+const a = _jsxssr($$_tpl_1, null);"#,
+    );
+
+    test_transform(
+      JsxString::default(),
+      r#"const a = <a foo:bar="foo">foo</a>;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  '<a foo:bar="foo">foo</a>'
 ];
 const a = _jsxssr($$_tpl_1, null);"#,
     );
@@ -1096,6 +1109,19 @@ const $$_tpl_1 = [
   "<div>&quot;a&amp;&gt;&#39;</div>"
 ];
 const a = _jsxssr($$_tpl_1, null);"#,
+    );
+  }
+
+  #[test]
+  fn namespace_name_test() {
+    // Note: This isn't really supported anywhere, but I guess why not
+    test_transform(
+      JsxString::default(),
+      r#"const a = <a:b>foo</a:b>;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx("a:b", {
+  children: "foo"
+});"#,
     );
   }
 
@@ -1395,7 +1421,6 @@ const a = _jsx(ctx.Provider, {
     );
   }
 
-  // TODO: HTMLEscape attribute names + text children
   // TODO: Fresh specific: <Head> opt out? Or maybe move Fresh users to a
   //       different pattern
 
