@@ -820,11 +820,6 @@ impl VisitMut for JsxString {
 
   fn visit_mut_expr(&mut self, expr: &mut Expr) {
     if let Expr::JSXElement(el) = expr {
-      // TODO:
-      // 1. create a `_tpl_<name>` which is an array literal
-      // 2. transform the element into a list of string literals and
-      //    push them to the `_tpl_<name>` literal node
-      // 3. change the `expr` to be `_tpl_<name>.join("");`
       *expr = self.serialize_jsx(&el);
     } else if let Expr::JSXFragment(frag) = expr {
       match frag.children.len() {
@@ -840,7 +835,6 @@ impl VisitMut for JsxString {
         1 => {
           // Flatten the fragment if it only has one child
           let child = frag.children[0].clone();
-          // *expr = self.serialize_jsx(&child);
           match child {
             JSXElementChild::JSXText(jsx_text) => {
               *expr = string_lit_expr(jsx_text.value.to_string())
@@ -849,7 +843,7 @@ impl VisitMut for JsxString {
               match &jsx_expr_container.expr {
                 // Empty JSX expressions can be ignored as they have no content
                 // Case: <>{}</>
-                // Case: <>{/* fooo */}</>
+                // Case: <>{/* some comment */}</>
                 JSXExpr::JSXEmptyExpr(_) => {}
                 JSXExpr::Expr(jsx_expr) => *expr = *jsx_expr.clone(),
               }
@@ -861,8 +855,8 @@ impl VisitMut for JsxString {
             // Case: <><></></>
             JSXElementChild::JSXFragment(_) => todo!(),
             // Invalid, was part of an earlier JSX iteration, but no
-            // transform supports it. Babel and TypeScript error when they
-            // encounter this.
+            // transform supports it. Babel and TypeScript error when
+            // they encounter this.
             JSXElementChild::JSXSpreadChild(_) => {}
           }
         }
@@ -1393,19 +1387,28 @@ const a = _jsx(Foo, {
     );
   }
 
-  #[ignore]
   #[test]
   fn component_with_jsx_frag_attr() {
     test_transform(
       JsxString::default(),
       r#"const a = <Foo bar={<>foo</>} />;"#,
-      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  bar: "foo"
+});"#,
+    );
+
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo bar={<>foo<Foo/>bar</>} />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  "foo"
+  "foo",
+  "bar"
 ];
 const a = _jsx(Foo, {
-  bar: _jsxssr($$_tpl_1, null)
-}));"#,
+  bar: _jsxssr()
+});"#,
     );
   }
 
