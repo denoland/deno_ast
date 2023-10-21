@@ -1035,6 +1035,18 @@ const a = _jsx(Foo, {
     );
   }
 
+  #[test]
+  fn component_with_jsx_member_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <ctx.Provider value={null} />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(ctx.Provider, {
+  "value": null
+});"#,
+    );
+  }
+
   // TODO: What to do with keys?
   // TODO: Should we go with function calls for dynamic attributes instead
   //       of an object for DOM nodes? Would allow us to skip an allocation.
