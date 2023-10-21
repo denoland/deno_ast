@@ -184,7 +184,7 @@ impl JsxString {
       expr: Box::new(name_expr),
     });
 
-    // Serialize component attributes
+    // Serialize attributes
     // Case: <Foo />
     // Case: <Foo foo="1" bar={2} />
     // Case: <Foo baz={<div />} />
