@@ -363,7 +363,7 @@ impl JsxString {
     //
     // Case: <div {...props} />
     // Case: <div class="foo" {...{ class: "bar"}} />
-    // Case: <div {...{ class: "foo"} class="bar"}>foo</div>
+    // Case: <div {...{ class: "foo"}} class="bar"}>foo</div>
     if contains_jsx_spread_attr(&el.opening) {
       let expr = Expr::Call(self.serialize_jsx_to_call_expr(&el));
       strings.push("".to_string());
