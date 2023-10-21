@@ -478,7 +478,10 @@ impl JsxString {
     // Case: <br />
     // Case: <meta />
     if is_void_element(&name) {
-      strings.last_mut().unwrap().push_str(" />");
+      // Since self closing tags don't exist in HTML we don't need to
+      // add the "/" character. If the "/" character is present,
+      // browsers will ignore it anyway.
+      strings.last_mut().unwrap().push_str(">");
       return;
     }
 
@@ -822,7 +825,7 @@ const a = _jsxssr($$_tpl_1, null);"#,
       r#"const a = <br></br>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  "<br />"
+  "<br>"
 ];
 const a = _jsxssr($$_tpl_1, null);"#,
     );
@@ -857,7 +860,7 @@ const a = _jsxssr($$_tpl_1, null);"#,
       r#"const a = <input type="checkbox" checked />;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  '<input type="checkbox" checked />'
+  '<input type="checkbox" checked>'
 ];
 const a = _jsxssr($$_tpl_1, null);"#,
     );
