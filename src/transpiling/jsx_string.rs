@@ -512,13 +512,15 @@ impl JsxString {
             match attr_value {
               JSXAttrValue::Lit(lit) => match lit {
                 Lit::Str(string_lit) => {
-                  // Edge Case: The "key" attribute is a special one in
-                  // most frameworks. Some frameworks may want to
-                  // serialize it, other's don't. To support both use
-                  // cases we'll always pass it to `jsxattr()` so that
-                  // they can decide for themselves what to do with it.
+                  // Edge Case: Both "key" and "ref" attributes are
+                  // special attributes in most frameworks. Some
+                  // frameworks may want to serialize it, other's don't.
+                  // To support both use cases we'll always pass them to
+                  // `jsxattr()` so that frameowrks can decide for
+                  // themselves what to do with it.
                   // Case: <div key="123" />
-                  if attr_name == "key" {
+                  // Case: <div ref="123" />
+                  if attr_name == "key" || attr_name == "ref" {
                     strings.last_mut().unwrap().push_str(" ");
                     strings.push("".to_string());
                     let expr = self.convert_to_jsx_attr_call(
@@ -1069,6 +1071,20 @@ const $$_tpl_1 = [
   ">foo</div>"
 ];
 const a = _jsxssr($$_tpl_1, _jsxattr("key", "foo"));"#,
+    );
+  }
+
+  #[test]
+  fn ref_attr_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div ref="foo">foo</div>;"#,
+      r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div ",
+  ">foo</div>"
+];
+const a = _jsxssr($$_tpl_1, _jsxattr("ref", "foo"));"#,
     );
   }
 
