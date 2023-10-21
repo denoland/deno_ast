@@ -3,6 +3,7 @@ use swc_common::DUMMY_SP;
 use swc_common::Spanned;
 use swc_ecma_ast::*;
 use swc_ecma_utils::prepend_stmt;
+use swc_ecma_utils::quote_ident;
 use swc_ecma_visit::{as_folder, noop_visit_mut_type, VisitMut, VisitMutWith};
 
 struct JsxString {
@@ -213,12 +214,7 @@ impl JsxString {
         match attr {
           JSXAttrOrSpread::JSXAttr(jsx_attr) => {
             let attr_name = get_attr_name(jsx_attr);
-
-            let prop_name = PropName::Str(Str {
-              span: DUMMY_SP,
-              value: attr_name.into(),
-              raw: None,
-            });
+            let prop_name = PropName::Ident(quote_ident!(attr_name));
 
             // Case: <Foo required />
             let Some(attr_value) = &jsx_attr.value else {
@@ -279,11 +275,7 @@ impl JsxString {
       // each child individually might increase compatibility because
       // of `React.Children` API, but it's not good for performance.
       let child_len = el.children.len();
-      let children_name = PropName::Str(Str {
-        span: DUMMY_SP,
-        value: "children".into(),
-        raw: None,
-      });
+      let children_name = PropName::Ident(quote_ident!("children"));
       for child in el.children.iter() {
         match child {
           // Case: <div>foo</div>
@@ -917,10 +909,10 @@ const a = _jsxssr($$_tpl_1, null);"#,
       r#"const a = <div foo="1" {...props} bar="2">foo</div>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
-  "foo": "1",
+  foo: "1",
   ...props,
-  "bar": "2",
-  "children": "foo"
+  bar: "2",
+  children: "foo"
 });"#,
     );
   }
@@ -932,10 +924,10 @@ const a = _jsx("div", {
       r#"const a = <div dangerouslySetInnerHTML={{__html: "foo"}}>foo</div>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
-  "dangerouslySetInnerHTML": {
+  dangerouslySetInnerHTML: {
     __html: "foo"
   },
-  "children": "foo"
+  children: "foo"
 });"#,
     );
   }
@@ -1023,7 +1015,7 @@ const a = _jsx("div", {
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
   ...props,
-  "children": "hello"
+  children: "hello"
 });"#,
     );
   }
@@ -1035,10 +1027,10 @@ const a = _jsx("div", {
       r#"const a = <div foo="1" {...props} bar="2">hello</div>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
-  "foo": "1",
+  foo: "1",
   ...props,
-  "bar": "2",
-  "children": "hello"
+  bar: "2",
+  children: "hello"
 });"#,
     );
   }
@@ -1074,9 +1066,9 @@ const a = _jsx(Foo, null);"#,
       r#"const a = <Foo required foo="1" bar={2} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
-  "required": true,
-  "foo": "1",
-  "bar": 2
+  required: true,
+  foo: "1",
+  bar: 2
 });"#,
     );
   }
@@ -1089,7 +1081,7 @@ const a = _jsx(Foo, {
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
   ...props,
-  "foo": "1"
+  foo: "1"
 });"#,
     );
   }
@@ -1129,7 +1121,7 @@ const a = _jsx(Foo, {
       r#"const a = <Foo>{2 + 2}</Foo>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
-  "children": 2 + 2
+  children: 2 + 2
 });"#,
     );
   }
@@ -1144,7 +1136,7 @@ const $$_tpl_1 = [
   "<div>hello</div>"
 ];
 const a = _jsx(Foo, {
-  "bar": _jsxssr($$_tpl_1, null)
+  bar: _jsxssr($$_tpl_1, null)
 });"#,
     );
   }
@@ -1172,7 +1164,7 @@ const a = _jsx(Foo, {
       r#"const a = <ctx.Provider value={null} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(ctx.Provider, {
-  "value": null
+  value: null
 });"#,
     );
   }
