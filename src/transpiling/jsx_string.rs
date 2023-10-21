@@ -872,6 +872,17 @@ const $$_tpl_1 = [
 ];
 const a = _jsxssr($$_tpl_1, null);"#,
     );
+
+    test_transform(
+      JsxString::default(),
+      r#"const a = <input type="checkbox" checked={false} />;"#,
+      r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  '<input type="checkbox" ',
+  ">"
+];
+const a = _jsxssr($$_tpl_1, _jsxattr("checked", false));"#,
+    );
   }
 
   #[test]
