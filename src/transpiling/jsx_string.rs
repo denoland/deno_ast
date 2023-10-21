@@ -134,7 +134,7 @@ impl JsxString {
     }
   }
 
-  /// Mark `jsxssr`` as being used and return the identifier.
+  /// Mark `jsxssr` as being used and return the identifier.
   fn get_jsx_ssr_identifier(&mut self) -> Ident {
     match &self.import_jsx_ssr {
       Some(ident) => ident.clone(),
