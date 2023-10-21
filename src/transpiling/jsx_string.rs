@@ -96,14 +96,191 @@ fn get_attr_name(jsx_attr: &JSXAttr) -> String {
   }
 }
 
+/// Convert a JSXMemberExpr to MemberExpr. We offload this to a
+/// function because conversion is recursive.
+fn jsx_member_expr_to_normal(jsx_member_expr: &JSXMemberExpr) -> MemberExpr {
+  MemberExpr {
+    span: DUMMY_SP,
+    obj: match jsx_member_expr.obj.clone() {
+      JSXObject::Ident(ident) => Box::new(Expr::Ident(ident.clone())),
+      JSXObject::JSXMemberExpr(jsx_member_expr) => {
+        todo!()
+      }
+    },
+    prop: MemberProp::Ident(jsx_member_expr.prop.clone()),
+  }
+}
+
+fn contains_jsx_spread_attr(opening: &JSXOpeningElement) -> bool {
+  !opening.attrs.is_empty()
+    && opening.attrs.clone().iter().any(|attr| match attr {
+      JSXAttrOrSpread::SpreadElement(_) => true,
+      _ => false,
+    })
+}
+
 impl JsxString {
+  /// Mark `jsx` or `jsxDEV` as being used and return the appropriate
+  /// identifier.
+  fn get_jsx_identifier(&mut self) -> Ident {
+    match &self.import_jsx {
+      Some(ident) => ident.clone(),
+      None => {
+        let jsx = if self.development { "_jsxDEV" } else { "_jsx" };
+        let ident = Ident::new(jsx.into(), DUMMY_SP);
+        self.import_jsx = Some(ident.clone());
+        ident
+      }
+    }
+  }
+
+  /// Mark `jsxssr`` as being used and return the identifier.
+  fn get_jsx_ssr_identifier(&mut self) -> Ident {
+    match &self.import_jsx_ssr {
+      Some(ident) => ident.clone(),
+      None => {
+        let ident = Ident::new("_jsxssr".into(), DUMMY_SP);
+        self.import_jsx_ssr = Some(ident.clone());
+        ident
+      }
+    }
+  }
+
+  /// Serializes a JSXElement to a standard jsx expression. We use
+  /// this function when we cannot safely serialize a JSXElement.
+  ///
+  /// Case: <div {...props} />
+  /// Case: <Foo bar="1" />
+  fn serialize_jsx_to_call_expr(&mut self, el: &JSXElement) -> CallExpr {
+    let name_expr = match el.opening.name.clone() {
+      // Case: <div />
+      // Case: <Foo />
+      JSXElementName::Ident(ident) => {
+        let name = ident.sym.to_string();
+        // Component identifiers start with an uppercase character
+        // Case: <Foo bar="123" />
+        if name.chars().next().unwrap().is_ascii_uppercase() {
+          Expr::Ident(ident)
+        } else {
+          Expr::Lit(Lit::Str(Str {
+            span: DUMMY_SP,
+            value: name.into(),
+            raw: None,
+          }))
+        }
+      }
+      // Case: <ctx.Provider />
+      JSXElementName::JSXMemberExpr(jsx_member_expr) => {
+        Expr::Member(jsx_member_expr_to_normal(&jsx_member_expr))
+      }
+      JSXElementName::JSXNamespacedName(_jsx_namespaced_name) => {
+        todo!()
+      }
+    };
+
+    let mut args: Vec<ExprOrSpread> = vec![];
+    args.push(ExprOrSpread {
+      spread: None,
+      expr: Box::new(name_expr),
+    });
+
+    // Serialize component attributes
+    // Case: <Foo />
+    // Case: <Foo foo="1" bar={2} />
+    // Case: <Foo baz={<div />} />
+    if el.opening.attrs.is_empty() {
+      args.push(null_arg())
+    } else {
+      let mut props: Vec<PropOrSpread> = vec![];
+      for attr in el.opening.attrs.iter() {
+        match attr {
+          JSXAttrOrSpread::JSXAttr(jsx_attr) => {
+            let attr_name = get_attr_name(jsx_attr);
+
+            let prop_name = PropName::Str(Str {
+              span: DUMMY_SP,
+              value: attr_name.into(),
+              raw: None,
+            });
+
+            // Case: <Foo required />
+            let Some(attr_value) = &jsx_attr.value else {
+              props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                KeyValueProp {
+                  key: prop_name,
+                  value: Box::new(Expr::Lit(Lit::Bool(Bool {
+                    span: DUMMY_SP,
+                    value: true,
+                  }))),
+                },
+              ))));
+              continue;
+            };
+
+            // Case: <Foo class="btn">
+            // Case: <Foo class={"foo"}>
+            // Case: <Foo class={2}>
+            // Case: <Foo class={true}>
+            // Case: <Foo class={null}>
+            match attr_value {
+              JSXAttrValue::Lit(lit) => {
+                props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                  KeyValueProp {
+                    key: prop_name,
+                    value: Box::new(Expr::Lit(lit.clone())),
+                  },
+                ))));
+              }
+              JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
+                match &jsx_expr_container.expr {
+                  // This is treated as a syntax error in attributes
+                  JSXExpr::JSXEmptyExpr(_) => continue,
+                  JSXExpr::Expr(expr) => {
+                    props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                      KeyValueProp {
+                        key: prop_name,
+                        value: expr.clone(),
+                      },
+                    ))));
+                  }
+                }
+              }
+              JSXAttrValue::JSXElement(_) => todo!(),
+              JSXAttrValue::JSXFragment(_) => todo!(),
+            }
+          }
+          // Case: <Foo {...props} />
+          JSXAttrOrSpread::SpreadElement(spread_el) => {
+            props.push(PropOrSpread::Spread(spread_el.clone()));
+          }
+        }
+      }
+
+      let obj_expr = Box::new(Expr::Object(ObjectLit {
+        span: DUMMY_SP,
+        props: props,
+      }));
+      args.push(ExprOrSpread {
+        spread: None,
+        expr: obj_expr,
+      });
+    }
+
+    CallExpr {
+      span: DUMMY_SP,
+      callee: Callee::Expr(Box::new(Expr::Ident(self.get_jsx_identifier()))),
+      args: args,
+      type_args: None,
+    }
+  }
+
   fn serialize_jsx_element_to_string_vec(
     &mut self,
     el: JSXElement,
     strings: &mut Vec<String>,
     dynamic_exprs: &mut Vec<Expr>,
   ) {
-    let ident = match el.opening.name {
+    let ident = match el.opening.name.clone() {
       // Case: <div />
       JSXElementName::Ident(ident) => ident,
       _ => todo!(),
@@ -117,118 +294,36 @@ impl JsxString {
     // opening identifier is an uppercase character.
     // Case: <Foo bar="123" />
     if name.chars().next().unwrap().is_ascii_uppercase() {
-      let jsx_ident = match &self.import_jsx {
-        Some(ident) => ident.clone(),
-        None => {
-          let jsx = if self.development { "_jsxDEV" } else { "_jsx" };
-          let ident = Ident::new(jsx.into(), DUMMY_SP);
-          self.import_jsx = Some(ident.clone());
-          ident
-        }
-      };
-
-      let mut args: Vec<ExprOrSpread> = vec![];
-      args.push(ExprOrSpread {
-        spread: None,
-        expr: Box::new(Expr::Ident(ident)),
-      });
-
-      // Serialize component attributes
-      // Case: <Foo />
-      // Case: <Foo foo="1" bar={2} />
-      // Case: <Foo baz={<div />} />
-      if el.opening.attrs.is_empty() {
-        args.push(null_arg())
-      } else {
-        let mut props: Vec<PropOrSpread> = vec![];
-        for attr in el.opening.attrs.iter() {
-          match attr {
-            JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-              let attr_name = get_attr_name(jsx_attr);
-
-              let prop_name = PropName::Str(Str {
-                span: DUMMY_SP,
-                value: attr_name.into(),
-                raw: None,
-              });
-
-              // Case: <Foo required />
-              let Some(attr_value) = &jsx_attr.value else {
-                props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
-                  KeyValueProp {
-                    key: prop_name,
-                    value: Box::new(Expr::Lit(Lit::Bool(Bool {
-                      span: DUMMY_SP,
-                      value: true,
-                    }))),
-                  },
-                ))));
-                continue;
-              };
-
-              // Case: <Foo class="btn">
-              // Case: <Foo class={"foo"}>
-              // Case: <Foo class={2}>
-              // Case: <Foo class={true}>
-              // Case: <Foo class={null}>
-              match attr_value {
-                JSXAttrValue::Lit(lit) => {
-                  props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
-                    KeyValueProp {
-                      key: prop_name,
-                      value: Box::new(Expr::Lit(lit.clone())),
-                    },
-                  ))));
-                }
-                JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
-                  match &jsx_expr_container.expr {
-                    // This is treated as a syntax error in attributes
-                    JSXExpr::JSXEmptyExpr(_) => continue,
-                    JSXExpr::Expr(expr) => {
-                      props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
-                        KeyValueProp {
-                          key: prop_name,
-                          value: expr.clone(),
-                        },
-                      ))));
-                    }
-                  }
-                }
-                JSXAttrValue::JSXElement(_) => todo!(),
-                JSXAttrValue::JSXFragment(_) => todo!(),
-              }
-            }
-            JSXAttrOrSpread::SpreadElement(_) => todo!(),
-          }
-        }
-
-        let obj_expr = Box::new(Expr::Object(ObjectLit {
-          span: DUMMY_SP,
-          props: props,
-        }));
-        args.push(ExprOrSpread {
-          spread: None,
-          expr: obj_expr,
-        });
-      }
-
-      // TODO: support raw function call option: <Foo /> -> Foo()
-      let expr = Expr::Call(CallExpr {
-        span: DUMMY_SP,
-        callee: Callee::Expr(Box::new(Expr::Ident(jsx_ident))),
-        args: args,
-        type_args: None,
-      });
+      let expr = Expr::Call(self.serialize_jsx_to_call_expr(&el));
       strings.push("".to_string());
       dynamic_exprs.push(expr);
       return;
     }
 
     if strings.is_empty() {
-      strings.push("<".to_string());
-    } else {
-      strings.last_mut().unwrap().push_str("<");
+      strings.push("".to_string());
     }
+
+    // Edge case: If the JSX opening element contains a spread attribute
+    // then it's not safe to serialize it. This is because existing code
+    // relies on the object spread semantics where it can overwrite
+    // existing properties or values passed from spread can be
+    // overwritten by setting properties after the spread. What's more
+    // is that the spread object could contain `props.children` which
+    // we would miss.
+    //
+    // Case: <div {...props} />
+    // Case: <div class="foo" {...{ class: "bar"}} />
+    // Case: <div {...{ class: "foo"} class="bar"}>foo</div>
+    if contains_jsx_spread_attr(&el.opening) {
+      let expr = Expr::Call(self.serialize_jsx_to_call_expr(&el));
+      strings.push("".to_string());
+      dynamic_exprs.push(expr);
+
+      return;
+    }
+
+    strings.last_mut().unwrap().push_str("<");
     strings.last_mut().unwrap().push_str(name.as_str());
 
     if !el.opening.attrs.is_empty() {
@@ -427,14 +522,7 @@ impl JsxString {
     }
 
     // Case: _jsxssr($$_tpl_1, null);
-    let jsx_ident = match &self.import_jsx_ssr {
-      Some(ident) => ident.clone(),
-      None => {
-        let ident = Ident::new("_jsxssr".into(), DUMMY_SP);
-        self.import_jsx_ssr = Some(ident.clone());
-        ident
-      }
-    };
+    let jsx_ident = self.get_jsx_ssr_identifier();
 
     Expr::Call(CallExpr {
       span,
@@ -545,13 +633,47 @@ impl VisitMut for JsxString {
 
   fn visit_mut_expr(&mut self, expr: &mut Expr) {
     if let Expr::JSXElement(el) = expr {
+      // Check if the topmost element is a component or an HTML element
+      let transformed_expr = match el.opening.name.clone() {
+        // Case: <div />
+        // Case: <Foo />
+        JSXElementName::Ident(ident) => {
+          let name = ident.sym.to_string();
+          // Component identifiers start with an uppercase character and
+          // they cannot be safely serialized. So we'll apply the default
+          // JSX transform
+          // Case: <Foo bar="123" />
+          if name.chars().next().unwrap().is_ascii_uppercase() {
+            Expr::Call(self.serialize_jsx_to_call_expr(&el))
+          } else {
+            // When the element has a spread attribute it's not safe
+            // to be serialized.
+            // Case: <div {...props} />
+            if contains_jsx_spread_attr(&el.opening) {
+              Expr::Call(self.serialize_jsx_to_call_expr(&el))
+            } else {
+              // These are now safe to be serialized
+              // Case: <div foo="1" />
+              self.next_index += 1;
+              self.generate_template_join(self.next_index, *el.take())
+            }
+          }
+        }
+        // Case: <ctx.Provider />
+        JSXElementName::JSXMemberExpr(_) => {
+          Expr::Call(self.serialize_jsx_to_call_expr(&el))
+        }
+        JSXElementName::JSXNamespacedName(_) => {
+          todo!();
+        }
+      };
+
       // TODO:
       // 1. create a `_tpl_<name>` which is an array literal
       // 2. transform the element into a list of string literals and
       //    push them to the `_tpl_<name>` literal node
       // 3. change the `expr` to be `_tpl_<name>.join("");`
-      self.next_index += 1;
-      *expr = self.generate_template_join(self.next_index, *el.take());
+      *expr = transformed_expr;
     } else if let Expr::JSXFragment(frag) = expr {
       // Empty fragments can be replaced with null. This is a minor
       // optimization, because Fragments are a special node type that
@@ -707,13 +829,11 @@ const a = _jsxssr($$_tpl_1, null);"#,
     test_transform(
       JsxString::default(),
       r#"const a = <div foo="1" {...props} bar="2">foo</div>;"#,
-      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
-const $$_tpl_1 = [
-  '<div foo="1" ',
-  ' bar="2">foo</div>'
-];
-const a = _jsxssr($$_tpl_1, {
-  ...props
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx("div", {
+  "foo": "1",
+  ...props,
+  "bar": "2"
 });"#,
     );
   }
@@ -772,12 +892,8 @@ const a = _jsxssr($$_tpl_1, null);"#,
     test_transform(
       JsxString::default(),
       r#"const a = <div {...props} />;"#,
-      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
-const $$_tpl_1 = [
-  "<div ",
-  "></div>"
-];
-const a = _jsxssr($$_tpl_1, {
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx("div", {
   ...props
 });"#,
     );
@@ -788,13 +904,23 @@ const a = _jsxssr($$_tpl_1, {
     test_transform(
       JsxString::default(),
       r#"const a = <div {...props}>hello</div>;"#,
-      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
-const $$_tpl_1 = [
-  "<div ",
-  ">hello</div>"
-];
-const a = _jsxssr($$_tpl_1, {
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx("div", {
   ...props
+});"#,
+    );
+  }
+
+  #[test]
+  fn prop_spread_with_other_attrs_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div foo="1" {...props} bar="2">hello</div>;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx("div", {
+  "foo": "1",
+  ...props,
+  "bar": "2"
 });"#,
     );
   }
@@ -837,7 +963,6 @@ const a = _jsx(Foo, {
     );
   }
 
-  #[ignore]
   #[test]
   fn component_with_spread_props_test() {
     test_transform(
@@ -846,7 +971,7 @@ const a = _jsx(Foo, {
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
   ...props,
-  foo: "1"
+  "foo": "1"
 });"#,
     );
   }
@@ -879,7 +1004,6 @@ const a = _jsx(Foo, {
     );
   }
 
-  #[ignore]
   #[test]
   fn component_with_jsx_attr() {
     test_transform(
@@ -890,8 +1014,8 @@ const $$_tpl_1 = [
   "<div>hello</div>"
 ];
 const a = _jsx(Foo, {
-  children: _jsxssr($$_tpl_1, null)
-}));"#,
+  "bar": _jsxssr($$_tpl_1, null)
+});"#,
     );
   }
 
