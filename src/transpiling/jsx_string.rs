@@ -103,6 +103,15 @@ fn jsx_member_expr_to_normal(jsx_member_expr: &JSXMemberExpr) -> MemberExpr {
   }
 }
 
+/// Edge case: If the JSX opening element contains a spread attribute
+/// then it's not safe to serialize it. This is because existing code
+/// relies on the object spread semantics where it can overwrite
+/// existing properties or values passed from spread can be
+/// overwritten by setting properties after the spread. What's more
+/// is that the spread object could contain `props.children` which
+/// we would miss.
+/// Moreover, components cannot be safely serialized because there
+/// is no specified output format.
 fn is_serializable(opening: &JSXOpeningElement) -> bool {
   match opening.name.clone() {
     // Case: <div />
@@ -141,6 +150,17 @@ fn string_lit_expr(str: String) -> Expr {
     value: str.to_string().as_str().into(),
     raw: None,
   }))
+}
+
+// TODO: Should this use an external crate? Not sure how much of an
+// impact this has on perf
+fn escape_html(str: &str) -> String {
+  str
+    .replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+    .replace("'", "&#39;")
+    .replace("\"", "&quot;")
 }
 
 impl JsxString {
@@ -451,29 +471,10 @@ impl JsxString {
 
     let name = ident.sym.to_string();
 
-    // Components are serialized differently, because it is framework
-    // specific.
-    // Components are detected by checking if the character of the
-    // opening identifier is an uppercase character.
-    // Case: <Foo bar="123" />
-    if name.chars().next().unwrap().is_ascii_uppercase() {
-      let expr = Expr::Call(self.serialize_jsx_to_call_expr(&el));
-      strings.push("".to_string());
-      dynamic_exprs.push(expr);
-      return;
-    }
-
-    // Edge case: If the JSX opening element contains a spread attribute
-    // then it's not safe to serialize it. This is because existing code
-    // relies on the object spread semantics where it can overwrite
-    // existing properties or values passed from spread can be
-    // overwritten by setting properties after the spread. What's more
-    // is that the spread object could contain `props.children` which
-    // we would miss.
-    //
     // Case: <div {...props} />
     // Case: <div class="foo" {...{ class: "bar"}} />
     // Case: <div {...{ class: "foo"}} class="bar"}>foo</div>
+    // Case: <Foo />
     if !is_serializable(&el.opening) {
       let expr = Expr::Call(self.serialize_jsx_to_call_expr(&el));
       strings.push("".to_string());
@@ -485,8 +486,9 @@ impl JsxString {
     }
 
     strings.last_mut().unwrap().push_str("<");
-    // TODO: Escape
-    strings.last_mut().unwrap().push_str(name.as_str());
+
+    let escaped_name = escape_html(&name);
+    strings.last_mut().unwrap().push_str(escaped_name.as_str());
 
     if !el.opening.attrs.is_empty() {
       for attr in el.opening.attrs.iter() {
@@ -498,8 +500,11 @@ impl JsxString {
             // Case: <input required />
             let Some(attr_value) = &jsx_attr.value else {
               strings.last_mut().unwrap().push_str(" ");
-              // TODO: Escape
-              strings.last_mut().unwrap().push_str(attr_name.as_str());
+              let escaped_attr_name = escape_html(&attr_name);
+              strings
+                .last_mut()
+                .unwrap()
+                .push_str(escaped_attr_name.as_str());
               continue;
             };
 
@@ -532,10 +537,8 @@ impl JsxString {
 
                   let serialized_attr = format!(
                     " {}=\"{}\"",
-                    // TODO: Escape
-                    attr_name.as_str(),
-                    // TODO: Escape
-                    string_lit.value.to_string().as_str()
+                    escape_html(&attr_name).as_str(),
+                    escape_html(&string_lit.value.to_string()).as_str()
                   );
 
                   strings.last_mut().unwrap().push_str("");
@@ -561,26 +564,9 @@ impl JsxString {
                   // This is treated as a syntax error in attributes
                   JSXExpr::JSXEmptyExpr(_) => {}
                   JSXExpr::Expr(expr) => {
-                    let mut args: Vec<ExprOrSpread> = vec![];
-                    args.push(ExprOrSpread {
-                      spread: None,
-                      expr: Box::new(string_lit_expr(attr_name.to_string())),
-                    });
-
-                    args.push(ExprOrSpread {
-                      spread: None,
-                      expr: expr.clone(),
-                    });
-
-                    let call_expr = Expr::Call(CallExpr {
-                      span: DUMMY_SP,
-                      callee: Callee::Expr(Box::new(Expr::Ident(
-                        self.get_jsx_attr_identifier(),
-                      ))),
-                      args,
-                      type_args: None,
-                    });
-                    dynamic_exprs.push(call_expr);
+                    let call_expr = self
+                      .convert_to_jsx_attr_call(&attr_name.to_string(), expr);
+                    dynamic_exprs.push(Expr::Call(call_expr));
                   }
                 }
               }
@@ -590,11 +576,9 @@ impl JsxString {
               JSXAttrValue::JSXFragment(_) => {}
             }
           }
+          // This case is already handled earlier
           // Case: <div {...props} />
-          JSXAttrOrSpread::SpreadElement(_) => {
-            // This case is already handled earlier
-            panic!();
-          }
+          JSXAttrOrSpread::SpreadElement(_) => {}
         };
       }
     }
@@ -618,11 +602,8 @@ impl JsxString {
       match child {
         // Case: <div>foo</div>
         JSXElementChild::JSXText(jsx_text) => {
-          strings
-            .last_mut()
-            .unwrap()
-            // TODO: Escape
-            .push_str(jsx_text.value.to_string().as_str());
+          let escaped_text = escape_html(&jsx_text.value.to_string());
+          strings.last_mut().unwrap().push_str(escaped_text.as_str());
         }
         // Case: <div>{2 + 2}</div>
         JSXElementChild::JSXExprContainer(jsx_expr_container) => {
@@ -1089,6 +1070,32 @@ const $$_tpl_1 = [
   ">foo</div>"
 ];
 const a = _jsxssr($$_tpl_1, _jsxattr("ref", "foo"));"#,
+    );
+  }
+
+  #[test]
+  fn escape_attr_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div class="a&<>'">foo</div>;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  '<div class="a&amp;&lt;&gt;&#39;">foo</div>'
+];
+const a = _jsxssr($$_tpl_1, null);"#,
+    );
+  }
+
+  #[test]
+  fn escape_text_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div>"a&>'</div>;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>&quot;a&amp;&gt;&#39;</div>"
+];
+const a = _jsxssr($$_tpl_1, null);"#,
     );
   }
 
