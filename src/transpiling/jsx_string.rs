@@ -485,22 +485,21 @@ impl JsxString {
     }
 
     strings.last_mut().unwrap().push_str("<");
+    // TODO: Escape
     strings.last_mut().unwrap().push_str(name.as_str());
 
     if !el.opening.attrs.is_empty() {
       for attr in el.opening.attrs.iter() {
-        let mut serialized_attr = String::new();
         // Case: <button class="btn">
         match attr {
           JSXAttrOrSpread::JSXAttr(jsx_attr) => {
             let attr_name = get_attr_name(jsx_attr);
 
-            serialized_attr.push_str(attr_name.as_str());
-
             // Case: <input required />
             let Some(attr_value) = &jsx_attr.value else {
               strings.last_mut().unwrap().push_str(" ");
-              strings.last_mut().unwrap().push_str(&serialized_attr);
+              // TODO: Escape
+              strings.last_mut().unwrap().push_str(attr_name.as_str());
               continue;
             };
 
@@ -531,11 +530,15 @@ impl JsxString {
                     continue;
                   }
 
-                  serialized_attr.push_str("=\"");
-                  serialized_attr
-                    .push_str(string_lit.value.to_string().as_str());
-                  serialized_attr.push_str("\"");
-                  strings.last_mut().unwrap().push_str(" ");
+                  let serialized_attr = format!(
+                    " {}=\"{}\"",
+                    // TODO: Escape
+                    attr_name.as_str(),
+                    // TODO: Escape
+                    string_lit.value.to_string().as_str()
+                  );
+
+                  strings.last_mut().unwrap().push_str("");
                   strings
                     .last_mut()
                     .unwrap()
@@ -618,6 +621,7 @@ impl JsxString {
           strings
             .last_mut()
             .unwrap()
+            // TODO: Escape
             .push_str(jsx_text.value.to_string().as_str());
         }
         // Case: <div>{2 + 2}</div>
