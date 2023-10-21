@@ -104,25 +104,43 @@ fn jsx_member_expr_to_normal(jsx_member_expr: &JSXMemberExpr) -> MemberExpr {
 }
 
 fn is_serializable(opening: &JSXOpeningElement) -> bool {
-  opening.attrs.is_empty()
-    || !opening.attrs.clone().iter().any(|attr| match attr {
-      JSXAttrOrSpread::SpreadElement(_) => true,
-      JSXAttrOrSpread::JSXAttr(attr) => {
-        let name = get_attr_name(&attr);
-        match name.as_str() {
-          "dangerouslySetInnerHTML" => true,
-          _ => false,
-        }
+  match opening.name.clone() {
+    // Case: <div />
+    JSXElementName::Ident(ident) => {
+      let name = ident.sym.to_string();
+      // Component identifiers start with an uppercase character and
+      // they cannot be safely serialized. So we'll apply the default
+      // JSX transform
+      // Case: <Foo bar="123" />
+      if name.chars().next().unwrap().is_ascii_uppercase() {
+        return false;
       }
-    })
+
+      if opening.attrs.is_empty() {
+        return true;
+      }
+
+      !opening.attrs.clone().iter().any(|attr| match attr {
+        JSXAttrOrSpread::SpreadElement(_) => true,
+        JSXAttrOrSpread::JSXAttr(attr) => {
+          let name = get_attr_name(&attr);
+          match name.as_str() {
+            "dangerouslySetInnerHTML" => true,
+            _ => false,
+          }
+        }
+      })
+    }
+    _ => false,
+  }
 }
 
-fn string_lit_expr(str: String) -> Box<Expr> {
-  Box::new(Expr::Lit(Lit::Str(Str {
+fn string_lit_expr(str: String) -> Expr {
+  Expr::Lit(Lit::Str(Str {
     span: DUMMY_SP,
     value: str.to_string().as_str().into(),
     raw: None,
-  })))
+  }))
 }
 
 impl JsxString {
@@ -274,43 +292,107 @@ impl JsxString {
       // Fragment or serialize each child individually. Serializing
       // each child individually might increase compatibility because
       // of `React.Children` API, but it's not good for performance.
-      let child_len = el.children.len();
       let children_name = PropName::Ident(quote_ident!("children"));
-      for child in el.children.iter() {
-        match child {
-          // Case: <div>foo</div>
-          JSXElementChild::JSXText(jsx_text) => {
-            if child_len == 1 {
+      match el.children.len() {
+        0 => {}
+        1 => {
+          let child = el.children[0].clone();
+          match child {
+            JSXElementChild::JSXText(jsx_text) => {
               props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
                 KeyValueProp {
                   key: children_name.clone(),
-                  value: string_lit_expr(jsx_text.value.to_string()),
+                  value: Box::new(string_lit_expr(jsx_text.value.to_string())),
                 },
               ))));
             }
-          }
-          // Case: <div>{2 + 2}</div>
-          JSXElementChild::JSXExprContainer(jsx_expr_container) => {
-            match &jsx_expr_container.expr {
-              // Empty JSX expressions can be ignored as they have no content
-              // Case: <div>{}</div>
-              // Case: <div>{/* fooo */}</div>
-              JSXExpr::JSXEmptyExpr(_) => continue,
-              JSXExpr::Expr(_) => {
-                todo!()
+            JSXElementChild::JSXExprContainer(jsx_expr_container) => {
+              match &jsx_expr_container.expr {
+                // Empty JSX expressions can be ignored as they have no content
+                // Case: <div>{}</div>
+                // Case: <div>{/* fooo */}</div>
+                JSXExpr::JSXEmptyExpr(_) => {}
+                JSXExpr::Expr(expr) => {
+                  props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                    KeyValueProp {
+                      key: children_name.clone(),
+                      value: expr.clone(),
+                    },
+                  ))));
+                }
               }
             }
+            // Case: <div><span /></div>
+            JSXElementChild::JSXElement(jsx_element) => {
+              let expr = self.serialize_jsx(&*jsx_element);
+
+              props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                KeyValueProp {
+                  key: children_name.clone(),
+                  value: Box::new(expr),
+                },
+              ))));
+            }
+            // Case: <div><></></div>
+            JSXElementChild::JSXFragment(_) => todo!(),
+            // Invalid, was part of an earlier JSX iteration, but no
+            // transform supports it. Babel and TypeScript error when they
+            // encounter this.
+            JSXElementChild::JSXSpreadChild(_) => todo!(),
           }
-          // Case: <div><span /></div>
-          JSXElementChild::JSXElement(_) => {
-            todo!()
+        }
+        _ => {
+          let mut elems: Vec<Option<ExprOrSpread>> = vec![];
+          for child in el.children.iter() {
+            match child {
+              // Case: <div>foo</div>
+              JSXElementChild::JSXText(jsx_text) => {
+                elems.push(Some(ExprOrSpread {
+                  spread: None,
+                  expr: Box::new(string_lit_expr(jsx_text.value.to_string())),
+                }));
+              }
+              // Case: <div>{2 + 2}</div>
+              JSXElementChild::JSXExprContainer(jsx_expr_container) => {
+                match &jsx_expr_container.expr {
+                  // Empty JSX expressions can be ignored as they have no content
+                  // Case: <div>{}</div>
+                  // Case: <div>{/* fooo */}</div>
+                  JSXExpr::JSXEmptyExpr(_) => continue,
+                  JSXExpr::Expr(expr) => {
+                    elems.push(Some(ExprOrSpread {
+                      spread: None,
+                      expr: expr.clone(),
+                    }));
+                  }
+                }
+              }
+              // Case: <div><span /></div>
+              JSXElementChild::JSXElement(jsx_el) => {
+                let expr = self.serialize_jsx(jsx_el);
+                elems.push(Some(ExprOrSpread {
+                  spread: None,
+                  expr: Box::new(expr.clone()),
+                }));
+              }
+              // Case: <div><></></div>
+              JSXElementChild::JSXFragment(_) => todo!(),
+              // Invalid, was part of an earlier JSX iteration, but no
+              // transform supports it. Babel and TypeScript error when they
+              // encounter this.
+              JSXElementChild::JSXSpreadChild(_) => todo!(),
+            }
           }
-          // Case: <div><></></div>
-          JSXElementChild::JSXFragment(_) => todo!(),
-          // Invalid, was part of an earlier JSX iteration, but no
-          // transform supports it. Babel and TypeScript error when they
-          // encounter this.
-          JSXElementChild::JSXSpreadChild(_) => todo!(),
+
+          props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+            KeyValueProp {
+              key: children_name.clone(),
+              value: Box::new(Expr::Array(ArrayLit {
+                span: DUMMY_SP,
+                elems,
+              })),
+            },
+          ))));
         }
       }
 
@@ -336,7 +418,7 @@ impl JsxString {
     let mut args: Vec<ExprOrSpread> = vec![];
     args.push(ExprOrSpread {
       spread: None,
-      expr: string_lit_expr(name.to_string()),
+      expr: Box::new(string_lit_expr(name.to_string())),
     });
 
     args.push(ExprOrSpread {
@@ -440,7 +522,7 @@ impl JsxString {
                     strings.push("".to_string());
                     let expr = self.convert_to_jsx_attr_call(
                       &attr_name,
-                      &*string_lit_expr(string_lit.value.to_string()),
+                      &string_lit_expr(string_lit.value.to_string()),
                     );
                     dynamic_exprs.push(Expr::Call(expr));
                     continue;
@@ -474,7 +556,7 @@ impl JsxString {
                     let mut args: Vec<ExprOrSpread> = vec![];
                     args.push(ExprOrSpread {
                       spread: None,
-                      expr: string_lit_expr(attr_name.to_string()),
+                      expr: Box::new(string_lit_expr(attr_name.to_string())),
                     });
 
                     args.push(ExprOrSpread {
@@ -624,39 +706,14 @@ impl JsxString {
   }
 
   fn serialize_jsx(&mut self, el: &JSXElement) -> Expr {
-    // Check if the topmost element is a component or an HTML element
-    match el.opening.name.clone() {
-      // Case: <div />
-      // Case: <Foo />
-      JSXElementName::Ident(ident) => {
-        let name = ident.sym.to_string();
-        // Component identifiers start with an uppercase character and
-        // they cannot be safely serialized. So we'll apply the default
-        // JSX transform
-        // Case: <Foo bar="123" />
-        if name.chars().next().unwrap().is_ascii_uppercase() {
-          Expr::Call(self.serialize_jsx_to_call_expr(&el))
-        } else {
-          // When the element has a spread attribute it's not safe
-          // to be serialized.
-          // Case: <div {...props} />
-          if !is_serializable(&el.opening) {
-            Expr::Call(self.serialize_jsx_to_call_expr(&el))
-          } else {
-            // These are now safe to be serialized
-            // Case: <div foo="1" />
-            self.next_index += 1;
-            self.generate_template_join(self.next_index, el.clone())
-          }
-        }
-      }
-      // Case: <ctx.Provider />
-      JSXElementName::JSXMemberExpr(_) => {
-        Expr::Call(self.serialize_jsx_to_call_expr(&el))
-      }
-      JSXElementName::JSXNamespacedName(_) => {
-        todo!();
-      }
+    if is_serializable(&el.opening) {
+      // These are now safe to be serialized
+      // Case: <div foo="1" />
+      self.next_index += 1;
+      self.generate_template_join(self.next_index, el.clone())
+    } else {
+      // Case: <div {...props} />
+      Expr::Call(self.serialize_jsx_to_call_expr(&el))
     }
   }
 
@@ -776,28 +833,48 @@ impl VisitMut for JsxString {
       // 3. change the `expr` to be `_tpl_<name>.join("");`
       *expr = self.serialize_jsx(&el);
     } else if let Expr::JSXFragment(frag) = expr {
-      // Empty fragments can be replaced with null. This is a minor
-      // optimization, because Fragments are a special node type that
-      // would need to be rendered. Most developers think of this as
-      // rendering "nothing", which is true visually, but would still
-      // render a Fragment for nothing
-      // Case: <></>
-      // TODO: This optimization is only valid if we're the topmost
-      // jsx element
-      if frag.children.is_empty() {
-        *expr = Expr::Lit(Lit::Null(Null { span: frag.span }));
-        return;
-      }
-
-      todo!();
-    } else if let Expr::Paren(ParenExpr {
-      expr: inner_expr, ..
-    }) = expr
-    {
-      if let Expr::JSXElement(_el) = &mut **inner_expr {
-        todo!();
-      } else if let Expr::JSXFragment(_frag) = &mut **inner_expr {
-        todo!();
+      match frag.children.len() {
+        0 => {
+          // Empty fragments can be replaced with null. This is a minor
+          // optimization, because Fragments are a special node type that
+          // would need to be rendered. Most developers think of this as
+          // rendering "nothing", which is true visually, but would still
+          // render a Fragment for nothing
+          // Case: <></>
+          *expr = Expr::Lit(Lit::Null(Null { span: frag.span }));
+        }
+        1 => {
+          // Flatten the fragment if it only has one child
+          let child = frag.children[0].clone();
+          // *expr = self.serialize_jsx(&child);
+          match child {
+            JSXElementChild::JSXText(jsx_text) => {
+              *expr = string_lit_expr(jsx_text.value.to_string())
+            }
+            JSXElementChild::JSXExprContainer(jsx_expr_container) => {
+              match &jsx_expr_container.expr {
+                // Empty JSX expressions can be ignored as they have no content
+                // Case: <>{}</>
+                // Case: <>{/* fooo */}</>
+                JSXExpr::JSXEmptyExpr(_) => {}
+                JSXExpr::Expr(jsx_expr) => *expr = *jsx_expr.clone(),
+              }
+            }
+            // Case: <><span /></>
+            JSXElementChild::JSXElement(jsx_element) => {
+              *expr = self.serialize_jsx(&*jsx_element);
+            }
+            // Case: <><></></>
+            JSXElementChild::JSXFragment(_) => todo!(),
+            // Invalid, was part of an earlier JSX iteration, but no
+            // transform supports it. Babel and TypeScript error when they
+            // encounter this.
+            JSXElementChild::JSXSpreadChild(_) => todo!(),
+          }
+        }
+        _ => {
+          todo!();
+        }
       }
     }
 
@@ -1028,17 +1105,22 @@ const a = _jsxssr($$_tpl_1, 2 + 2);"#,
     );
   }
 
-  #[ignore]
   #[test]
   fn fragment_test() {
     test_transform(
       JsxString::default(),
       r#"const a = <>foo</>;"#,
-      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
-const $$_tpl_1 = [
-  'foo'
-];
-const a = _jsxssr($$_tpl_1, null);"#,
+      r#"const a = "foo";"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn fragment_mulitple_children_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <>foo<div /><Foo /></>;"#,
+      r#"const a = "foo";"#,
     );
   }
 
@@ -1146,18 +1228,18 @@ const a = _jsx(Foo, {
     );
   }
 
-  #[ignore]
   #[test]
   fn component_with_children_test() {
     test_transform(
       JsxString::default(),
       r#"const a = <Foo>bar</Foo>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
-const a = _jsx(Foo, { children: "bar" }));"#,
+const a = _jsx(Foo, {
+  children: "bar"
+});"#,
     );
   }
 
-  #[ignore]
   #[test]
   fn component_with_children_jsx_test() {
     test_transform(
@@ -1169,11 +1251,54 @@ const $$_tpl_1 = [
 ];
 const a = _jsx(Foo, {
   children: _jsxssr($$_tpl_1, null)
-}));"#,
+});"#,
     );
   }
 
-  #[ignore]
+  #[test]
+  fn component_with_multiple_children_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo><span>hello</span>foo<Bar />asdf</Foo>;"#,
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<span>hello</span>"
+];
+const a = _jsx(Foo, {
+  children: [
+    _jsxssr($$_tpl_1, null),
+    "foo",
+    _jsx(Bar, null),
+    "asdf"
+  ]
+});"#,
+    );
+  }
+
+  #[test]
+  fn component_with_multiple_children_2_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo><span>hello</span>foo<Bar><p>asdf</p></Bar></Foo>;"#,
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<span>hello</span>"
+];
+const $$_tpl_2 = [
+  "<p>asdf</p>"
+];
+const a = _jsx(Foo, {
+  children: [
+    _jsxssr($$_tpl_1, null),
+    "foo",
+    _jsx(Bar, {
+      children: _jsxssr($$_tpl_2, null)
+    })
+  ]
+});"#,
+    );
+  }
+
   #[test]
   fn component_child_expr_test() {
     test_transform(
@@ -1197,6 +1322,17 @@ const $$_tpl_1 = [
 ];
 const a = _jsx(Foo, {
   bar: _jsxssr($$_tpl_1, null)
+});"#,
+    );
+
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo bar={<Bar>hello</Bar>} />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  bar: _jsx(Bar, {
+    children: "hello"
+  })
 });"#,
     );
   }
