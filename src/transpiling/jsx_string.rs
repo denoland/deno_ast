@@ -1,15 +1,6 @@
 use swc_common::DUMMY_SP;
 // use swc_atoms::{js_word, Atom, JsWord};
-use swc_common::{
-  //   comments::{Comment, CommentKind, Comments},
-  //   errors::HANDLER,
-  //   iter::IdentifyLast,
-  //   sync::Lrc,
-  util::take::Take,
-  //   FileName, Mark, SourceMap,
-  // Span,
-  Spanned,
-};
+use swc_common::Spanned;
 use swc_ecma_ast::*;
 use swc_ecma_utils::prepend_stmt;
 use swc_ecma_visit::{as_folder, noop_visit_mut_type, VisitMut, VisitMutWith};
@@ -103,7 +94,7 @@ fn jsx_member_expr_to_normal(jsx_member_expr: &JSXMemberExpr) -> MemberExpr {
     span: DUMMY_SP,
     obj: match jsx_member_expr.obj.clone() {
       JSXObject::Ident(ident) => Box::new(Expr::Ident(ident.clone())),
-      JSXObject::JSXMemberExpr(jsx_member_expr) => {
+      JSXObject::JSXMemberExpr(_) => {
         todo!()
       }
     },
@@ -117,6 +108,14 @@ fn contains_jsx_spread_attr(opening: &JSXOpeningElement) -> bool {
       JSXAttrOrSpread::SpreadElement(_) => true,
       _ => false,
     })
+}
+
+fn string_lit_expr(str: String) -> Box<Expr> {
+  Box::new(Expr::Lit(Lit::Str(Str {
+    span: DUMMY_SP,
+    value: str.to_string().as_str().into(),
+    raw: None,
+  })))
 }
 
 impl JsxString {
@@ -141,6 +140,18 @@ impl JsxString {
       None => {
         let ident = Ident::new("_jsxssr".into(), DUMMY_SP);
         self.import_jsx_ssr = Some(ident.clone());
+        ident
+      }
+    }
+  }
+
+  /// Mark `jsxattr` as being used and return the identifier.
+  fn get_jsx_attr_identifier(&mut self) -> Ident {
+    match &self.import_jsx_attr {
+      Some(ident) => ident.clone(),
+      None => {
+        let ident = Ident::new("_jsxattr".into(), DUMMY_SP);
+        self.import_jsx_attr = Some(ident.clone());
         ident
       }
     }
@@ -275,11 +286,7 @@ impl JsxString {
               props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
                 KeyValueProp {
                   key: children_name.clone(),
-                  value: Box::new(Expr::Lit(Lit::Str(Str {
-                    span: DUMMY_SP,
-                    value: jsx_text.value.to_string().as_str().into(),
-                    raw: None,
-                  }))),
+                  value: string_lit_expr(jsx_text.value.to_string()),
                 },
               ))));
             }
@@ -291,13 +298,13 @@ impl JsxString {
               // Case: <div>{}</div>
               // Case: <div>{/* fooo */}</div>
               JSXExpr::JSXEmptyExpr(_) => continue,
-              JSXExpr::Expr(expr) => {
+              JSXExpr::Expr(_) => {
                 todo!()
               }
             }
           }
           // Case: <div><span /></div>
-          JSXElementChild::JSXElement(jsx_element) => {
+          JSXElementChild::JSXElement(_) => {
             todo!()
           }
           // Case: <div><></></div>
@@ -415,6 +422,7 @@ impl JsxString {
                 Lit::JSXText(_) => todo!(),
               },
               JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
+                strings.last_mut().unwrap().push_str(" ");
                 strings.push("".to_string());
                 is_dynamic = true;
                 // eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
@@ -422,20 +430,26 @@ impl JsxString {
                   // This is treated as a syntax error in attributes
                   JSXExpr::JSXEmptyExpr(_) => todo!(),
                   JSXExpr::Expr(expr) => {
-                    let obj_expr = Expr::Object(ObjectLit {
-                      span: DUMMY_SP,
-                      props: vec![PropOrSpread::Prop(Box::new(
-                        Prop::KeyValue(KeyValueProp {
-                          key: PropName::Str(Str {
-                            span: DUMMY_SP,
-                            value: attr_name.into(),
-                            raw: None,
-                          }),
-                          value: expr.clone(),
-                        }),
-                      ))],
+                    let mut args: Vec<ExprOrSpread> = vec![];
+                    args.push(ExprOrSpread {
+                      spread: None,
+                      expr: string_lit_expr(attr_name.to_string()),
                     });
-                    dynamic_exprs.push(obj_expr);
+
+                    args.push(ExprOrSpread {
+                      spread: None,
+                      expr: expr.clone(),
+                    });
+
+                    let call_expr = Expr::Call(CallExpr {
+                      span: DUMMY_SP,
+                      callee: Callee::Expr(Box::new(Expr::Ident(
+                        self.get_jsx_attr_identifier(),
+                      ))),
+                      args,
+                      type_args: None,
+                    });
+                    dynamic_exprs.push(call_expr);
                   }
                 }
               }
@@ -446,18 +460,9 @@ impl JsxString {
             }
           }
           // Case: <div {...props} />
-          JSXAttrOrSpread::SpreadElement(jsx_spread_element) => {
-            strings.last_mut().unwrap().push_str(" ");
-            strings.push("".to_string());
-            let obj_expr = Expr::Object(ObjectLit {
-              span: DUMMY_SP,
-              props: vec![PropOrSpread::Spread(SpreadElement {
-                dot3_token: DUMMY_SP,
-                expr: jsx_spread_element.expr.clone(),
-              })],
-            });
-            dynamic_exprs.push(obj_expr);
-            continue;
+          JSXAttrOrSpread::SpreadElement(_) => {
+            // This case is already handled earlier
+            panic!();
           }
         };
         serialized_attr.push_str("\"");
@@ -631,8 +636,16 @@ impl JsxString {
         .push((jsx_ident.clone(), Ident::new(jsx_imported.into(), DUMMY_SP)))
     }
 
-    if let Some(jsx_ident) = &self.import_jsx_ssr {
-      imports.push((jsx_ident.clone(), Ident::new("jsxssr".into(), DUMMY_SP)))
+    if let Some(jsx_ssr_ident) = &self.import_jsx_ssr {
+      imports
+        .push((jsx_ssr_ident.clone(), Ident::new("jsxssr".into(), DUMMY_SP)))
+    }
+
+    if let Some(jsx_attr_ident) = &self.import_jsx_attr {
+      imports.push((
+        jsx_attr_ident.clone(),
+        Ident::new("jsxattr".into(), DUMMY_SP),
+      ))
     }
 
     if !imports.is_empty() {
@@ -785,7 +798,7 @@ mod tests {
 const b = <div>Hello {name}!</div>;
 const c = <button class="btn" onClick={onClick}>Hello {name}!</button>;
 "#,
-      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+      r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
 const $$_tpl_1 = [
   "<div>Hello!</div>"
 ];
@@ -794,15 +807,13 @@ const $$_tpl_2 = [
   "!</div>"
 ];
 const $$_tpl_3 = [
-  '<button class="btn"',
+  '<button class="btn" ',
   ">Hello ",
   "!</button>"
 ];
 const a = _jsxssr($$_tpl_1, null);
 const b = _jsxssr($$_tpl_2, name);
-const c = _jsxssr($$_tpl_3, {
-  "onClick": onClick
-}, name);"#,
+const c = _jsxssr($$_tpl_3, _jsxattr("onClick", onClick), name);"#,
     );
   }
 
@@ -862,6 +873,20 @@ const $$_tpl_1 = [
   '<input type="checkbox" checked>'
 ];
 const a = _jsxssr($$_tpl_1, null);"#,
+    );
+  }
+
+  #[test]
+  fn dynamic_attr_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <div class="foo" bar={2}></div>;"#,
+      r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  '<div class="foo" ',
+  "></div>"
+];
+const a = _jsxssr($$_tpl_1, _jsxattr("bar", 2));"#,
     );
   }
 
@@ -1132,9 +1157,6 @@ const a = _jsx(ctx.Provider, {
   }
 
   // TODO: What to do with keys?
-  // TODO: Should we go with function calls for dynamic attributes instead
-  //       of an object for DOM nodes? Would allow us to skip an allocation.
-  //       { onClick: onClick } -> someFn("onClick", onClick)
   // TODO: HTMLEscape attribute names + text children
   // TODO: What to do with "dangerouslySetInnerHTML"?
   // TODO: Fresh specific: <Head> opt out? Or maybe move Fresh users to a
