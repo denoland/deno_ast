@@ -276,8 +276,9 @@ impl JsxString {
                   }
                 }
               }
-              JSXAttrValue::JSXElement(_) => todo!(),
-              JSXAttrValue::JSXFragment(_) => todo!(),
+              // There is no valid way to construct these
+              JSXAttrValue::JSXElement(_) => {}
+              JSXAttrValue::JSXFragment(_) => {}
             }
           }
           // Case: <Foo {...props} />
@@ -338,7 +339,7 @@ impl JsxString {
             // Invalid, was part of an earlier JSX iteration, but no
             // transform supports it. Babel and TypeScript error when they
             // encounter this.
-            JSXElementChild::JSXSpreadChild(_) => todo!(),
+            JSXElementChild::JSXSpreadChild(_) => {}
           }
         }
         _ => {
@@ -380,7 +381,7 @@ impl JsxString {
               // Invalid, was part of an earlier JSX iteration, but no
               // transform supports it. Babel and TypeScript error when they
               // encounter this.
-              JSXElementChild::JSXSpreadChild(_) => todo!(),
+              JSXElementChild::JSXSpreadChild(_) => {}
             }
           }
 
@@ -538,12 +539,14 @@ impl JsxString {
                     .unwrap()
                     .push_str(serialized_attr.as_str());
                 }
-                Lit::Bool(_) => todo!(),
-                Lit::Null(_) => todo!(),
-                Lit::Num(_) => todo!(),
-                Lit::BigInt(_) => todo!(),
-                Lit::Regex(_) => todo!(),
-                Lit::JSXText(_) => todo!(),
+                // I've never seen this being possible as it would
+                // always be treated as an expression.
+                Lit::Bool(_) => {}
+                Lit::Null(_) => {}
+                Lit::Num(_) => {}
+                Lit::BigInt(_) => {}
+                Lit::Regex(_) => {}
+                Lit::JSXText(_) => {}
               },
               JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
                 strings.last_mut().unwrap().push_str(" ");
@@ -551,7 +554,7 @@ impl JsxString {
                 // eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
                 match &jsx_expr_container.expr {
                   // This is treated as a syntax error in attributes
-                  JSXExpr::JSXEmptyExpr(_) => todo!(),
+                  JSXExpr::JSXEmptyExpr(_) => {}
                   JSXExpr::Expr(expr) => {
                     let mut args: Vec<ExprOrSpread> = vec![];
                     args.push(ExprOrSpread {
@@ -576,10 +579,10 @@ impl JsxString {
                   }
                 }
               }
-              // Cannot occur on DOM elements
-              JSXAttrValue::JSXElement(_) => todo!(),
-              // Cannot occur on DOM elements
-              JSXAttrValue::JSXFragment(_) => todo!(),
+              // These makes no sense on as attribute on HTML elements
+              // so we ignore them.
+              JSXAttrValue::JSXElement(_) => {}
+              JSXAttrValue::JSXFragment(_) => {}
             }
           }
           // Case: <div {...props} />
@@ -643,7 +646,7 @@ impl JsxString {
         // Invalid, was part of an earlier JSX iteration, but no
         // transform supports it. Babel and TypeScript error when they
         // encounter this.
-        JSXElementChild::JSXSpreadChild(_) => todo!(),
+        JSXElementChild::JSXSpreadChild(_) => {}
       }
     }
 
@@ -869,7 +872,7 @@ impl VisitMut for JsxString {
             // Invalid, was part of an earlier JSX iteration, but no
             // transform supports it. Babel and TypeScript error when they
             // encounter this.
-            JSXElementChild::JSXSpreadChild(_) => todo!(),
+            JSXElementChild::JSXSpreadChild(_) => {}
           }
         }
         _ => {
