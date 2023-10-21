@@ -4,7 +4,7 @@ use swc_common::DUMMY_SP;
 use swc_ecma_ast::*;
 use swc_ecma_utils::prepend_stmt;
 use swc_ecma_utils::quote_ident;
-use swc_ecma_visit::{as_folder, noop_visit_mut_type, VisitMut, VisitMutWith};
+use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
 struct JsxString {
   next_index: usize,
@@ -131,11 +131,8 @@ fn is_serializable(opening: &JSXOpeningElement) -> bool {
       !opening.attrs.clone().iter().any(|attr| match attr {
         JSXAttrOrSpread::SpreadElement(_) => true,
         JSXAttrOrSpread::JSXAttr(attr) => {
-          let name = get_attr_name(&attr);
-          match name.as_str() {
-            "dangerouslySetInnerHTML" => true,
-            _ => false,
-          }
+          let name = get_attr_name(attr);
+          matches!(name.as_str(), "dangerouslySetInnerHTML")
         }
       })
     }
@@ -155,11 +152,11 @@ fn string_lit_expr(str: String) -> Expr {
 // impact this has on perf
 fn escape_html(str: &str) -> String {
   str
-    .replace("&", "&amp;")
-    .replace("<", "&lt;")
-    .replace(">", "&gt;")
-    .replace("'", "&#39;")
-    .replace("\"", "&quot;")
+    .replace('&', "&amp;")
+    .replace('<', "&lt;")
+    .replace('>', "&gt;")
+    .replace('\'', "&#39;")
+    .replace('"', "&quot;")
 }
 
 impl JsxString {
@@ -229,7 +226,7 @@ impl JsxString {
           }
           // Case: <div><span /></div>
           JSXElementChild::JSXElement(jsx_element) => {
-            Some(self.serialize_jsx(&*jsx_element))
+            Some(self.serialize_jsx(&jsx_element))
           }
           // Case: <div><></></div>
           JSXElementChild::JSXFragment(jsx_frag) => {
@@ -282,10 +279,8 @@ impl JsxString {
               {
                 match child_expr {
                   Expr::Array(array_lit) => {
-                    for optional_item in array_lit.elems.iter() {
-                      if let Some(item) = optional_item {
-                        elems.push(Some(item.clone()));
-                      }
+                    for item in array_lit.elems.iter() {
+                      elems.push(item.clone());
                     }
                   }
                   _ => {
@@ -435,7 +430,7 @@ impl JsxString {
       } else {
         let obj_expr = Box::new(Expr::Object(ObjectLit {
           span: DUMMY_SP,
-          props: props,
+          props,
         }));
         args.push(ExprOrSpread {
           spread: None,
@@ -447,7 +442,7 @@ impl JsxString {
     CallExpr {
       span: DUMMY_SP,
       callee: Callee::Expr(Box::new(Expr::Ident(self.get_jsx_identifier()))),
-      args: args,
+      args,
       type_args: None,
     }
   }
@@ -476,7 +471,7 @@ impl JsxString {
 
   fn serialize_jsx_children_to_string(
     &mut self,
-    children: &Vec<JSXElementChild>,
+    children: &[JSXElementChild],
     strings: &mut Vec<String>,
     dynamic_exprs: &mut Vec<Expr>,
   ) {
@@ -727,7 +722,7 @@ impl JsxString {
       self.gen_template(self.next_index, static_strs, dynamic_exprs)
     } else {
       // Case: <div {...props} />
-      Expr::Call(self.serialize_jsx_to_call_expr(&el))
+      Expr::Call(self.serialize_jsx_to_call_expr(el))
     }
   }
 
@@ -840,7 +835,7 @@ impl VisitMut for JsxString {
 
   fn visit_mut_expr(&mut self, expr: &mut Expr) {
     if let Expr::JSXElement(el) = expr {
-      *expr = self.serialize_jsx(&el);
+      *expr = self.serialize_jsx(el);
     } else if let Expr::JSXFragment(frag) = expr {
       match frag.children.len() {
         0 => {
@@ -870,7 +865,7 @@ impl VisitMut for JsxString {
             }
             // Case: <><span /></>
             JSXElementChild::JSXElement(jsx_element) => {
-              *expr = self.serialize_jsx(&*jsx_element);
+              *expr = self.serialize_jsx(&jsx_element);
             }
             // Case: <><></></>
             JSXElementChild::JSXFragment(_) => todo!(),
@@ -916,6 +911,7 @@ mod tests {
   use crate::ModuleSpecifier;
   use pretty_assertions::assert_eq;
   use std::rc::Rc;
+  use swc_ecma_visit::as_folder;
 
   use super::*;
 
