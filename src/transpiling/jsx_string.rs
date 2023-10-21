@@ -502,13 +502,13 @@ impl JsxString {
             // Case: <div>{}</div>
             // Case: <div>{/* fooo */}</div>
             JSXExpr::JSXEmptyExpr(_) => continue,
-            JSXExpr::Expr(expr) => match &**expr {
-              Expr::Ident(ident) => {
-                strings.push("".to_string());
-                dynamic_exprs.push(Expr::Ident(ident.clone()));
-              }
-              _ => todo!(),
-            },
+            // Case: <div>{2 + 2}</div>
+            // Case: <div>{foo}</div>
+            // Case: <div>{() => null}</div>
+            JSXExpr::Expr(expr) => {
+              strings.push("".to_string());
+              dynamic_exprs.push(*expr.clone());
+            }
           }
         }
         // Case: <div><span /></div>
@@ -908,6 +908,20 @@ const a = _jsxssr($$_tpl_1, null);"#,
   }
 
   #[test]
+  fn child_expr_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <p>{2 + 2}</p>;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<p>",
+  "</p>"
+];
+const a = _jsxssr($$_tpl_1, 2 + 2);"#,
+    );
+  }
+
+  #[test]
   fn empty_fragment_test() {
     test_transform(
       JsxString::default(),
@@ -1058,6 +1072,19 @@ const $$_tpl_1 = [
 const a = _jsx(Foo, {
   children: _jsxssr($$_tpl_1, null)
 }));"#,
+    );
+  }
+
+  #[ignore]
+  #[test]
+  fn component_child_expr_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo>{2 + 2}</Foo>;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  "children": 2 + 2
+});"#,
     );
   }
 
