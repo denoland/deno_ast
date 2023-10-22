@@ -456,7 +456,7 @@ impl JsxString {
       ExprOrSpread {
         spread: None,
         expr: Box::new(expr.clone()),
-      }
+      },
     ];
 
     CallExpr {
