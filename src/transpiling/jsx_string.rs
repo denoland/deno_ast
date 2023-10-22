@@ -448,16 +448,16 @@ impl JsxString {
   }
 
   fn convert_to_jsx_attr_call(&mut self, name: &str, expr: &Expr) -> CallExpr {
-    let mut args: Vec<ExprOrSpread> = vec![];
-    args.push(ExprOrSpread {
-      spread: None,
-      expr: Box::new(string_lit_expr(name.to_string())),
-    });
-
-    args.push(ExprOrSpread {
-      spread: None,
-      expr: Box::new(expr.clone()),
-    });
+    let args = vec![
+      ExprOrSpread {
+        spread: None,
+        expr: Box::new(string_lit_expr(name.to_string())),
+      },
+      ExprOrSpread {
+        spread: None,
+        expr: Box::new(expr.clone()),
+      }
+    ];
 
     CallExpr {
       span: DUMMY_SP,
@@ -479,7 +479,7 @@ impl JsxString {
       match child {
         // Case: <div>foo</div>
         JSXElementChild::JSXText(jsx_text) => {
-          let escaped_text = escape_html(&jsx_text.value.to_string());
+          let escaped_text = escape_html(jsx_text.value.as_ref());
           strings.last_mut().unwrap().push_str(escaped_text.as_str());
         }
         // Case: <div>{2 + 2}</div>
@@ -550,7 +550,7 @@ impl JsxString {
       strings.push("".to_string());
     }
 
-    strings.last_mut().unwrap().push_str("<");
+    strings.last_mut().unwrap().push('<');
 
     let escaped_name = escape_html(&name);
     strings.last_mut().unwrap().push_str(escaped_name.as_str());
@@ -564,7 +564,7 @@ impl JsxString {
 
             // Case: <input required />
             let Some(attr_value) = &jsx_attr.value else {
-              strings.last_mut().unwrap().push_str(" ");
+              strings.last_mut().unwrap().push(' ');
               let escaped_attr_name = escape_html(&attr_name);
               strings
                 .last_mut()
@@ -590,7 +590,7 @@ impl JsxString {
                   // Case: <div key="123" />
                   // Case: <div ref="123" />
                   if attr_name == "key" || attr_name == "ref" {
-                    strings.last_mut().unwrap().push_str(" ");
+                    strings.last_mut().unwrap().push(' ');
                     strings.push("".to_string());
                     let expr = self.convert_to_jsx_attr_call(
                       &attr_name,
@@ -603,7 +603,7 @@ impl JsxString {
                   let serialized_attr = format!(
                     " {}=\"{}\"",
                     escape_html(&attr_name).as_str(),
-                    escape_html(&string_lit.value.to_string()).as_str()
+                    escape_html(string_lit.value.as_ref()).as_str()
                   );
 
                   strings.last_mut().unwrap().push_str("");
@@ -622,7 +622,7 @@ impl JsxString {
                 Lit::JSXText(_) => {}
               },
               JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
-                strings.last_mut().unwrap().push_str(" ");
+                strings.last_mut().unwrap().push(' ');
                 strings.push("".to_string());
                 // eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
                 match &jsx_expr_container.expr {
@@ -648,7 +648,7 @@ impl JsxString {
       }
     }
 
-    strings.last_mut().unwrap().push_str(">");
+    strings.last_mut().unwrap().push('>');
 
     // There are no self closing elements in HTML, only void elements.
     // Void elements are a fixed list of elements that cannot have
