@@ -1720,10 +1720,11 @@ const a = _jsx(a.b.c.d, {
 
   #[test]
   fn skip_component_child_serialization_test() {
-    let mut defaults = JsxString::default();
-    defaults.skip_child_serialization = Some(vec!["Head".to_string()]);
     test_transform(
-      defaults,
+      JsxString {
+        skip_child_serialization: Some(vec!["Head".to_string()]),
+        ..Default::default()
+      },
       r#"const a = <Head><title>foo</title></Head>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Head, {
