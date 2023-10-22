@@ -159,8 +159,7 @@ fn normalize_dom_attr_name(name: &str) -> String {
         return transformed;
       }
       // Devs expect attributes in the HTML document to be lowercased.
-      let lower = name.to_lowercase();
-      return lower;
+      name.to_lowercase()
     }
   }
 }
@@ -464,6 +463,8 @@ impl JsxString {
       expr: Box::new(name_expr),
     });
 
+    let mut key_value: Option<Expr> = None;
+
     // Serialize attributes
     // Case: <Foo />
     // Case: <Foo foo="1" bar={2} />
@@ -476,7 +477,7 @@ impl JsxString {
         match attr {
           JSXAttrOrSpread::JSXAttr(jsx_attr) => {
             let attr_name = get_attr_name(jsx_attr);
-            let prop_name = PropName::Ident(quote_ident!(attr_name));
+            let prop_name = PropName::Ident(quote_ident!(attr_name.clone()));
 
             // Case: <Foo required />
             let Some(attr_value) = &jsx_attr.value else {
@@ -491,6 +492,23 @@ impl JsxString {
               ))));
               continue;
             };
+
+            if attr_name == "key" {
+              key_value = match attr_value {
+                JSXAttrValue::Lit(lit) => Some(Expr::Lit(lit.clone())),
+                JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
+                  match &jsx_expr_container.expr {
+                    // This is treated as a syntax error in attributes
+                    JSXExpr::JSXEmptyExpr(_) => None,
+                    JSXExpr::Expr(expr) => Some(*expr.clone()),
+                  }
+                }
+                // There is no valid way to construct these
+                _ => None,
+              };
+
+              continue;
+            }
 
             // Case: <Foo class="btn">
             // Case: <Foo class={"foo"}>
@@ -557,6 +575,13 @@ impl JsxString {
           expr: obj_expr,
         });
       }
+    }
+
+    if let Some(key_expr) = key_value {
+      args.push(ExprOrSpread {
+        spread: None,
+        expr: Box::new(key_expr),
+      });
     }
 
     CallExpr {
@@ -1226,6 +1251,32 @@ const $$_tpl_1 = [
   ">foo</div>"
 ];
 const a = _jsxssr($$_tpl_1, _jsxattr("key", "foo"));"#,
+    );
+  }
+
+  #[test]
+  fn key_attr_comp_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo key="foo" />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, null, "foo");"#,
+    );
+
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo key={2} />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, null, 2);"#,
+    );
+
+    test_transform(
+      JsxString::default(),
+      r#"const a = <Foo key={2}>foo</Foo>;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  children: "foo"
+}, 2);"#,
     );
   }
 
