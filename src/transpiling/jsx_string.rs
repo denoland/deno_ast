@@ -215,8 +215,8 @@ fn jsx_member_expr_to_normal(jsx_member_expr: &JSXMemberExpr) -> MemberExpr {
     span: DUMMY_SP,
     obj: match jsx_member_expr.obj.clone() {
       JSXObject::Ident(ident) => Box::new(Expr::Ident(ident.clone())),
-      JSXObject::JSXMemberExpr(_) => {
-        todo!()
+      JSXObject::JSXMemberExpr(member_expr) => {
+        Box::new(Expr::Member(jsx_member_expr_to_normal(&member_expr)))
       }
     },
     prop: MemberProp::Ident(jsx_member_expr.prop.clone()),
@@ -1031,7 +1031,13 @@ impl VisitMut for JsxString {
               *expr = self.serialize_jsx(&jsx_element);
             }
             // Case: <><></></>
-            JSXElementChild::JSXFragment(_) => todo!(),
+            JSXElementChild::JSXFragment(jsx_frag) => {
+              let serialized =
+                self.serialize_jsx_children_to_expr(&jsx_frag.children, None);
+              if let Some(serialized_expr) = serialized {
+                *expr = serialized_expr
+              }
+            }
             // Invalid, was part of an earlier JSX iteration, but no
             // transform supports it. Babel and TypeScript error when
             // they encounter this.
@@ -1397,6 +1403,15 @@ const a = _jsxssr($$_tpl_1, 2 + 2);"#,
   }
 
   #[test]
+  fn fragment_nested_test() {
+    test_transform(
+      JsxString::default(),
+      r#"const a = <><>foo</></>;"#,
+      r#"const a = "foo";"#,
+    );
+  }
+
+  #[test]
   fn fragment_mulitple_children_test() {
     test_transform(
       JsxString::default(),
@@ -1689,6 +1704,15 @@ const a = _jsx(Foo, {
       r#"const a = <ctx.Provider value={null} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(ctx.Provider, {
+  value: null
+});"#,
+    );
+
+    test_transform(
+      JsxString::default(),
+      r#"const a = <a.b.c.d value={null} />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(a.b.c.d, {
   value: null
 });"#,
     );
