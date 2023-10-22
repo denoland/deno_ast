@@ -14,6 +14,7 @@ struct JsxString {
   import_jsx: Option<Ident>,
   import_jsx_ssr: Option<Ident>,
   import_jsx_attr: Option<Ident>,
+  skip_child_serialization: Option<Vec<String>>,
 }
 
 impl Default for JsxString {
@@ -26,6 +27,7 @@ impl Default for JsxString {
       import_jsx: None,
       import_jsx_ssr: None,
       import_jsx_attr: None,
+      skip_child_serialization: None,
     }
   }
 }
@@ -320,6 +322,7 @@ impl JsxString {
   fn serialize_jsx_children_to_expr(
     &mut self,
     children: &Vec<JSXElementChild>,
+    parent_tag_name: Option<String>,
   ) -> Option<Expr> {
     // Add children as a "children" prop.
     // TODO: Not sure if we should serialize all of them as one big
@@ -345,11 +348,20 @@ impl JsxString {
           }
           // Case: <div><span /></div>
           JSXElementChild::JSXElement(jsx_element) => {
+            if let Some(allowed_elems) = self.skip_child_serialization.clone() {
+              if let Some(parent_name) = parent_tag_name.clone() {
+                if allowed_elems.contains(&parent_name) {
+                  return Some(Expr::Call(
+                    self.serialize_jsx_to_call_expr(&jsx_element),
+                  ));
+                }
+              }
+            }
             Some(self.serialize_jsx(&jsx_element))
           }
           // Case: <div><></></div>
           JSXElementChild::JSXFragment(jsx_frag) => {
-            self.serialize_jsx_children_to_expr(&jsx_frag.children)
+            self.serialize_jsx_children_to_expr(&jsx_frag.children, None)
           }
           // Invalid, was part of an earlier JSX iteration, but no
           // transform supports it. Babel and TypeScript error when they
@@ -394,7 +406,7 @@ impl JsxString {
             // Case: <div><></></div>
             JSXElementChild::JSXFragment(jsx_frag) => {
               if let Some(child_expr) =
-                self.serialize_jsx_children_to_expr(&jsx_frag.children)
+                self.serialize_jsx_children_to_expr(&jsx_frag.children, None)
               {
                 match child_expr {
                   Expr::Array(array_lit) => {
@@ -455,6 +467,11 @@ impl JsxString {
         let combined = format!("{}:{}", ns, name);
         string_lit_expr(combined)
       }
+    };
+
+    let name_str: Option<String> = match &name_expr {
+      Expr::Ident(ident) => Some(ident.sym.to_string()),
+      _ => None,
     };
 
     let mut args: Vec<ExprOrSpread> = vec![];
@@ -551,7 +568,8 @@ impl JsxString {
       }
 
       // Add children as a "children" prop.
-      let child_expr = self.serialize_jsx_children_to_expr(&el.children);
+      let child_expr =
+        self.serialize_jsx_children_to_expr(&el.children, name_str);
 
       if let Some(expr) = child_expr {
         let children_name = PropName::Ident(quote_ident!("children"));
@@ -1672,6 +1690,22 @@ const a = _jsx(Foo, {
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(ctx.Provider, {
   value: null
+});"#,
+    );
+  }
+
+  #[test]
+  fn skip_component_child_serialization_test() {
+    let mut defaults = JsxString::default();
+    defaults.skip_child_serialization = Some(vec!["Head".to_string()]);
+    test_transform(
+      defaults,
+      r#"const a = <Head><title>foo</title></Head>;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Head, {
+  children: _jsx("title", {
+    children: "foo"
+  })
 });"#,
     );
   }
