@@ -843,9 +843,7 @@ impl JsxString {
       spread: None,
       expr: Box::new(Expr::Ident(Ident::new(name.into(), DUMMY_SP))),
     });
-    if dynamic_exprs.is_empty() {
-      args.push(null_arg());
-    } else {
+    if !dynamic_exprs.is_empty() {
       for dynamic_expr in dynamic_exprs.into_iter() {
         args.push(ExprOrSpread {
           spread: None,
@@ -854,7 +852,7 @@ impl JsxString {
       }
     }
 
-    // Case: _jsxssr($$_tpl_1, null);
+    // Case: _jsxssr($$_tpl_1);
     let jsx_ident = self.get_jsx_ssr_identifier();
 
     Expr::Call(CallExpr {
@@ -1101,7 +1099,7 @@ const $$_tpl_3 = [
   ">Hello ",
   "!</button>"
 ];
-const a = _jsxssr($$_tpl_1, null);
+const a = _jsxssr($$_tpl_1);
 const b = _jsxssr($$_tpl_2, name);
 const c = _jsxssr($$_tpl_3, _jsxattr("onclick", onClick), name);"#,
     );
@@ -1116,7 +1114,7 @@ const c = _jsxssr($$_tpl_3, _jsxattr("onclick", onClick), name);"#,
 const $$_tpl_1 = [
   "<div></div>"
 ];
-const a = _jsxssr($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1);"#,
     );
 
     // Void elements
@@ -1127,7 +1125,7 @@ const a = _jsxssr($$_tpl_1, null);"#,
 const $$_tpl_1 = [
   "<br>"
 ];
-const a = _jsxssr($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1);"#,
     );
   }
 
@@ -1147,7 +1145,7 @@ const a = _jsxssr($$_tpl_1, null);"#,
         format!("const a = <label {}=\"foo\">label</label>", &mapping.0)
           .as_str(),
         format!(
-          "{}\nconst $$_tpl_1 = [\n  '<label {}=\"foo\">label</label>'\n];\nconst a = _jsxssr($$_tpl_1, null);",
+          "{}\nconst $$_tpl_1 = [\n  '<label {}=\"foo\">label</label>'\n];\nconst a = _jsxssr($$_tpl_1);",
           "import { jsxssr as _jsxssr } from \"react/jsx-runtime\";",
           &mapping.1
         )
@@ -1178,7 +1176,7 @@ const a = _jsxssr($$_tpl_1, null);"#,
 const $$_tpl_1 = [
   '<input type="checkbox" checked>'
 ];
-const a = _jsxssr($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1);"#,
     );
 
     test_transform(
@@ -1216,7 +1214,7 @@ const a = _jsxssr($$_tpl_1, _jsxattr("bar", 2));"#,
 const $$_tpl_1 = [
   '<a href="foo">foo</a>'
 ];
-const a = _jsxssr($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1);"#,
     );
 
     test_transform(
@@ -1226,7 +1224,7 @@ const a = _jsxssr($$_tpl_1, null);"#,
 const $$_tpl_1 = [
   '<a foo:bar="foo">foo</a>'
 ];
-const a = _jsxssr($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1);"#,
     );
   }
 
@@ -1323,7 +1321,7 @@ const a = _jsxssr($$_tpl_1, _jsxattr("ref", "foo"));"#,
 const $$_tpl_1 = [
   '<div class="a&amp;&lt;&gt;&#39;">foo</div>'
 ];
-const a = _jsxssr($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1);"#,
     );
   }
 
@@ -1336,7 +1334,7 @@ const a = _jsxssr($$_tpl_1, null);"#,
 const $$_tpl_1 = [
   "<div>&quot;a&amp;&gt;&#39;</div>"
 ];
-const a = _jsxssr($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1);"#,
     );
   }
 
@@ -1362,7 +1360,7 @@ const a = _jsx("a:b", {
 const $$_tpl_1 = [
   "<p></p>"
 ];
-const a = _jsxssr($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1);"#,
     );
   }
 
@@ -1432,9 +1430,9 @@ const $$_tpl_2 = [
 ];
 const a = _jsx(Foo, {
   children: [
-    _jsxssr($$_tpl_1, null),
+    _jsxssr($$_tpl_1),
     "foo",
-    _jsxssr($$_tpl_2, null)
+    _jsxssr($$_tpl_2)
   ]
 });"#,
     );
@@ -1449,7 +1447,7 @@ const a = _jsx(Foo, {
 const $$_tpl_1 = [
   "<div>foo<p>bar</p></div>"
 ];
-const a = _jsxssr($$_tpl_1, null);"#,
+const a = _jsxssr($$_tpl_1);"#,
     );
   }
 
@@ -1566,7 +1564,7 @@ const $$_tpl_1 = [
   "<span>hello</span>"
 ];
 const a = _jsx(Foo, {
-  children: _jsxssr($$_tpl_1, null)
+  children: _jsxssr($$_tpl_1)
 });"#,
     );
   }
@@ -1582,7 +1580,7 @@ const $$_tpl_1 = [
 ];
 const a = _jsx(Foo, {
   children: [
-    _jsxssr($$_tpl_1, null),
+    _jsxssr($$_tpl_1),
     "foo",
     _jsx(Bar, null),
     "asdf"
@@ -1605,10 +1603,10 @@ const $$_tpl_2 = [
 ];
 const a = _jsx(Foo, {
   children: [
-    _jsxssr($$_tpl_1, null),
+    _jsxssr($$_tpl_1),
     "foo",
     _jsx(Bar, {
-      children: _jsxssr($$_tpl_2, null)
+      children: _jsxssr($$_tpl_2)
     })
   ]
 });"#,
@@ -1637,7 +1635,7 @@ const $$_tpl_1 = [
   "<div>hello</div>"
 ];
 const a = _jsx(Foo, {
-  bar: _jsxssr($$_tpl_1, null)
+  bar: _jsxssr($$_tpl_1)
 });"#,
     );
 
