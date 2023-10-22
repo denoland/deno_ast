@@ -325,10 +325,6 @@ impl JsxString {
     parent_tag_name: Option<String>,
   ) -> Option<Expr> {
     // Add children as a "children" prop.
-    // TODO: Not sure if we should serialize all of them as one big
-    // Fragment or serialize each child individually. Serializing
-    // each child individually might increase compatibility because
-    // of `React.Children` API, but it's not good for performance.
     match children.len() {
       0 => None,
       1 => {
