@@ -34,14 +34,134 @@ fn create_tpl_binding_name(index: usize) -> String {
   format!("$$_tpl_{index}")
 }
 
+/// Normalize HTML attribute name casing. Depending on which part of
+/// the HTML or SVG spec you look at the casings differ. Some attributes
+/// are camelCased, other's kebab cased and some lowercased. When
+/// developers write JSX they commonly use camelCase only, regardless
+/// of the actual attribute name. The spec doesn't care about case
+/// sensitivity, but we need to account for the kebab case ones and
+/// developers expect attributes in an HTML document to be lowercase.
+/// Custom Elements complicate this further as we cannot make any
+/// assumptions if the camelCased JSX attribute should be transformed
+/// to kebab-case or not. To make matters even more complex, event
+/// handlers passed to JSX usually start with `on*` like `onClick`,
+/// but this makes them very hard to differentiate from custom element
+/// properties when they pick something like `online=""` for example.
 fn normalize_dom_attr_name(name: &str) -> String {
   match name {
+    // React specific
     "htmlFor" => "for".to_string(),
     "className" => "class".to_string(),
+    "dangerouslySetInnerHTML" => name.to_string(),
+
+    "panose1" => "panose-1".to_string(),
+    "xlinkActuate" => "xlink:actuate".to_string(),
+    "xlinkArcrole" => "xlink:arcrole".to_string(),
+
     // xlink:href was removed from SVG and isn't needed
     "xlinkHref" => "href".to_string(),
     "xlink:href" => "href".to_string(),
-    _ => name.to_string(),
+
+    "xlinkRole" => "xlink:role".to_string(),
+    "xlinkShow" => "xlink:show".to_string(),
+    "xlinkTitle" => "xlink:title".to_string(),
+    "xlinkType" => "xlink:type".to_string(),
+    "xmlBase" => "xml:base".to_string(),
+    "xmlLang" => "xml:lang".to_string(),
+    "xmlSpace" => "xml:space".to_string(),
+    _ => {
+      // Attributes that are kebab-cased
+      if matches!(
+        name,
+        "acceptCharset"
+          | "alignmentBaseline"
+          | "allowReorder"
+          | "arabicForm"
+          | "baselineShift"
+          | "capHeight"
+          | "clipPath"
+          | "clipRule"
+          | "colorInterpolation"
+          | "colorInterpolationFilters"
+          | "colorProfile"
+          | "colorRendering"
+          | "contentScriptType"
+          | "contentStyleType"
+          | "dominantBaseline"
+          | "enableBackground"
+          | "fillOpacity"
+          | "fillRule"
+          | "floodColor"
+          | "floodOpacity"
+          | "fontFamily"
+          | "fontSize"
+          | "fontSizeAdjust"
+          | "fontStretch"
+          | "fontStyle"
+          | "fontVariant"
+          | "fontWeight"
+          | "glyphName"
+          | "glyphOrientationHorizontal"
+          | "glyphOrientationVertical"
+          | "horizAdvX"
+          | "horizOriginX"
+          | "httpEquiv"
+          | "imageRendering"
+          | "letterSpacing"
+          | "lightingColor"
+          | "markerEnd"
+          | "markerMid"
+          | "markerStart"
+          | "overlinePosition"
+          | "overlineThickness"
+          | "paintOrder"
+          | "pointerEvents"
+          | "renderingIntent"
+          | "repeatCount"
+          | "repeatDur"
+          | "shapeRendering"
+          | "stopColor"
+          | "stopOpacity"
+          | "strikethroughPosition"
+          | "strikethroughThickness"
+          | "strokeDasharray"
+          | "strokeDashoffset"
+          | "strokeLinecap"
+          | "strokeLinejoin"
+          | "strokeMiterlimit"
+          | "strokeOpacity"
+          | "strokeWidth"
+          | "textAnchor"
+          | "textDecoration"
+          | "underlinePosition"
+          | "underlineThickness"
+          | "unicodeBidi"
+          | "unicodeRange"
+          | "unitsPerEm"
+          | "vAlphabetic"
+          | "vectorEffect"
+          | "vertAdvY"
+          | "vertOriginX"
+          | "vertOriginY"
+          | "vHanging"
+          | "vMathematical"
+          | "wordSpacing"
+          | "writingMode"
+          | "xHeight"
+      ) {
+        let transformed: String = name
+          .chars()
+          .map(|ch| match ch {
+            'A'..='Z' => format!("-{}", ch.to_lowercase()),
+            _ => ch.to_string(),
+          })
+          .collect();
+        return transformed;
+      }
+      // Devs expect attributes in the HTML document to be lowercased.
+      let lower = name.to_lowercase();
+      return lower;
+    }
   }
 }
 
@@ -938,7 +1058,7 @@ const $$_tpl_3 = [
 ];
 const a = _jsxssr($$_tpl_1, null);
 const b = _jsxssr($$_tpl_2, name);
-const c = _jsxssr($$_tpl_3, _jsxattr("onClick", onClick), name);"#,
+const c = _jsxssr($$_tpl_3, _jsxattr("onclick", onClick), name);"#,
     );
   }
 
@@ -971,6 +1091,9 @@ const a = _jsxssr($$_tpl_1, null);"#,
     let mappings: Vec<(String, String)> = vec![
       ("htmlFor".to_string(), "for".to_string()),
       ("className".to_string(), "class".to_string()),
+      ("xlinkRole".to_string(), "xlink:role".to_string()),
+      ("acceptCharset".to_string(), "accept-charset".to_string()),
+      ("onFoo".to_string(), "onfoo".to_string()),
     ];
 
     for mapping in mappings.iter() {
@@ -981,6 +1104,19 @@ const a = _jsxssr($$_tpl_1, null);"#,
         format!(
           "{}\nconst $$_tpl_1 = [\n  '<label {}=\"foo\">label</label>'\n];\nconst a = _jsxssr($$_tpl_1, null);",
           "import { jsxssr as _jsxssr } from \"react/jsx-runtime\";",
+          &mapping.1
+        )
+        .as_str(),
+      );
+    }
+
+    for mapping in mappings.iter() {
+      test_transform(
+        JsxString::default(),
+        format!("const a = <Foo {}=\"foo\">foo</Foo>", &mapping.0).as_str(),
+        format!(
+          "{}\nconst a = _jsx(Foo, {{\n  {}: \"foo\",\n  children: \"foo\"\n}});",
+          "import { jsx as _jsx } from \"react/jsx-runtime\";",
           &mapping.1
         )
         .as_str(),
