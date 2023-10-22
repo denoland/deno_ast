@@ -1,6 +1,6 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use swc_common::DUMMY_SP;
-// use swc_atoms::{js_word, Atom, JsWord};
-// use swc_common::Spanned;
 use swc_ecma_ast::*;
 use swc_ecma_utils::prepend_stmt;
 use swc_ecma_utils::quote_ident;
