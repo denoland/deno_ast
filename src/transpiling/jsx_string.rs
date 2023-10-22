@@ -1735,9 +1735,6 @@ const a = _jsx(Head, {
     );
   }
 
-  // TODO: Fresh specific: <Head> opt out? Or maybe move Fresh users to a
-  //       different pattern
-
   //   #[test]
   //   fn basic_test_with_imports() {
   //     test_transform(
