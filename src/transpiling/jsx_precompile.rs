@@ -6,7 +6,7 @@ use swc_ecma_utils::prepend_stmt;
 use swc_ecma_utils::quote_ident;
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
-struct JsxString {
+pub struct JsxPrecompile {
   // Specify whether to use the jsx dev runtime or not
   development: bool,
   // The import path to import the jsx runtime from. Will be
@@ -31,7 +31,7 @@ struct JsxString {
   import_jsx_attr: Option<Ident>,
 }
 
-impl Default for JsxString {
+impl Default for JsxPrecompile {
   fn default() -> Self {
     Self {
       next_index: 0,
@@ -42,6 +42,21 @@ impl Default for JsxString {
       import_jsx_ssr: None,
       import_jsx_attr: None,
       skip_child_serialization: None,
+    }
+  }
+}
+
+impl JsxPrecompile {
+  pub fn new(
+    import_source: String,
+    development: bool,
+    skip_child_serialization: Option<Vec<String>>,
+  ) -> Self {
+    Self {
+      import_source,
+      development,
+      skip_child_serialization,
+      ..JsxPrecompile::default()
     }
   }
 }
@@ -292,20 +307,7 @@ fn escape_html(str: &str) -> String {
     .replace('"', "&quot;")
 }
 
-impl JsxString {
-  fn new(
-    import_source: String,
-    development: bool,
-    skip_child_serialization: Option<Vec<String>>,
-  ) -> Self {
-    Self {
-      import_source,
-      development,
-      skip_child_serialization,
-      ..JsxString::default()
-    }
-  }
-
+impl JsxPrecompile {
   /// Mark `jsx` or `jsxDEV` as being used and return the appropriate
   /// identifier.
   fn get_jsx_identifier(&mut self) -> Ident {
@@ -968,7 +970,7 @@ impl JsxString {
   }
 }
 
-impl VisitMut for JsxString {
+impl VisitMut for JsxPrecompile {
   noop_visit_mut_type!();
 
   fn visit_mut_module(&mut self, module: &mut Module) {
@@ -1104,7 +1106,7 @@ mod tests {
   #[test]
   fn basic_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div>Hello!</div>;
 const b = <div>Hello {name}!</div>;
 const c = <button class="btn" onClick={onClick}>Hello {name}!</button>;
@@ -1131,7 +1133,7 @@ const c = _jsxssr($$_tpl_3, _jsxattr("onclick", onClick), name);"#,
   #[test]
   fn convert_self_closing_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div />;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1142,7 +1144,7 @@ const a = _jsxssr($$_tpl_1);"#,
 
     // Void elements
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <br></br>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1164,7 +1166,7 @@ const a = _jsxssr($$_tpl_1);"#,
 
     for mapping in mappings.iter() {
       test_transform(
-        JsxString::default(),
+        JsxPrecompile::default(),
         format!("const a = <label {}=\"foo\">label</label>", &mapping.0)
           .as_str(),
         format!(
@@ -1178,7 +1180,7 @@ const a = _jsxssr($$_tpl_1);"#,
 
     for mapping in mappings.iter() {
       test_transform(
-        JsxString::default(),
+        JsxPrecompile::default(),
         format!("const a = <Foo {}=\"foo\">foo</Foo>", &mapping.0).as_str(),
         format!(
           "{}\nconst a = _jsx(Foo, {{\n  {}: \"foo\",\n  children: \"foo\"\n}});",
@@ -1193,7 +1195,7 @@ const a = _jsxssr($$_tpl_1);"#,
   #[test]
   fn boolean_attr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <input type="checkbox" checked />;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1203,7 +1205,7 @@ const a = _jsxssr($$_tpl_1);"#,
     );
 
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <input type="checkbox" checked={false} />;"#,
       r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1217,7 +1219,7 @@ const a = _jsxssr($$_tpl_1, _jsxattr("checked", false));"#,
   #[test]
   fn dynamic_attr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div class="foo" bar={2}></div>;"#,
       r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1231,7 +1233,7 @@ const a = _jsxssr($$_tpl_1, _jsxattr("bar", 2));"#,
   #[test]
   fn namespace_attr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <a xlink:href="foo">foo</a>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1241,7 +1243,7 @@ const a = _jsxssr($$_tpl_1);"#,
     );
 
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <a foo:bar="foo">foo</a>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1254,7 +1256,7 @@ const a = _jsxssr($$_tpl_1);"#,
   #[test]
   fn mixed_static_dynamic_props_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div foo="1" {...props} bar="2">foo</div>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
@@ -1269,7 +1271,7 @@ const a = _jsx("div", {
   #[test]
   fn dangerously_html_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div dangerouslySetInnerHTML={{__html: "foo"}}>foo</div>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
@@ -1284,7 +1286,7 @@ const a = _jsx("div", {
   #[test]
   fn key_attr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div key="foo">foo</div>;"#,
       r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1298,21 +1300,21 @@ const a = _jsxssr($$_tpl_1, _jsxattr("key", "foo"));"#,
   #[test]
   fn key_attr_comp_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo key="foo" />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, null, "foo");"#,
     );
 
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo key={2} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, null, 2);"#,
     );
 
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo key={2}>foo</Foo>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
@@ -1324,7 +1326,7 @@ const a = _jsx(Foo, {
   #[test]
   fn ref_attr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div ref="foo">foo</div>;"#,
       r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1338,7 +1340,7 @@ const a = _jsxssr($$_tpl_1, _jsxattr("ref", "foo"));"#,
   #[test]
   fn escape_attr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div class="a&<>'">foo</div>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1351,7 +1353,7 @@ const a = _jsxssr($$_tpl_1);"#,
   #[test]
   fn escape_text_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div>"a&>'</div>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1365,7 +1367,7 @@ const a = _jsxssr($$_tpl_1);"#,
   fn namespace_name_test() {
     // Note: This isn't really supported anywhere, but I guess why not
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <a:b>foo</a:b>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("a:b", {
@@ -1377,7 +1379,7 @@ const a = _jsx("a:b", {
   #[test]
   fn empty_jsx_child_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <p>{}</p>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1390,7 +1392,7 @@ const a = _jsxssr($$_tpl_1);"#,
   #[test]
   fn child_expr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <p>{2 + 2}</p>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1404,7 +1406,7 @@ const a = _jsxssr($$_tpl_1, 2 + 2);"#,
   #[test]
   fn empty_fragment_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <></>;"#,
       r#"const a = null;"#,
     );
@@ -1413,7 +1415,7 @@ const a = _jsxssr($$_tpl_1, 2 + 2);"#,
   #[test]
   fn fragment_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <>foo</>;"#,
       r#"const a = "foo";"#,
     );
@@ -1422,7 +1424,7 @@ const a = _jsxssr($$_tpl_1, 2 + 2);"#,
   #[test]
   fn fragment_nested_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <><>foo</></>;"#,
       r#"const a = "foo";"#,
     );
@@ -1431,7 +1433,7 @@ const a = _jsxssr($$_tpl_1, 2 + 2);"#,
   #[test]
   fn fragment_mulitple_children_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <>foo<div /><Foo /></>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1442,7 +1444,7 @@ const a = _jsxssr($$_tpl_1, _jsx(Foo, null));"#,
     );
 
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo><div /><><>foo</><span /></></Foo>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1464,7 +1466,7 @@ const a = _jsx(Foo, {
   #[test]
   fn nested_elements_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div>foo<p>bar</p></div>;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1477,7 +1479,7 @@ const a = _jsxssr($$_tpl_1);"#,
   #[test]
   fn prop_spread_without_children_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div {...props} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
@@ -1489,7 +1491,7 @@ const a = _jsx("div", {
   #[test]
   fn prop_spread_with_children_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div {...props}>hello</div>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
@@ -1502,7 +1504,7 @@ const a = _jsx("div", {
   #[test]
   fn prop_spread_with_other_attrs_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div foo="1" {...props} bar="2">hello</div>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx("div", {
@@ -1517,7 +1519,7 @@ const a = _jsx("div", {
   #[test]
   fn component_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <div><Foo /></div>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1531,7 +1533,7 @@ const a = _jsxssr($$_tpl_1, _jsx(Foo, null));"#,
   #[test]
   fn component_outer_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, null);"#,
@@ -1541,7 +1543,7 @@ const a = _jsx(Foo, null);"#,
   #[test]
   fn component_with_props_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo required foo="1" bar={2} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
@@ -1555,7 +1557,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_with_spread_props_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo {...props} foo="1" />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
@@ -1568,7 +1570,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_with_children_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo>bar</Foo>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
@@ -1580,7 +1582,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_with_children_jsx_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo><span>hello</span></Foo>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1595,7 +1597,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_with_multiple_children_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo><span>hello</span>foo<Bar />asdf</Foo>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1615,7 +1617,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_with_multiple_children_2_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo><span>hello</span>foo<Bar><p>asdf</p></Bar></Foo>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1639,7 +1641,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_child_expr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo>{2 + 2}</Foo>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
@@ -1651,7 +1653,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_with_jsx_attr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo bar={<div>hello</div>} />;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1663,7 +1665,7 @@ const a = _jsx(Foo, {
     );
 
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo bar={<Bar>hello</Bar>} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
@@ -1677,7 +1679,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_with_jsx_frag_attr_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo bar={<>foo</>} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
@@ -1686,7 +1688,7 @@ const a = _jsx(Foo, {
     );
 
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo bar={<>foo<Foo/>bar</>} />;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1702,7 +1704,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_with_nested_frag_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <Foo><>foo<Bar><></></Bar></></Foo>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
@@ -1717,7 +1719,7 @@ const a = _jsx(Foo, {
   #[test]
   fn component_with_jsx_member_test() {
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <ctx.Provider value={null} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(ctx.Provider, {
@@ -1726,7 +1728,7 @@ const a = _jsx(ctx.Provider, {
     );
 
     test_transform(
-      JsxString::default(),
+      JsxPrecompile::default(),
       r#"const a = <a.b.c.d value={null} />;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(a.b.c.d, {
@@ -1738,7 +1740,7 @@ const a = _jsx(a.b.c.d, {
   #[test]
   fn import_source_option_test() {
     test_transform(
-      JsxString::new(
+      JsxPrecompile::new(
         "foobar".to_string(),
         false,
         Some(vec!["Head".to_string()]),
@@ -1755,7 +1757,7 @@ const a = _jsxssr($$_tpl_1);"#,
   #[test]
   fn skip_component_child_serialization_option_test() {
     test_transform(
-      JsxString::new(
+      JsxPrecompile::new(
         "react".to_string(),
         false,
         Some(vec!["Head".to_string()]),
@@ -1773,7 +1775,7 @@ const a = _jsx(Head, {
   #[test]
   fn development_option_test() {
     test_transform(
-      JsxString::new("react".to_string(), true, None),
+      JsxPrecompile::new("react".to_string(), true, None),
       r#"const a = <Foo>foo</Foo>;"#,
       r#"import { jsxDEV as _jsxDEV } from "react/jsx-dev-runtime";
 const a = _jsxDEV(Foo, {

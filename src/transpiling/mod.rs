@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use swc_ecma_visit::as_folder;
 
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
@@ -32,7 +33,7 @@ use crate::ParsedSource;
 
 use std::cell::RefCell;
 
-mod jsx_string;
+mod jsx_precompile;
 mod transforms;
 
 #[derive(Debug, Clone, Hash)]
@@ -81,6 +82,10 @@ pub struct EmitOptions {
   pub source_map: bool,
   /// Should JSX be transformed. Defaults to `true`.
   pub transform_jsx: bool,
+  /// Should JSX be precompiled into static strings that need to be concatenated
+  /// with dynamic content. Defaults to `false`, mutually exclusive with
+  /// `transform_jsx`.
+  pub precompile_jsx: bool,
   /// Should import declarations be transformed to variable declarations using
   /// a dynamic import. This is useful for import & export declaration support
   /// in script contexts such as the Deno REPL.  Defaults to `false`.
@@ -101,6 +106,7 @@ impl Default for EmitOptions {
       jsx_fragment_factory: "React.Fragment".into(),
       jsx_import_source: None,
       transform_jsx: true,
+      precompile_jsx: false,
       var_decl_imports: false,
     }
   }
@@ -303,6 +309,16 @@ pub fn fold_program(
         top_level_mark
       ),
       options.transform_jsx
+    ),
+    Optional::new(
+      as_folder(jsx_precompile::JsxPrecompile::new(
+        options.jsx_import_source.clone().unwrap_or_default(),
+        options.jsx_automatic,
+        None
+      )),
+      options.jsx_import_source.is_some()
+        && !options.transform_jsx
+        && options.precompile_jsx
     ),
     Optional::new(
       react::react(
