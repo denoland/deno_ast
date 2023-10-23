@@ -264,7 +264,7 @@ fn is_serializable(opening: &JSXOpeningElement) -> bool {
 fn string_lit_expr(str: String) -> Expr {
   Expr::Lit(Lit::Str(Str {
     span: DUMMY_SP,
-    value: str.to_string().as_str().into(),
+    value: str.as_str().into(),
     raw: None,
   }))
 }
