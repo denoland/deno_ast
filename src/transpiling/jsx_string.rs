@@ -269,8 +269,6 @@ fn string_lit_expr(str: String) -> Expr {
   }))
 }
 
-// TODO: Should this use an external crate? Not sure how much of an
-// impact this has on perf
 fn escape_html(str: &str) -> String {
   str
     .replace('&', "&amp;")
@@ -783,7 +781,6 @@ impl JsxString {
               JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
                 strings.last_mut().unwrap().push(' ');
                 strings.push("".to_string());
-                // eprintln!("jsx_expr_container {:#?}", jsx_expr_container);
                 match &jsx_expr_container.expr {
                   // This is treated as a syntax error in attributes
                   JSXExpr::JSXEmptyExpr(_) => {}
@@ -948,7 +945,6 @@ impl VisitMut for JsxString {
   noop_visit_mut_type!();
 
   fn visit_mut_module(&mut self, module: &mut Module) {
-    // eprintln!("ast {:#?}", module);
     module.visit_mut_children_with(self);
     for (idx, strings) in self.templates.iter().rev() {
       let elems: Vec<Option<ExprOrSpread>> = strings
