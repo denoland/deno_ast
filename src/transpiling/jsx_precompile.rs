@@ -4,7 +4,9 @@ use swc_common::DUMMY_SP;
 use swc_ecma_ast::*;
 use swc_ecma_utils::prepend_stmt;
 use swc_ecma_utils::quote_ident;
-use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
+use swc_ecma_visit::noop_visit_mut_type;
+use swc_ecma_visit::VisitMut;
+use swc_ecma_visit::VisitMutWith;
 
 pub struct JsxPrecompile {
   // Specify whether to use the jsx dev runtime or not
@@ -100,95 +102,92 @@ fn normalize_dom_attr_name(name: &str) -> String {
     "xmlBase" => "xml:base".to_string(),
     "xmlLang" => "xml:lang".to_string(),
     "xmlSpace" => "xml:space".to_string(),
+
+    // Attributes that are kebab-cased
+    "acceptCharset"
+    | "alignmentBaseline"
+    | "allowReorder"
+    | "arabicForm"
+    | "baselineShift"
+    | "capHeight"
+    | "clipPath"
+    | "clipRule"
+    | "colorInterpolation"
+    | "colorInterpolationFilters"
+    | "colorProfile"
+    | "colorRendering"
+    | "contentScriptType"
+    | "contentStyleType"
+    | "dominantBaseline"
+    | "enableBackground"
+    | "fillOpacity"
+    | "fillRule"
+    | "floodColor"
+    | "floodOpacity"
+    | "fontFamily"
+    | "fontSize"
+    | "fontSizeAdjust"
+    | "fontStretch"
+    | "fontStyle"
+    | "fontVariant"
+    | "fontWeight"
+    | "glyphName"
+    | "glyphOrientationHorizontal"
+    | "glyphOrientationVertical"
+    | "horizAdvX"
+    | "horizOriginX"
+    | "httpEquiv"
+    | "imageRendering"
+    | "letterSpacing"
+    | "lightingColor"
+    | "markerEnd"
+    | "markerMid"
+    | "markerStart"
+    | "overlinePosition"
+    | "overlineThickness"
+    | "paintOrder"
+    | "pointerEvents"
+    | "renderingIntent"
+    | "repeatCount"
+    | "repeatDur"
+    | "shapeRendering"
+    | "stopColor"
+    | "stopOpacity"
+    | "strikethroughPosition"
+    | "strikethroughThickness"
+    | "strokeDasharray"
+    | "strokeDashoffset"
+    | "strokeLinecap"
+    | "strokeLinejoin"
+    | "strokeMiterlimit"
+    | "strokeOpacity"
+    | "strokeWidth"
+    | "textAnchor"
+    | "textDecoration"
+    | "underlinePosition"
+    | "underlineThickness"
+    | "unicodeBidi"
+    | "unicodeRange"
+    | "unitsPerEm"
+    | "vAlphabetic"
+    | "vectorEffect"
+    | "vertAdvY"
+    | "vertOriginX"
+    | "vertOriginY"
+    | "vHanging"
+    | "vMathematical"
+    | "wordSpacing"
+    | "writingMode"
+    | "xHeight" => {
+      name
+        .chars()
+        .map(|ch| match ch {
+          'A'..='Z' => format!("-{}", ch.to_lowercase()),
+          _ => ch.to_string(),
+        })
+        .collect()
+    }
     _ => {
-      // Attributes that are kebab-cased
-      if matches!(
-        name,
-        "acceptCharset"
-          | "alignmentBaseline"
-          | "allowReorder"
-          | "arabicForm"
-          | "baselineShift"
-          | "capHeight"
-          | "clipPath"
-          | "clipRule"
-          | "colorInterpolation"
-          | "colorInterpolationFilters"
-          | "colorProfile"
-          | "colorRendering"
-          | "contentScriptType"
-          | "contentStyleType"
-          | "dominantBaseline"
-          | "enableBackground"
-          | "fillOpacity"
-          | "fillRule"
-          | "floodColor"
-          | "floodOpacity"
-          | "fontFamily"
-          | "fontSize"
-          | "fontSizeAdjust"
-          | "fontStretch"
-          | "fontStyle"
-          | "fontVariant"
-          | "fontWeight"
-          | "glyphName"
-          | "glyphOrientationHorizontal"
-          | "glyphOrientationVertical"
-          | "horizAdvX"
-          | "horizOriginX"
-          | "httpEquiv"
-          | "imageRendering"
-          | "letterSpacing"
-          | "lightingColor"
-          | "markerEnd"
-          | "markerMid"
-          | "markerStart"
-          | "overlinePosition"
-          | "overlineThickness"
-          | "paintOrder"
-          | "pointerEvents"
-          | "renderingIntent"
-          | "repeatCount"
-          | "repeatDur"
-          | "shapeRendering"
-          | "stopColor"
-          | "stopOpacity"
-          | "strikethroughPosition"
-          | "strikethroughThickness"
-          | "strokeDasharray"
-          | "strokeDashoffset"
-          | "strokeLinecap"
-          | "strokeLinejoin"
-          | "strokeMiterlimit"
-          | "strokeOpacity"
-          | "strokeWidth"
-          | "textAnchor"
-          | "textDecoration"
-          | "underlinePosition"
-          | "underlineThickness"
-          | "unicodeBidi"
-          | "unicodeRange"
-          | "unitsPerEm"
-          | "vAlphabetic"
-          | "vectorEffect"
-          | "vertAdvY"
-          | "vertOriginX"
-          | "vertOriginY"
-          | "vHanging"
-          | "vMathematical"
-          | "wordSpacing"
-          | "writingMode"
-          | "xHeight"
-      ) {
-        let transformed: String = name
-          .chars()
-          .map(|ch| match ch {
-            'A'..='Z' => format!("-{}", ch.to_lowercase()),
-            _ => ch.to_string(),
-          })
-          .collect();
-        return transformed;
-      }
       // Devs expect attributes in the HTML document to be lowercased.
       name.to_lowercase()
     }
@@ -278,7 +277,7 @@ fn is_serializable(opening: &JSXOpeningElement) -> bool {
         return true;
       }
 
-      !opening.attrs.clone().iter().any(|attr| match attr {
+      !opening.attrs.iter().any(|attr| match attr {
         JSXAttrOrSpread::SpreadElement(_) => true,
         JSXAttrOrSpread::JSXAttr(attr) => {
           let name = get_attr_name(attr);
@@ -293,7 +292,7 @@ fn is_serializable(opening: &JSXOpeningElement) -> bool {
 fn string_lit_expr(str: String) -> Expr {
   Expr::Lit(Lit::Str(Str {
     span: DUMMY_SP,
-    value: str.as_str().into(),
+    value: str.into(),
     raw: None,
   }))
 }
@@ -349,13 +348,13 @@ impl JsxPrecompile {
   fn serialize_jsx_children_to_expr(
     &mut self,
     children: &Vec<JSXElementChild>,
-    parent_tag_name: Option<String>,
+    parent_tag_name: Option<&str>,
   ) -> Option<Expr> {
     // Add children as a "children" prop.
     match children.len() {
       0 => None,
       1 => {
-        let child = children[0].clone();
+        let child = &children[0];
         match child {
           JSXElementChild::JSXText(jsx_text) => {
             Some(string_lit_expr(jsx_text.value.to_string()))
@@ -371,16 +370,16 @@ impl JsxPrecompile {
           }
           // Case: <div><span /></div>
           JSXElementChild::JSXElement(jsx_element) => {
-            if let Some(allowed_elems) = self.skip_child_serialization.clone() {
-              if let Some(parent_name) = parent_tag_name.clone() {
-                if allowed_elems.contains(&parent_name) {
+            if let Some(allowed_elems) = &self.skip_child_serialization {
+              if let Some(parent_name) = parent_tag_name {
+                if allowed_elems.iter().any(|e| e == parent_name) {
                   return Some(Expr::Call(
-                    self.serialize_jsx_to_call_expr(&jsx_element),
+                    self.serialize_jsx_to_call_expr(jsx_element),
                   ));
                 }
               }
             }
-            Some(self.serialize_jsx(&jsx_element))
+            Some(self.serialize_jsx(jsx_element))
           }
           // Case: <div><></></div>
           JSXElementChild::JSXFragment(jsx_frag) => {
@@ -420,7 +419,7 @@ impl JsxPrecompile {
             }
             // Case: <div><span /></div>
             JSXElementChild::JSXElement(jsx_el) => {
-              let expr = self.serialize_jsx(&jsx_el.clone());
+              let expr = self.serialize_jsx(jsx_el);
               elems.push(Some(ExprOrSpread {
                 spread: None,
                 expr: Box::new(expr.clone()),
@@ -467,22 +466,22 @@ impl JsxPrecompile {
   /// Case: <div {...props} />
   /// Case: <Foo bar="1" />
   fn serialize_jsx_to_call_expr(&mut self, el: &JSXElement) -> CallExpr {
-    let name_expr = match el.opening.name.clone() {
+    let name_expr = match &el.opening.name {
       // Case: <div />
       // Case: <Foo />
       JSXElementName::Ident(ident) => {
-        let name = ident.sym.to_string();
+        let name = &ident.sym;
         // Component identifiers start with an uppercase character
         // Case: <Foo bar="123" />
         if name.chars().next().unwrap().is_ascii_uppercase() {
-          Expr::Ident(ident)
+          Expr::Ident(ident.clone())
         } else {
-          string_lit_expr(name)
+          string_lit_expr(name.to_string())
         }
       }
       // Case: <ctx.Provider />
       JSXElementName::JSXMemberExpr(jsx_member_expr) => {
-        Expr::Member(jsx_member_expr_to_normal(&jsx_member_expr))
+        Expr::Member(jsx_member_expr_to_normal(jsx_member_expr))
       }
       JSXElementName::JSXNamespacedName(namespace_name) => {
         let ns = namespace_name.ns.sym.to_string();
@@ -592,7 +591,7 @@ impl JsxPrecompile {
 
       // Add children as a "children" prop.
       let child_expr =
-        self.serialize_jsx_children_to_expr(&el.children, name_str);
+        self.serialize_jsx_children_to_expr(&el.children, name_str.as_deref());
 
       if let Some(expr) = child_expr {
         let children_name = PropName::Ident(quote_ident!("children"));
@@ -633,15 +632,15 @@ impl JsxPrecompile {
     }
   }
 
-  fn convert_to_jsx_attr_call(&mut self, name: &str, expr: &Expr) -> CallExpr {
+  fn convert_to_jsx_attr_call(&mut self, name: String, expr: Expr) -> CallExpr {
     let args = vec![
       ExprOrSpread {
         spread: None,
-        expr: Box::new(string_lit_expr(name.to_string())),
+        expr: Box::new(string_lit_expr(name)),
       },
       ExprOrSpread {
         spread: None,
-        expr: Box::new(expr.clone()),
+        expr: Box::new(expr),
       },
     ];
 
@@ -687,7 +686,7 @@ impl JsxPrecompile {
         // Case: <div><span /></div>
         JSXElementChild::JSXElement(jsx_element) => self
           .serialize_jsx_element_to_string_vec(
-            *jsx_element.clone(),
+            jsx_element,
             strings,
             dynamic_exprs,
           ),
@@ -708,26 +707,24 @@ impl JsxPrecompile {
 
   fn serialize_jsx_element_to_string_vec(
     &mut self,
-    el: JSXElement,
+    el: &JSXElement,
     strings: &mut Vec<String>,
     dynamic_exprs: &mut Vec<Expr>,
   ) {
-    let ident = match el.opening.name.clone() {
+    let name: &str = match &el.opening.name {
       // Case: <div />
-      JSXElementName::Ident(ident) => ident,
+      JSXElementName::Ident(ident) => &ident.sym,
       _ => {
         unreachable!("serialize_jsx_element_to_string_vec(JSXNamespacedName)")
       }
     };
-
-    let name = ident.sym.to_string();
 
     // Case: <div {...props} />
     // Case: <div class="foo" {...{ class: "bar"}} />
     // Case: <div {...{ class: "foo"}} class="bar"}>foo</div>
     // Case: <Foo />
     if !is_serializable(&el.opening) {
-      let expr = Expr::Call(self.serialize_jsx_to_call_expr(&el));
+      let expr = Expr::Call(self.serialize_jsx_to_call_expr(el));
       strings.push("".to_string());
       dynamic_exprs.push(expr);
 
@@ -738,99 +735,99 @@ impl JsxPrecompile {
 
     strings.last_mut().unwrap().push('<');
 
-    let escaped_name = escape_html(&name);
+    let escaped_name = escape_html(name);
     strings.last_mut().unwrap().push_str(escaped_name.as_str());
 
-    if !el.opening.attrs.is_empty() {
-      for attr in el.opening.attrs.iter() {
-        // Case: <button class="btn">
-        match attr {
-          JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-            let attr_name = get_attr_name(jsx_attr);
+    for attr in &el.opening.attrs {
+      // Case: <button class="btn">
+      match attr {
+        JSXAttrOrSpread::JSXAttr(jsx_attr) => {
+          let attr_name = get_attr_name(jsx_attr);
 
-            // Case: <input required />
-            let Some(attr_value) = &jsx_attr.value else {
-              strings.last_mut().unwrap().push(' ');
-              let escaped_attr_name = escape_html(&attr_name);
-              strings
-                .last_mut()
-                .unwrap()
-                .push_str(escaped_attr_name.as_str());
-              continue;
-            };
+          // Case: <input required />
+          let Some(attr_value) = &jsx_attr.value else {
+            strings.last_mut().unwrap().push(' ');
+            let escaped_attr_name = escape_html(&attr_name);
+            strings
+              .last_mut()
+              .unwrap()
+              .push_str(escaped_attr_name.as_str());
+            continue;
+          };
 
-            // Case: <div class="btn">
-            // Case: <div class={"foo"}>
-            // Case: <div class={2}>
-            // Case: <div class={true}>
-            // Case: <div class={null}>
-            match attr_value {
-              JSXAttrValue::Lit(lit) => match lit {
-                Lit::Str(string_lit) => {
-                  // Edge Case: Both "key" and "ref" attributes are
-                  // special attributes in most frameworks. Some
-                  // frameworks may want to serialize it, other's don't.
-                  // To support both use cases we'll always pass them to
-                  // `jsxattr()` so that frameowrks can decide for
-                  // themselves what to do with it.
-                  // Case: <div key="123" />
-                  // Case: <div ref="123" />
-                  if attr_name == "key" || attr_name == "ref" {
-                    strings.last_mut().unwrap().push(' ');
-                    strings.push("".to_string());
-                    let expr = self.convert_to_jsx_attr_call(
-                      &attr_name,
-                      &string_lit_expr(string_lit.value.to_string()),
-                    );
-                    dynamic_exprs.push(Expr::Call(expr));
-                    continue;
-                  }
-
-                  let serialized_attr = format!(
-                    " {}=\"{}\"",
-                    escape_html(&attr_name).as_str(),
-                    escape_html(string_lit.value.as_ref()).as_str()
+          // Case: <div class="btn">
+          // Case: <div class={"foo"}>
+          // Case: <div class={2}>
+          // Case: <div class={true}>
+          // Case: <div class={null}>
+          match attr_value {
+            JSXAttrValue::Lit(lit) => match lit {
+              Lit::Str(string_lit) => {
+                // Edge Case: Both "key" and "ref" attributes are
+                // special attributes in most frameworks. Some
+                // frameworks may want to serialize it, other's don't.
+                // To support both use cases we'll always pass them to
+                // `jsxattr()` so that frameowrks can decide for
+                // themselves what to do with it.
+                // Case: <div key="123" />
+                // Case: <div ref="123" />
+                if attr_name == "key" || attr_name == "ref" {
+                  strings.last_mut().unwrap().push(' ');
+                  strings.push("".to_string());
+                  let expr = self.convert_to_jsx_attr_call(
+                    attr_name,
+                    string_lit_expr(string_lit.value.to_string()),
                   );
-
-                  strings.last_mut().unwrap().push_str("");
-                  strings
-                    .last_mut()
-                    .unwrap()
-                    .push_str(serialized_attr.as_str());
+                  dynamic_exprs.push(Expr::Call(expr));
+                  continue;
                 }
-                // I've never seen this being possible as it would
-                // always be treated as an expression.
-                Lit::Bool(_) => {}
-                Lit::Null(_) => {}
-                Lit::Num(_) => {}
-                Lit::BigInt(_) => {}
-                Lit::Regex(_) => {}
-                Lit::JSXText(_) => {}
-              },
-              JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
-                strings.last_mut().unwrap().push(' ');
-                strings.push("".to_string());
-                match &jsx_expr_container.expr {
-                  // This is treated as a syntax error in attributes
-                  JSXExpr::JSXEmptyExpr(_) => {}
-                  JSXExpr::Expr(expr) => {
-                    let call_expr = self
-                      .convert_to_jsx_attr_call(&attr_name.to_string(), expr);
-                    dynamic_exprs.push(Expr::Call(call_expr));
-                  }
+
+                let serialized_attr = format!(
+                  " {}=\"{}\"",
+                  escape_html(&attr_name).as_str(),
+                  escape_html(string_lit.value.as_ref()).as_str()
+                );
+
+                strings.last_mut().unwrap().push_str("");
+                strings
+                  .last_mut()
+                  .unwrap()
+                  .push_str(serialized_attr.as_str());
+              }
+              // I've never seen this being possible as it would
+              // always be treated as an expression.
+              Lit::Bool(_) => {}
+              Lit::Null(_) => {}
+              Lit::Num(_) => {}
+              Lit::BigInt(_) => {}
+              Lit::Regex(_) => {}
+              Lit::JSXText(_) => {}
+            },
+            JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
+              strings.last_mut().unwrap().push(' ');
+              strings.push("".to_string());
+              match &jsx_expr_container.expr {
+                // This is treated as a syntax error in attributes
+                JSXExpr::JSXEmptyExpr(_) => {}
+                JSXExpr::Expr(expr) => {
+                  let call_expr = self.convert_to_jsx_attr_call(
+                    attr_name.to_string(),
+                    *expr.clone(),
+                  );
+                  dynamic_exprs.push(Expr::Call(call_expr));
                 }
               }
-              // These makes no sense on as attribute on HTML elements
-              // so we ignore them.
-              JSXAttrValue::JSXElement(_) => {}
-              JSXAttrValue::JSXFragment(_) => {}
             }
+            // These makes no sense on as attribute on HTML elements
+            // so we ignore them.
+            JSXAttrValue::JSXElement(_) => {}
+            JSXAttrValue::JSXFragment(_) => {}
           }
-          // This case is already handled earlier
-          // Case: <div {...props} />
-          JSXAttrOrSpread::SpreadElement(_) => {}
-        };
-      }
+        }
+        // This case is already handled earlier
+        // Case: <div {...props} />
+        JSXAttrOrSpread::SpreadElement(_) => {}
+      };
     }
 
     strings.last_mut().unwrap().push('>');
@@ -841,7 +838,7 @@ impl JsxPrecompile {
     // See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
     // Case: <br /> -> <br>
     // Case: <meta /> -> <meta>
-    if is_void_element(&name) {
+    if is_void_element(name) {
       // Since self closing tags don't exist in HTML we don't need to
       // add the "/" character. If the "/" character is present,
       // browsers will ignore it anyway.
@@ -869,13 +866,11 @@ impl JsxPrecompile {
       spread: None,
       expr: Box::new(Expr::Ident(Ident::new(name.into(), DUMMY_SP))),
     });
-    if !dynamic_exprs.is_empty() {
-      for dynamic_expr in dynamic_exprs.into_iter() {
-        args.push(ExprOrSpread {
-          spread: None,
-          expr: Box::new(dynamic_expr),
-        });
-      }
+    for dynamic_expr in dynamic_exprs.into_iter() {
+      args.push(ExprOrSpread {
+        spread: None,
+        expr: Box::new(dynamic_expr),
+      });
     }
 
     // Case: _jsxssr($$_tpl_1);
@@ -897,7 +892,7 @@ impl JsxPrecompile {
       let mut static_strs: Vec<String> = vec![];
       let mut dynamic_exprs: Vec<Expr> = vec![];
       self.serialize_jsx_element_to_string_vec(
-        el.clone(),
+        el,
         &mut static_strs,
         &mut dynamic_exprs,
       );
@@ -1031,7 +1026,7 @@ impl VisitMut for JsxPrecompile {
         }
         1 => {
           // Flatten the fragment if it only has one child
-          let child = frag.children[0].clone();
+          let child = &frag.children[0];
           match child {
             JSXElementChild::JSXText(jsx_text) => {
               *expr = string_lit_expr(jsx_text.value.to_string())
@@ -1047,7 +1042,7 @@ impl VisitMut for JsxPrecompile {
             }
             // Case: <><span /></>
             JSXElementChild::JSXElement(jsx_element) => {
-              *expr = self.serialize_jsx(&jsx_element);
+              *expr = self.serialize_jsx(jsx_element);
             }
             // Case: <><></></>
             JSXElementChild::JSXFragment(jsx_frag) => {
