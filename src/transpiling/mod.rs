@@ -480,6 +480,13 @@ enum D {
   B,
 }
 
+const enum E {
+  A,
+  B,
+}
+
+console.log(E.A);
+
 namespace N {
   export enum D {
     A = "value"
@@ -513,6 +520,8 @@ export class A {
   D[D["A"] = 0] = "A";
   D[D["B"] = 1] = "B";
 })(D || (D = {}));
+var E;
+console.log(0);
 var N;
 (function(N) {
   let D;
