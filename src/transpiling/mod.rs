@@ -289,6 +289,12 @@ pub fn fold_program(
     }),
     proposal::explicit_resource_management::explicit_resource_management(),
     helpers::inject_helpers(top_level_mark),
+    // transform imports to var decls before doing the typescript pass
+    // so that swc doesn't do any optimizations on the import declarations
+    Optional::new(
+      transforms::ImportDeclsToVarDeclsFolder,
+      options.var_decl_imports
+    ),
     Optional::new(
       typescript::typescript(options.as_typescript_config(), top_level_mark),
       !options.transform_jsx
@@ -333,9 +339,11 @@ pub fn fold_program(
       ),
       options.transform_jsx
     ),
+    // if using var decl imports, do another pass in order to transform the
+    // automatically inserted jsx runtime import to a var decl
     Optional::new(
       transforms::ImportDeclsToVarDeclsFolder,
-      options.var_decl_imports
+      options.var_decl_imports && options.transform_jsx
     ),
     fixer(Some(comments)),
     hygiene(),
@@ -840,6 +848,7 @@ function App() {
       ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
     let source = r#"
 /** @jsxImportSource jsx_lib */
+import * as example from "example";
 
 function App() {
   return (
@@ -861,6 +870,7 @@ function App() {
     };
     let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"/** @jsxImportSource jsx_lib */ const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
+const example = await import("example");
 function App() {
   return /*#__PURE__*/ _jsx("div", {
     children: /*#__PURE__*/ _jsx(_Fragment, {})
