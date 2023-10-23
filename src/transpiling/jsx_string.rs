@@ -7,14 +7,28 @@ use swc_ecma_utils::quote_ident;
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
 struct JsxString {
+  // Specify whether to use the jsx dev runtime or not
+  development: bool,
+  // The import path to import the jsx runtime from. Will be
+  // `<import_source>/jsx-runtime`.
+  import_source: String,
+  // Optionally, skip serializing children to string for the
+  // components in this list. These typically rely on React.Children
+  // API or need the actual virtual JSX nodes for other reasons.
+  skip_child_serialization: Option<Vec<String>>,
+
+  // Internal state
   next_index: usize,
   templates: Vec<(usize, Vec<String>)>,
-  development: bool,
-  import_source: String,
+  // Track if we need to import `jsx` or `jsxDEV` and which identifier
+  // to use if we do.
   import_jsx: Option<Ident>,
+  // Track if we need to import `jsxssr` and which identifier
+  // to use if we do.
   import_jsx_ssr: Option<Ident>,
+  // Track if we need to import `jsxattr` and which identifier
+  // to use if we do.
   import_jsx_attr: Option<Ident>,
-  skip_child_serialization: Option<Vec<String>>,
 }
 
 impl Default for JsxString {
@@ -279,6 +293,19 @@ fn escape_html(str: &str) -> String {
 }
 
 impl JsxString {
+  fn new(
+    import_source: String,
+    development: bool,
+    skip_child_serialization: Option<Vec<String>>,
+  ) -> Self {
+    Self {
+      import_source,
+      development,
+      skip_child_serialization,
+      ..JsxString::default()
+    }
+  }
+
   /// Mark `jsx` or `jsxDEV` as being used and return the appropriate
   /// identifier.
   fn get_jsx_identifier(&mut self) -> Ident {
@@ -884,7 +911,7 @@ impl JsxString {
     let mut imports: Vec<(Ident, Ident)> = vec![];
 
     if let Some(jsx_ident) = &self.import_jsx {
-      let jsx_imported = if self.development { "jsxDev" } else { "jsx" };
+      let jsx_imported = if self.development { "jsxDEV" } else { "jsx" };
       imports
         .push((jsx_ident.clone(), Ident::new(jsx_imported.into(), DUMMY_SP)))
     }
@@ -1709,12 +1736,30 @@ const a = _jsx(a.b.c.d, {
   }
 
   #[test]
-  fn skip_component_child_serialization_test() {
+  fn import_source_option_test() {
     test_transform(
-      JsxString {
-        skip_child_serialization: Some(vec!["Head".to_string()]),
-        ..Default::default()
-      },
+      JsxString::new(
+        "foobar".to_string(),
+        false,
+        Some(vec!["Head".to_string()]),
+      ),
+      r#"const a = <div>foo</div>;"#,
+      r#"import { jsxssr as _jsxssr } from "foobar/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>foo</div>"
+];
+const a = _jsxssr($$_tpl_1);"#,
+    );
+  }
+
+  #[test]
+  fn skip_component_child_serialization_option_test() {
+    test_transform(
+      JsxString::new(
+        "react".to_string(),
+        false,
+        Some(vec!["Head".to_string()]),
+      ),
       r#"const a = <Head><title>foo</title></Head>;"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Head, {
@@ -1725,20 +1770,17 @@ const a = _jsx(Head, {
     );
   }
 
-  //   #[test]
-  //   fn basic_test_with_imports() {
-  //     test_transform(
-  //       JsxString::default(),
-  //       r#"import * as assert from "https://deno.land/std/assert/mod.ts";
-  // const a = <div>Hello!</div>;
-  // const b = <div>Hello!</div>;"#,
-  //       r#"const $$_tpl_1 = ["<div>Hello!</div>"];
-  // const $$_tpl_2 = ["<div>Hello!</div>"];
-  // import * as assert from "https://deno.land/std/assert/mod.ts";
-  // const a = $$_tpl_1.join("");
-  // const b = $$_tpl_2.join("");"#,
-  //     );
-  //   }
+  #[test]
+  fn development_option_test() {
+    test_transform(
+      JsxString::new("react".to_string(), true, None),
+      r#"const a = <Foo>foo</Foo>;"#,
+      r#"import { jsxDEV as _jsxDEV } from "react/jsx-dev-runtime";
+const a = _jsxDEV(Foo, {
+  children: "foo"
+});"#,
+    );
+  }
 
   #[track_caller]
   fn test_transform(
