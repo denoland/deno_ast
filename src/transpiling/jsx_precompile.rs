@@ -178,15 +178,13 @@ fn normalize_dom_attr_name(name: &str) -> String {
     | "vMathematical"
     | "wordSpacing"
     | "writingMode"
-    | "xHeight" => {
-      name
-        .chars()
-        .map(|ch| match ch {
-          'A'..='Z' => format!("-{}", ch.to_lowercase()),
-          _ => ch.to_string(),
-        })
-        .collect()
-    }
+    | "xHeight" => name
+      .chars()
+      .map(|ch| match ch {
+        'A'..='Z' => format!("-{}", ch.to_lowercase()),
+        _ => ch.to_string(),
+      })
+      .collect(),
     _ => {
       // Devs expect attributes in the HTML document to be lowercased.
       name.to_lowercase()
