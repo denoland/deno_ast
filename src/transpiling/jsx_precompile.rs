@@ -210,10 +210,16 @@ fn null_arg() -> ExprOrSpread {
   }
 }
 
-fn get_attr_name(jsx_attr: &JSXAttr) -> String {
+fn get_attr_name(jsx_attr: &JSXAttr, is_component: bool) -> String {
   match &jsx_attr.name {
     // Case: <button class="btn">
-    JSXAttrName::Ident(ident) => normalize_dom_attr_name(ident.sym.as_ref()),
+    JSXAttrName::Ident(ident) => {
+      if is_component {
+        ident.sym.to_string()
+      } else {
+        normalize_dom_attr_name(ident.sym.as_ref())
+      }
+    }
     // Case: <a xlink:href="#">...</a>
     JSXAttrName::JSXNamespacedName(namespace_name) => {
       let ns = namespace_name.ns.sym.to_string();
@@ -268,7 +274,7 @@ fn is_serializable(opening: &JSXOpeningElement) -> bool {
       !opening.attrs.iter().any(|attr| match attr {
         JSXAttrOrSpread::SpreadElement(_) => true,
         JSXAttrOrSpread::JSXAttr(attr) => {
-          let name = get_attr_name(attr);
+          let name = get_attr_name(attr, false);
           matches!(name.as_str(), "dangerouslySetInnerHTML")
         }
       })
@@ -444,6 +450,7 @@ impl JsxPrecompile {
   /// Case: <div {...props} />
   /// Case: <Foo bar="1" />
   fn serialize_jsx_to_call_expr(&mut self, el: &JSXElement) -> CallExpr {
+    let mut is_component = false;
     let name_expr = match &el.opening.name {
       // Case: <div />
       // Case: <Foo />
@@ -452,6 +459,7 @@ impl JsxPrecompile {
         // Component identifiers start with an uppercase character
         // Case: <Foo bar="123" />
         if name.chars().next().unwrap().is_ascii_uppercase() {
+          is_component = true;
           Expr::Ident(ident.clone())
         } else {
           string_lit_expr(name.to_string())
@@ -488,7 +496,7 @@ impl JsxPrecompile {
       for attr in el.opening.attrs.iter() {
         match attr {
           JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-            let attr_name = get_attr_name(jsx_attr);
+            let attr_name = get_attr_name(jsx_attr, is_component);
             let prop_name = PropName::Ident(quote_ident!(attr_name.clone()));
 
             // Case: <Foo required />
@@ -683,14 +691,6 @@ impl JsxPrecompile {
     strings: &mut Vec<String>,
     dynamic_exprs: &mut Vec<Expr>,
   ) {
-    let name: &str = match &el.opening.name {
-      // Case: <div />
-      JSXElementName::Ident(ident) => &ident.sym,
-      _ => {
-        unreachable!("serialize_jsx_element_to_string_vec(JSXNamespacedName)")
-      }
-    };
-
     // Case: <div {...props} />
     // Case: <div class="foo" {...{ class: "bar"}} />
     // Case: <div {...{ class: "foo"}} class="bar"}>foo</div>
@@ -705,6 +705,14 @@ impl JsxPrecompile {
       strings.push("".to_string());
     }
 
+    let name: &str = match &el.opening.name {
+      // Case: <div />
+      JSXElementName::Ident(ident) => &ident.sym,
+      _ => {
+        unreachable!("serialize_jsx_element_to_string_vec(JSXNamespacedName)")
+      }
+    };
+
     strings.last_mut().unwrap().push('<');
 
     let escaped_name = escape_html(name);
@@ -714,7 +722,7 @@ impl JsxPrecompile {
       // Case: <button class="btn">
       match attr {
         JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-          let attr_name = get_attr_name(jsx_attr);
+          let attr_name = get_attr_name(jsx_attr, false);
 
           // Case: <input required />
           let Some(attr_value) = &jsx_attr.value else {
@@ -1142,8 +1150,22 @@ const a = _jsxssr($$_tpl_1);"#,
         )
         .as_str(),
       );
+
+      // should still be normalized if HTML element cannot
+      // be serialized
+      test_transform(
+        JsxPrecompile::default(),
+        format!("const a = <label {}=\"foo\" {{...foo}} />", &mapping.0)
+          .as_str(),
+        format!(
+          "{}\nconst a = _jsx(\"label\", {{\n  {}: \"foo\",\n  ...foo\n}});",
+          "import { jsx as _jsx } from \"react/jsx-runtime\";", &mapping.1
+        )
+        .as_str(),
+      );
     }
 
+    // Component props should never be normalized
     for mapping in mappings.iter() {
       test_transform(
         JsxPrecompile::default(),
@@ -1151,7 +1173,7 @@ const a = _jsxssr($$_tpl_1);"#,
         format!(
           "{}\nconst a = _jsx(Foo, {{\n  {}: \"foo\",\n  children: \"foo\"\n}});",
           "import { jsx as _jsx } from \"react/jsx-runtime\";",
-          &mapping.1
+          &mapping.0
         )
         .as_str(),
       );
