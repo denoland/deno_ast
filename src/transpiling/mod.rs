@@ -313,7 +313,7 @@ pub fn fold_program(
     Optional::new(
       as_folder(jsx_precompile::JsxPrecompile::new(
         options.jsx_import_source.clone().unwrap_or_default(),
-        options.jsx_automatic,
+        options.jsx_development,
         None
       )),
       options.jsx_import_source.is_some()
@@ -1104,5 +1104,66 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let input = last_line
       .trim_start_matches("//# sourceMappingURL=data:application/json;base64,");
     base64::decode(input).unwrap();
+  }
+
+  #[test]
+  fn test_precompile_jsx() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source =
+      r#"const a = <Foo><span>hello</span>foo<Bar><p>asdf</p></Bar></Foo>;"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let mut options = EmitOptions::default();
+    options.transform_jsx = false;
+    options.precompile_jsx = true;
+    options.jsx_import_source = Some("react".to_string());
+    let code = module.transpile(&options).unwrap().text;
+    let expected1 = r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<span>hello</span>"
+];
+const $$_tpl_2 = [
+  "<p>asdf</p>"
+];
+const a = _jsx(Foo, {
+  children: [
+    _jsxssr($$_tpl_1),
+    "foo",
+    _jsx(Bar, {
+      children: _jsxssr($$_tpl_2)
+    })
+  ]
+});
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
+    assert_eq!(&code[0..expected1.len()], expected1);
+
+    options.jsx_development = true;
+    let code = module.transpile(&options).unwrap().text;
+    let expected2 = r#"import { jsxDEV as _jsxDEV, jsxssr as _jsxssr } from "react/jsx-dev-runtime";
+const $$_tpl_1 = [
+  "<span>hello</span>"
+];
+const $$_tpl_2 = [
+  "<p>asdf</p>"
+];
+const a = _jsxDEV(Foo, {
+  children: [
+    _jsxssr($$_tpl_1),
+    "foo",
+    _jsxDEV(Bar, {
+      children: _jsxssr($$_tpl_2)
+    })
+  ]
+});
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
+    assert_eq!(&code[0..expected2.len()], expected2);
   }
 }

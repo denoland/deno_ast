@@ -786,7 +786,6 @@ impl JsxPrecompile {
                   escape_html(string_lit.value.as_ref()).as_str()
                 );
 
-                strings.last_mut().unwrap().push_str("");
                 strings
                   .last_mut()
                   .unwrap()
@@ -859,7 +858,7 @@ impl JsxPrecompile {
     self.templates.push((template_index, static_strs));
 
     let mut args: Vec<ExprOrSpread> =
-      Vec::with_capacity(1 + std::cmp::max(1, dynamic_exprs.len()));
+      Vec::with_capacity(1 + dynamic_exprs.len());
     args.push(ExprOrSpread {
       spread: None,
       expr: Box::new(Expr::Ident(Ident::new(name.into(), DUMMY_SP))),
