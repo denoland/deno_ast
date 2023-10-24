@@ -1165,7 +1165,7 @@ const a = _jsxssr($$_tpl_1);"#,
       );
     }
 
-    // Component props should never be serialized
+    // Component props should never be normalized
     for mapping in mappings.iter() {
       test_transform(
         JsxPrecompile::default(),
