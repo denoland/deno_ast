@@ -314,7 +314,6 @@ pub fn fold_program(
       as_folder(jsx_precompile::JsxPrecompile::new(
         options.jsx_import_source.clone().unwrap_or_default(),
         options.jsx_development,
-        None
       )),
       options.jsx_import_source.is_some()
         && !options.transform_jsx

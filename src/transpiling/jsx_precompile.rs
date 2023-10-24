@@ -14,10 +14,6 @@ pub struct JsxPrecompile {
   // The import path to import the jsx runtime from. Will be
   // `<import_source>/jsx-runtime`.
   import_source: String,
-  // Optionally, skip serializing children to string for the
-  // components in this list. These typically rely on React.Children
-  // API or need the actual virtual JSX nodes for other reasons.
-  skip_child_serialization: Option<Vec<String>>,
 
   // Internal state
   next_index: usize,
@@ -43,21 +39,15 @@ impl Default for JsxPrecompile {
       import_jsx: None,
       import_jsx_ssr: None,
       import_jsx_attr: None,
-      skip_child_serialization: None,
     }
   }
 }
 
 impl JsxPrecompile {
-  pub fn new(
-    import_source: String,
-    development: bool,
-    skip_child_serialization: Option<Vec<String>>,
-  ) -> Self {
+  pub fn new(import_source: String, development: bool) -> Self {
     Self {
       import_source,
       development,
-      skip_child_serialization,
       ..JsxPrecompile::default()
     }
   }
@@ -346,7 +336,6 @@ impl JsxPrecompile {
   fn serialize_jsx_children_to_expr(
     &mut self,
     children: &Vec<JSXElementChild>,
-    parent_tag_name: Option<&str>,
   ) -> Option<Expr> {
     // Add children as a "children" prop.
     match children.len() {
@@ -368,20 +357,11 @@ impl JsxPrecompile {
           }
           // Case: <div><span /></div>
           JSXElementChild::JSXElement(jsx_element) => {
-            if let Some(allowed_elems) = &self.skip_child_serialization {
-              if let Some(parent_name) = parent_tag_name {
-                if allowed_elems.iter().any(|e| e == parent_name) {
-                  return Some(Expr::Call(
-                    self.serialize_jsx_to_call_expr(jsx_element),
-                  ));
-                }
-              }
-            }
             Some(self.serialize_jsx(jsx_element))
           }
           // Case: <div><></></div>
           JSXElementChild::JSXFragment(jsx_frag) => {
-            self.serialize_jsx_children_to_expr(&jsx_frag.children, None)
+            self.serialize_jsx_children_to_expr(&jsx_frag.children)
           }
           // Invalid, was part of an earlier JSX iteration, but no
           // transform supports it. Babel and TypeScript error when they
@@ -426,7 +406,7 @@ impl JsxPrecompile {
             // Case: <div><></></div>
             JSXElementChild::JSXFragment(jsx_frag) => {
               if let Some(child_expr) =
-                self.serialize_jsx_children_to_expr(&jsx_frag.children, None)
+                self.serialize_jsx_children_to_expr(&jsx_frag.children)
               {
                 match child_expr {
                   Expr::Array(array_lit) => {
@@ -487,11 +467,6 @@ impl JsxPrecompile {
         let combined = format!("{}:{}", ns, name);
         string_lit_expr(combined)
       }
-    };
-
-    let name_str: Option<String> = match &name_expr {
-      Expr::Ident(ident) => Some(ident.sym.to_string()),
-      _ => None,
     };
 
     let mut args: Vec<ExprOrSpread> = vec![];
@@ -588,8 +563,7 @@ impl JsxPrecompile {
       }
 
       // Add children as a "children" prop.
-      let child_expr =
-        self.serialize_jsx_children_to_expr(&el.children, name_str.as_deref());
+      let child_expr = self.serialize_jsx_children_to_expr(&el.children);
 
       if let Some(expr) = child_expr {
         let children_name = PropName::Ident(quote_ident!("children"));
@@ -1044,7 +1018,7 @@ impl VisitMut for JsxPrecompile {
             // Case: <><></></>
             JSXElementChild::JSXFragment(jsx_frag) => {
               let serialized =
-                self.serialize_jsx_children_to_expr(&jsx_frag.children, None);
+                self.serialize_jsx_children_to_expr(&jsx_frag.children);
               if let Some(serialized_expr) = serialized {
                 *expr = serialized_expr
               }
@@ -1732,11 +1706,7 @@ const a = _jsx(a.b.c.d, {
   #[test]
   fn import_source_option_test() {
     test_transform(
-      JsxPrecompile::new(
-        "foobar".to_string(),
-        false,
-        Some(vec!["Head".to_string()]),
-      ),
+      JsxPrecompile::new("foobar".to_string(), false),
       r#"const a = <div>foo</div>;"#,
       r#"import { jsxssr as _jsxssr } from "foobar/jsx-runtime";
 const $$_tpl_1 = [
@@ -1747,27 +1717,9 @@ const a = _jsxssr($$_tpl_1);"#,
   }
 
   #[test]
-  fn skip_component_child_serialization_option_test() {
-    test_transform(
-      JsxPrecompile::new(
-        "react".to_string(),
-        false,
-        Some(vec!["Head".to_string()]),
-      ),
-      r#"const a = <Head><title>foo</title></Head>;"#,
-      r#"import { jsx as _jsx } from "react/jsx-runtime";
-const a = _jsx(Head, {
-  children: _jsx("title", {
-    children: "foo"
-  })
-});"#,
-    );
-  }
-
-  #[test]
   fn development_option_test() {
     test_transform(
-      JsxPrecompile::new("react".to_string(), true, None),
+      JsxPrecompile::new("react".to_string(), true),
       r#"const a = <Foo>foo</Foo>;"#,
       r#"import { jsxDEV as _jsxDEV } from "react/jsx-dev-runtime";
 const a = _jsxDEV(Foo, {
