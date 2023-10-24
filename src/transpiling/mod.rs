@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use swc_ecma_visit::as_folder;
 
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
@@ -32,6 +33,7 @@ use crate::ParsedSource;
 
 use std::cell::RefCell;
 
+mod jsx_precompile;
 mod transforms;
 
 #[derive(Debug, Clone, Hash)]
@@ -80,6 +82,10 @@ pub struct EmitOptions {
   pub source_map: bool,
   /// Should JSX be transformed. Defaults to `true`.
   pub transform_jsx: bool,
+  /// Should JSX be precompiled into static strings that need to be concatenated
+  /// with dynamic content. Defaults to `false`, mutually exclusive with
+  /// `transform_jsx`.
+  pub precompile_jsx: bool,
   /// Should import declarations be transformed to variable declarations using
   /// a dynamic import. This is useful for import & export declaration support
   /// in script contexts such as the Deno REPL.  Defaults to `false`.
@@ -100,6 +106,7 @@ impl Default for EmitOptions {
       jsx_fragment_factory: "React.Fragment".into(),
       jsx_import_source: None,
       transform_jsx: true,
+      precompile_jsx: false,
       var_decl_imports: false,
     }
   }
@@ -308,6 +315,15 @@ pub fn fold_program(
         top_level_mark
       ),
       options.transform_jsx
+    ),
+    Optional::new(
+      as_folder(jsx_precompile::JsxPrecompile::new(
+        options.jsx_import_source.clone().unwrap_or_default(),
+        options.jsx_development,
+      )),
+      options.jsx_import_source.is_some()
+        && !options.transform_jsx
+        && options.precompile_jsx
     ),
     Optional::new(
       react::react(
@@ -1106,5 +1122,68 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let input = last_line
       .trim_start_matches("//# sourceMappingURL=data:application/json;base64,");
     base64::decode(input).unwrap();
+  }
+
+  #[test]
+  fn test_precompile_jsx() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source =
+      r#"const a = <Foo><span>hello</span>foo<Bar><p>asdf</p></Bar></Foo>;"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let mut options = EmitOptions {
+      transform_jsx: false,
+      precompile_jsx: true,
+      jsx_import_source: Some("react".to_string()),
+      ..Default::default()
+    };
+    let code = module.transpile(&options).unwrap().text;
+    let expected1 = r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<span>hello</span>"
+];
+const $$_tpl_2 = [
+  "<p>asdf</p>"
+];
+const a = _jsx(Foo, {
+  children: [
+    _jsxssr($$_tpl_1),
+    "foo",
+    _jsx(Bar, {
+      children: _jsxssr($$_tpl_2)
+    })
+  ]
+});
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
+    assert_eq!(&code[0..expected1.len()], expected1);
+
+    options.jsx_development = true;
+    let code = module.transpile(&options).unwrap().text;
+    let expected2 = r#"import { jsxDEV as _jsxDEV, jsxssr as _jsxssr } from "react/jsx-dev-runtime";
+const $$_tpl_1 = [
+  "<span>hello</span>"
+];
+const $$_tpl_2 = [
+  "<p>asdf</p>"
+];
+const a = _jsxDEV(Foo, {
+  children: [
+    _jsxssr($$_tpl_1),
+    "foo",
+    _jsxDEV(Bar, {
+      children: _jsxssr($$_tpl_2)
+    })
+  ]
+});
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
+    assert_eq!(&code[0..expected2.len()], expected2);
   }
 }
