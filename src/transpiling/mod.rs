@@ -1121,10 +1121,12 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       scope_analysis: false,
     })
     .unwrap();
-    let mut options = EmitOptions::default();
-    options.transform_jsx = false;
-    options.precompile_jsx = true;
-    options.jsx_import_source = Some("react".to_string());
+    let mut options = EmitOptions {
+      transform_jsx: false,
+      precompile_jsx: true,
+      jsx_import_source: Some("react".to_string()),
+      ..Default::default()
+    };
     let code = module.transpile(&options).unwrap().text;
     let expected1 = r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
