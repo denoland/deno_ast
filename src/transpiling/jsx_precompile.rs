@@ -230,6 +230,29 @@ fn get_attr_name(jsx_attr: &JSXAttr, is_component: bool) -> String {
   }
 }
 
+fn normalize_lit_str(lit: &Lit) -> Lit {
+  match lit {
+    Lit::Str(lit_str) => {
+      let value: &str = &lit_str.value;
+      let mut replaced = "".to_string();
+
+      for (i, line) in value.lines().enumerate() {
+        if i > 0 {
+          replaced.push(' ');
+        }
+        replaced.push_str(line.trim_start());
+      }
+
+      Lit::Str(Str {
+        span: lit_str.span,
+        value: replaced.into(),
+        raw: None,
+      })
+    }
+    _ => lit.clone(),
+  }
+}
+
 /// Convert a JSXMemberExpr to MemberExpr. We offload this to a
 /// function because conversion is recursive.
 fn jsx_member_expr_to_normal(jsx_member_expr: &JSXMemberExpr) -> MemberExpr {
@@ -515,7 +538,10 @@ impl JsxPrecompile {
 
             if attr_name == "key" {
               key_value = match attr_value {
-                JSXAttrValue::Lit(lit) => Some(Expr::Lit(lit.clone())),
+                JSXAttrValue::Lit(lit) => {
+                  let normalized_lit = normalize_lit_str(lit);
+                  Some(Expr::Lit(normalized_lit))
+                }
                 JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
                   match &jsx_expr_container.expr {
                     // This is treated as a syntax error in attributes
@@ -537,10 +563,12 @@ impl JsxPrecompile {
             // Case: <Foo class={null}>
             match attr_value {
               JSXAttrValue::Lit(lit) => {
+                let normalized_lit = normalize_lit_str(lit);
+
                 props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
                   KeyValueProp {
                     key: prop_name,
-                    value: Box::new(Expr::Lit(lit.clone())),
+                    value: Box::new(Expr::Lit(normalized_lit)),
                   },
                 ))));
               }
@@ -1768,6 +1796,24 @@ const $$_tpl_1 = [
 _jsxssr($$_tpl_1, _jsx(Foo, {
   children: _jsxssr($$_tpl_2)
 }));"#,
+    );
+  }
+
+  #[test]
+  fn multi_jsx_string_line_to_jsx_call_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <Foo
+key="Register a module with the third party
+      registry."
+description="Register a module with the third party
+      registry."
+/>
+      "#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  description: "Register a module with the third party registry."
+}, "Register a module with the third party registry.");"#,
     );
   }
 
