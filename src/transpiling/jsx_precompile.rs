@@ -273,9 +273,9 @@ fn jsx_text_to_str(jsx_text: &JSXText) -> String {
 
     if i > 0 && !text.is_empty() {
       text.push(' ')
-    } else {
-      text.push_str(&line);
     }
+
+    text.push_str(&line);
   }
 
   text
@@ -1506,6 +1506,19 @@ const a = _jsxssr($$_tpl_1);"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
   "<p>foo</p>"
+];
+const a = _jsxssr($$_tpl_1);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <p>
+      foo
+      bar
+</p>;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<p>foo bar</p>"
 ];
 const a = _jsxssr($$_tpl_1);"#,
     );
