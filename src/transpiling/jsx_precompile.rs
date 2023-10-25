@@ -233,7 +233,7 @@ fn get_attr_name(jsx_attr: &JSXAttr, is_component: bool) -> String {
 fn normalize_lit_str(lit: &Lit) -> Lit {
   match lit {
     Lit::Str(lit_str) => {
-      let value = lit_str.value.to_string();
+      let value: &str = &lit_str.value;
       let mut replaced = "".to_string();
 
       for (i, line) in value.lines().enumerate() {
