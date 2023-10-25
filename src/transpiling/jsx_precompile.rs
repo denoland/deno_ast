@@ -261,7 +261,7 @@ fn jsx_text_to_str(jsx_text: &JSXText) -> String {
   while let Some((i, line)) = lines.next() {
     let line = if i != 0 {
       line.trim_start_matches(' ')
-    } else if !lines.peek().is_none() {
+    } else if lines.peek().is_some() {
       line.trim_end_matches(' ')
     } else {
       line
@@ -275,7 +275,7 @@ fn jsx_text_to_str(jsx_text: &JSXText) -> String {
       text.push(' ')
     }
 
-    text.push_str(&line);
+    text.push_str(line);
   }
 
   text
@@ -444,7 +444,7 @@ impl JsxPrecompile {
           match child {
             // Case: <div>foo</div>
             JSXElementChild::JSXText(jsx_text) => {
-              let text = jsx_text_to_str(&jsx_text);
+              let text = jsx_text_to_str(jsx_text);
 
               // Text nodes which only contain whitespace can be ignored
               if text.is_empty() {
@@ -736,7 +736,7 @@ impl JsxPrecompile {
       match child {
         // Case: <div>foo</div>
         JSXElementChild::JSXText(jsx_text) => {
-          let text = jsx_text_to_str(&jsx_text);
+          let text = jsx_text_to_str(jsx_text);
 
           // Text nodes which only contain whitespace can be ignored
           if text.is_empty() {
