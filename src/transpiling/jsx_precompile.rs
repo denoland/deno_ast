@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::swc::parser::lexer::util::CharExt;
 use swc_common::DUMMY_SP;
 use swc_ecma_ast::*;
 use swc_ecma_utils::prepend_stmt;
@@ -306,6 +307,18 @@ fn is_serializable(opening: &JSXOpeningElement) -> bool {
   }
 }
 
+fn is_text_valid_identifier(string_value: &str) -> bool {
+  if string_value.is_empty() {
+    return false;
+  }
+  for (i, c) in string_value.chars().enumerate() {
+    if (i == 0 && !c.is_ident_start()) || !c.is_ident_part() {
+      return false;
+    }
+  }
+  true
+}
+
 fn string_lit_expr(str: String) -> Expr {
   Expr::Lit(Lit::Str(Str {
     span: DUMMY_SP,
@@ -520,7 +533,15 @@ impl JsxPrecompile {
         match attr {
           JSXAttrOrSpread::JSXAttr(jsx_attr) => {
             let attr_name = get_attr_name(jsx_attr, is_component);
-            let prop_name = PropName::Ident(quote_ident!(attr_name.clone()));
+            let prop_name = if !is_text_valid_identifier(&attr_name) {
+              PropName::Str(Str {
+                span: DUMMY_SP,
+                raw: None,
+                value: attr_name.clone().into(),
+              })
+            } else {
+              PropName::Ident(quote_ident!(attr_name.clone()))
+            };
 
             // Case: <Foo required />
             let Some(attr_value) = &jsx_attr.value else {
@@ -1181,6 +1202,11 @@ const a = _jsxssr($$_tpl_1);"#,
         .as_str(),
       );
 
+      let quoted = if mapping.1.contains('-') || mapping.1.contains(':') {
+        format!("\"{}\"", &mapping.1)
+      } else {
+        mapping.1.clone()
+      };
       // should still be normalized if HTML element cannot
       // be serialized
       test_transform(
@@ -1189,7 +1215,7 @@ const a = _jsxssr($$_tpl_1);"#,
           .as_str(),
         format!(
           "{}\nconst a = _jsx(\"label\", {{\n  {}: \"foo\",\n  ...foo\n}});",
-          "import { jsx as _jsx } from \"react/jsx-runtime\";", &mapping.1
+          "import { jsx as _jsx } from \"react/jsx-runtime\";", quoted
         )
         .as_str(),
       );
@@ -1282,6 +1308,19 @@ const a = _jsx("div", {
   ...props,
   bar: "2",
   children: "foo"
+});"#,
+    );
+  }
+
+  #[test]
+  fn non_identiifer_attr_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <Foo aria-label="bar" {...props} />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  "aria-label": "bar",
+  ...props
 });"#,
     );
   }
