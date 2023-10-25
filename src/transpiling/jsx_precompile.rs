@@ -254,6 +254,33 @@ fn normalize_lit_str(lit: &Lit) -> Lit {
   }
 }
 
+fn jsx_text_to_str(jsx_text: &JSXText) -> String {
+  let mut text = String::new();
+
+  let mut lines = jsx_text.value.lines().enumerate().peekable();
+  while let Some((i, line)) = lines.next() {
+    let line = if i != 0 {
+      line.trim_start_matches(' ')
+    } else if lines.peek().is_some() {
+      line.trim_end_matches(' ')
+    } else {
+      line
+    };
+
+    if line.is_empty() {
+      continue;
+    }
+
+    if i > 0 && !text.is_empty() {
+      text.push(' ')
+    }
+
+    text.push_str(line);
+  }
+
+  text
+}
+
 /// Convert a JSXMemberExpr to MemberExpr. We offload this to a
 /// function because conversion is recursive.
 fn jsx_member_expr_to_normal(jsx_member_expr: &JSXMemberExpr) -> MemberExpr {
@@ -417,9 +444,16 @@ impl JsxPrecompile {
           match child {
             // Case: <div>foo</div>
             JSXElementChild::JSXText(jsx_text) => {
+              let text = jsx_text_to_str(jsx_text);
+
+              // Text nodes which only contain whitespace can be ignored
+              if text.is_empty() {
+                continue;
+              }
+
               elems.push(Some(ExprOrSpread {
                 spread: None,
-                expr: Box::new(string_lit_expr(jsx_text.value.to_string())),
+                expr: Box::new(string_lit_expr(text)),
               }));
             }
             // Case: <div>{2 + 2}</div>
@@ -469,6 +503,15 @@ impl JsxPrecompile {
             // transform supports it. Babel and TypeScript error when they
             // encounter this.
             JSXElementChild::JSXSpreadChild(_) => {}
+          }
+        }
+
+        // Flatten to a single child call when children
+        // array only contains one element
+        if elems.len() == 1 {
+          if let Some(first) = &elems[0] {
+            let expr = &*first.expr;
+            return Some(expr.clone());
           }
         }
 
@@ -693,7 +736,14 @@ impl JsxPrecompile {
       match child {
         // Case: <div>foo</div>
         JSXElementChild::JSXText(jsx_text) => {
-          let escaped_text = escape_html(jsx_text.value.as_ref());
+          let text = jsx_text_to_str(jsx_text);
+
+          // Text nodes which only contain whitespace can be ignored
+          if text.is_empty() {
+            continue;
+          }
+
+          let escaped_text = escape_html(text.as_ref());
           strings.last_mut().unwrap().push_str(escaped_text.as_str());
         }
         // Case: <div>{2 + 2}</div>
@@ -1443,6 +1493,60 @@ const $$_tpl_1 = [
   "<p></p>"
 ];
 const a = _jsxssr($$_tpl_1);"#,
+    );
+  }
+
+  #[test]
+  fn empty_jsx_text_children_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <p>
+      foo
+</p>;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<p>foo</p>"
+];
+const a = _jsxssr($$_tpl_1);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <p>
+      foo
+      bar
+</p>;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<p>foo bar</p>"
+];
+const a = _jsxssr($$_tpl_1);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <p>
+  <span />
+</p>;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<p><span></span></p>"
+];
+const a = _jsxssr($$_tpl_1);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <Foo>
+  <span />
+</Foo>;"#,
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<span></span>"
+];
+const a = _jsx(Foo, {
+  children: _jsxssr($$_tpl_1)
+});"#,
     );
   }
 
