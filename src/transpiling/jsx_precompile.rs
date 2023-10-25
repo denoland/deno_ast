@@ -868,6 +868,7 @@ impl JsxPrecompile {
       // These are now safe to be serialized
       // Case: <div foo="1" />
       self.next_index += 1;
+      let index = self.next_index;
       let mut static_strs: Vec<String> = vec![];
       let mut dynamic_exprs: Vec<Expr> = vec![];
       self.serialize_jsx_element_to_string_vec(
@@ -876,7 +877,7 @@ impl JsxPrecompile {
         &mut dynamic_exprs,
       );
 
-      self.gen_template(self.next_index, static_strs, dynamic_exprs)
+      self.gen_template(index, static_strs, dynamic_exprs)
     } else {
       // Case: <div {...props} />
       Expr::Call(self.serialize_jsx_to_call_expr(el))
@@ -1039,6 +1040,7 @@ impl VisitMut for JsxPrecompile {
         }
         _ => {
           self.next_index += 1;
+          let index = self.next_index;
           let mut strings: Vec<String> = vec![];
           let mut dynamic_exprs: Vec<Expr> = vec![];
 
@@ -1049,7 +1051,7 @@ impl VisitMut for JsxPrecompile {
             &mut strings,
             &mut dynamic_exprs,
           );
-          *expr = self.gen_template(self.next_index, strings, dynamic_exprs)
+          *expr = self.gen_template(index, strings, dynamic_exprs)
         }
       }
     }
@@ -1747,6 +1749,25 @@ const a = _jsxssr($$_tpl_1);"#,
 const a = _jsxDEV(Foo, {
   children: "foo"
 });"#,
+    );
+  }
+
+  #[test]
+  fn template_index_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"<div><Foo><span /></Foo></div>;"#,
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_2 = [
+  "<span></span>"
+];
+const $$_tpl_1 = [
+  "<div>",
+  "</div>"
+];
+_jsxssr($$_tpl_1, _jsx(Foo, {
+  children: _jsxssr($$_tpl_2)
+}));"#,
     );
   }
 
