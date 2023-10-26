@@ -637,9 +637,7 @@ impl JsxPrecompile {
                 {
                   match child_expr {
                     Expr::Array(array_lit) => {
-                      for item in array_lit.elems.iter() {
-                        elems.push(item.clone());
-                      }
+                      elems.extend(array_lit.elems);
                     }
                     _ => {
                       elems.push(Some(ExprOrSpread {
