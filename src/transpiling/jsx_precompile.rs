@@ -1050,6 +1050,16 @@ impl VisitMut for JsxPrecompile {
 
   fn visit_mut_module(&mut self, module: &mut Module) {
     module.visit_mut_children_with(self);
+
+    let non_mod_stmt_idx = module
+      .body
+      .iter()
+      .position(|stmt| match stmt {
+        ModuleItem::ModuleDecl(_) => false,
+        ModuleItem::Stmt(_) => true,
+      })
+      .unwrap_or(0);
+
     for (idx, strings) in self.templates.iter().rev() {
       let elems: Vec<Option<ExprOrSpread>> = strings
         .iter()
@@ -1065,8 +1075,8 @@ impl VisitMut for JsxPrecompile {
         })
         .collect();
 
-      prepend_stmt(
-        &mut module.body,
+      module.body.insert(
+        non_mod_stmt_idx,
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(VarDecl {
           span: DUMMY_SP,
           kind: VarDeclKind::Const,
@@ -1969,6 +1979,23 @@ description="Register a module with the third party
 const a = _jsx(Foo, {
   description: "Register a module with the third party registry."
 }, "Register a module with the third party registry.");"#,
+    );
+  }
+
+  #[test]
+  fn insert_tpl_after_imports_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"import Foo from "./foo.ts";
+import Bar from "./bar.ts";
+const a = <div />"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+import Foo from "./foo.ts";
+import Bar from "./bar.ts";
+const $$_tpl_1 = [
+  "<div></div>"
+];
+const a = _jsxssr($$_tpl_1);"#,
     );
   }
 
