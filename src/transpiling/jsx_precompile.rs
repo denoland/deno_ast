@@ -891,20 +891,18 @@ impl JsxPrecompile {
 
                   // Serialize numeric literal values
                   // Case: <img width={100} />
-                  if let Expr::Lit(lit) = &expr {
-                    if let Lit::Num(num) = lit {
-                      let serialized_attr = format!(
-                        " {}=\"{}\"",
-                        escape_html(&attr_name).as_str(),
-                        &num.value
-                      );
+                  if let Expr::Lit(Lit::Num(num)) = &expr {
+                    let serialized_attr = format!(
+                      " {}=\"{}\"",
+                      escape_html(&attr_name).as_str(),
+                      &num.value
+                    );
 
-                      strings
-                        .last_mut()
-                        .unwrap()
-                        .push_str(serialized_attr.as_str());
-                      continue;
-                    }
+                    strings
+                      .last_mut()
+                      .unwrap()
+                      .push_str(serialized_attr.as_str());
+                    continue;
                   }
 
                   strings.last_mut().unwrap().push(' ');
