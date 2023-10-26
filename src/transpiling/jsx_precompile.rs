@@ -1222,14 +1222,10 @@ impl VisitMut for JsxPrecompile {
       .body
       .iter()
       .position(|stmt| match stmt {
-        ModuleItem::ModuleDecl(mod_dec) => match mod_dec {
-          ModuleDecl::ExportDecl(_) => true,
-          _ => false,
-        },
-        ModuleItem::Stmt(stmt) => match stmt {
-          Stmt::Empty(_) => false,
-          _ => true,
-        },
+        ModuleItem::ModuleDecl(mod_dec) => {
+          matches!(mod_dec, ModuleDecl::ExportDecl(_))
+        }
+        ModuleItem::Stmt(stmt) => !matches!(stmt, Stmt::Empty(_)),
       })
       .unwrap_or(0);
 
