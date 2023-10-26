@@ -400,7 +400,9 @@ fn merge_serializable_children(
           JSXExpr::Expr(expr) => {
             if let Expr::Lit(lit) = *expr.clone() {
               match lit {
-                // Booleans are not rendered
+                // Booleans are not rendered because people usually use
+                // them for conditional rendering.
+                // Case <div>{foo && <span />}</div>
                 Lit::Bool(_) => continue,
                 // Can be flattened
                 Lit::Num(num) => {
