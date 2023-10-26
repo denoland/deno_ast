@@ -205,6 +205,37 @@ fn is_void_element(name: &str) -> bool {
   )
 }
 
+// See: https://html.spec.whatwg.org/multipage/indices.html#attributes-3
+fn is_boolean_attr(name: &str) -> bool {
+  matches!(
+    name,
+    "allowfullscreen"
+      | "async"
+      | "autofocus"
+      | "autoplay"
+      | "checked"
+      | "controls"
+      | "default"
+      | "defer"
+      | "disabled"
+      | "formnovalidate"
+      | "inert"
+      | "ismap"
+      | "itemscope"
+      | "loop"
+      | "multiple"
+      | "muted"
+      | "nomodule"
+      | "novalidate"
+      | "open"
+      | "playsinline"
+      | "readonly"
+      | "required"
+      | "reversed"
+      | "selected"
+  )
+}
+
 fn null_arg() -> ExprOrSpread {
   ExprOrSpread {
     spread: None,
@@ -1031,6 +1062,17 @@ impl JsxPrecompile {
                   // Case: <img width={100} />
                   if let Expr::Lit(lit) = &expr {
                     match lit {
+                      Lit::Bool(lit_bool) => {
+                        if is_boolean_attr(&attr_name) {
+                          if !lit_bool.value {
+                            continue;
+                          }
+
+                          strings.last_mut().unwrap().push(' ');
+                          strings.last_mut().unwrap().push_str(&attr_name);
+                          continue;
+                        }
+                      }
                       Lit::Num(num) => {
                         let serialized_attr =
                           serialize_attr(&attr_name, &num.value.to_string());
@@ -1058,9 +1100,19 @@ impl JsxPrecompile {
                   strings.last_mut().unwrap().push(' ');
                   strings.push("".to_string());
 
-                  let call_expr =
-                    self.convert_to_jsx_attr_call(attr_name.into(), expr);
-                  dynamic_exprs.push(Expr::Call(call_expr));
+                  if is_boolean_attr(&attr_name) {
+                    let cond_expr = Expr::Cond(CondExpr {
+                      span: DUMMY_SP,
+                      test: Box::new(expr),
+                      cons: Box::new(string_lit_expr(attr_name.into())),
+                      alt: Box::new(string_lit_expr("".into())),
+                    });
+                    dynamic_exprs.push(cond_expr)
+                  } else {
+                    let call_expr =
+                      self.convert_to_jsx_attr_call(attr_name.into(), expr);
+                    dynamic_exprs.push(Expr::Call(call_expr));
+                  }
                 }
               }
             }
@@ -1480,13 +1532,13 @@ const a = _jsxssr($$_tpl_1);"#,
 
     test_transform(
       JsxPrecompile::default(),
-      r#"const a = <input type="checkbox" checked={false} />;"#,
-      r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
+      r#"const a = <input type="checkbox" checked={false} required={true} selected={foo} />;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  '<input type="checkbox" ',
+  '<input type="checkbox" required ',
   ">"
 ];
-const a = _jsxssr($$_tpl_1, _jsxattr("checked", false));"#,
+const a = _jsxssr($$_tpl_1, foo ? "selected" : "");"#,
     );
   }
 
