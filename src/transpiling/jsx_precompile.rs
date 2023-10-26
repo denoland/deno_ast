@@ -883,16 +883,35 @@ impl JsxPrecompile {
               Lit::JSXText(_) => {}
             },
             JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
-              strings.last_mut().unwrap().push(' ');
-              strings.push("".to_string());
               match &jsx_expr_container.expr {
                 // This is treated as a syntax error in attributes
                 JSXExpr::JSXEmptyExpr(_) => {}
-                JSXExpr::Expr(expr) => {
-                  let call_expr = self.convert_to_jsx_attr_call(
-                    attr_name.to_string(),
-                    *expr.clone(),
-                  );
+                JSXExpr::Expr(jsx_expr) => {
+                  let expr = *jsx_expr.clone();
+
+                  // Serialize numeric literal values
+                  // Case: <img width={100} />
+                  if let Expr::Lit(lit) = &expr {
+                    if let Lit::Num(num) = lit {
+                      let serialized_attr = format!(
+                        " {}=\"{}\"",
+                        escape_html(&attr_name).as_str(),
+                        &num.value
+                      );
+
+                      strings
+                        .last_mut()
+                        .unwrap()
+                        .push_str(serialized_attr.as_str());
+                      continue;
+                    }
+                  }
+
+                  strings.last_mut().unwrap().push(' ');
+                  strings.push("".to_string());
+
+                  let call_expr =
+                    self.convert_to_jsx_attr_call(attr_name.to_string(), expr);
                   dynamic_exprs.push(Expr::Call(call_expr));
                 }
               }
@@ -1325,13 +1344,13 @@ const a = _jsxssr($$_tpl_1, _jsxattr("checked", false));"#,
   fn dynamic_attr_test() {
     test_transform(
       JsxPrecompile::default(),
-      r#"const a = <div class="foo" bar={2}></div>;"#,
+      r#"const a = <div class="foo" bar={2 + 2}></div>;"#,
       r#"import { jsxssr as _jsxssr, jsxattr as _jsxattr } from "react/jsx-runtime";
 const $$_tpl_1 = [
   '<div class="foo" ',
   "></div>"
 ];
-const a = _jsxssr($$_tpl_1, _jsxattr("bar", 2));"#,
+const a = _jsxssr($$_tpl_1, _jsxattr("bar", 2 + 2));"#,
     );
   }
 
@@ -1452,6 +1471,19 @@ const $$_tpl_1 = [
   ">foo</div>"
 ];
 const a = _jsxssr($$_tpl_1, _jsxattr("ref", "foo"));"#,
+    );
+  }
+
+  #[test]
+  fn serialize_lit_attr_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <img width={100} />;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  '<img width="100">'
+];
+const a = _jsxssr($$_tpl_1);"#,
     );
   }
 
