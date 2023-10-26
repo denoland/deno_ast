@@ -369,7 +369,7 @@ fn serialize_attr(attr_name: &str, value: &str) -> String {
 }
 
 fn merge_serializable_children(
-  children: &Vec<JSXElementChild>,
+  children: &[JSXElementChild],
 ) -> (Vec<JSXElementChild>, usize, usize) {
   // Do a first pass over children to merge sibling text nodes
   // and check if it contains any serializable nodes.
@@ -381,7 +381,7 @@ fn merge_serializable_children(
   for child in children.iter() {
     match child {
       JSXElementChild::JSXText(jsx_text) => {
-        let text = jsx_text_to_str(&jsx_text);
+        let text = jsx_text_to_str(jsx_text);
         if text.is_empty() {
           continue;
         }
@@ -880,7 +880,7 @@ impl JsxPrecompile {
 
   fn serialize_jsx_children_to_string(
     &mut self,
-    children: &Vec<JSXElementChild>,
+    children: &[JSXElementChild],
     strings: &mut Vec<String>,
     dynamic_exprs: &mut Vec<Expr>,
   ) {
