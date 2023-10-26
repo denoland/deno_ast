@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::swc::atoms::Atom;
 use crate::swc::parser::lexer::util::CharExt;
 use swc_common::DUMMY_SP;
 use swc_ecma_ast::*;
@@ -346,10 +347,10 @@ fn is_text_valid_identifier(string_value: &str) -> bool {
   true
 }
 
-fn string_lit_expr(str: String) -> Expr {
+fn string_lit_expr(value: Atom) -> Expr {
   Expr::Lit(Lit::Str(Str {
     span: DUMMY_SP,
-    value: str.into(),
+    value,
     raw: None,
   }))
 }
@@ -365,6 +366,123 @@ fn escape_html(str: &str) -> String {
 
 fn serialize_attr(attr_name: &str, value: &str) -> String {
   format!(" {}=\"{}\"", escape_html(attr_name), escape_html(value))
+}
+
+fn merge_serializable_children(
+  children: &[JSXElementChild],
+) -> (Vec<JSXElementChild>, usize, usize) {
+  // Do a first pass over children to merge sibling text nodes
+  // and check if it contains any serializable nodes.
+  let mut text_count = 0;
+  let mut serializable_count = 0;
+  let mut buf = String::new();
+
+  let mut normalized_children: Vec<JSXElementChild> = vec![];
+  for child in children.iter() {
+    match child {
+      JSXElementChild::JSXText(jsx_text) => {
+        let text = jsx_text_to_str(jsx_text);
+        if text.is_empty() {
+          continue;
+        }
+        text_count += 1;
+
+        buf.push_str(&text);
+      }
+      JSXElementChild::JSXExprContainer(jsx_expr_container) => {
+        match &jsx_expr_container.expr {
+          // Empty JSX expressions can be ignored as they have no content
+          // Case: <div>{}</div>
+          // Case: <div>{/* fooo */}</div>
+          JSXExpr::JSXEmptyExpr(_) => {}
+          // Case: <div>{"foo"}</div>
+          // Case: <div>{2 + 2}</div>
+          JSXExpr::Expr(expr) => {
+            if let Expr::Lit(lit) = &**expr {
+              match lit {
+                // Booleans are not rendered because people usually use
+                // them for conditional rendering.
+                // Case <div>{foo && <span />}</div>
+                Lit::Bool(_) => continue,
+                // Can be flattened
+                Lit::Num(num) => {
+                  let text = num.to_string();
+                  buf.push_str(&text);
+                  continue;
+                }
+                // Can be flattened
+                Lit::Str(str_lit) => {
+                  buf.push_str(str_lit.value.as_ref());
+                  continue;
+                }
+                _ => {}
+              }
+            }
+
+            if !buf.is_empty() {
+              let atom = Atom::new(buf);
+              normalized_children.push(JSXElementChild::JSXText(JSXText {
+                span: DUMMY_SP,
+                value: atom.clone(),
+                raw: atom,
+              }));
+
+              buf = String::new()
+            }
+
+            normalized_children.push(child.clone());
+          }
+        }
+      }
+      JSXElementChild::JSXElement(jsx_el) => {
+        if !buf.is_empty() {
+          let atom = Atom::new(buf);
+          normalized_children.push(JSXElementChild::JSXText(JSXText {
+            span: DUMMY_SP,
+            value: atom.clone(),
+            raw: atom,
+          }));
+
+          buf = String::new()
+        }
+
+        if is_serializable(&jsx_el.opening) {
+          serializable_count += 1;
+        }
+
+        normalized_children.push(JSXElementChild::JSXElement(jsx_el.clone()));
+      }
+      // Invalid, was part of an earlier JSX iteration, but no
+      // transform supports it. Babel and TypeScript error when they
+      // encounter this.
+      JSXElementChild::JSXSpreadChild(_) => {}
+      child => {
+        if !buf.is_empty() {
+          let atom = Atom::new(buf);
+          normalized_children.push(JSXElementChild::JSXText(JSXText {
+            span: DUMMY_SP,
+            value: atom.clone(),
+            raw: atom,
+          }));
+
+          buf = String::new()
+        }
+
+        normalized_children.push(child.clone());
+      }
+    }
+  }
+
+  if !buf.is_empty() {
+    let atom = Atom::new(buf);
+    normalized_children.push(JSXElementChild::JSXText(JSXText {
+      span: DUMMY_SP,
+      value: atom.clone(),
+      raw: atom,
+    }));
+  }
+
+  (normalized_children, text_count, serializable_count)
 }
 
 impl JsxPrecompile {
@@ -418,7 +536,7 @@ impl JsxPrecompile {
         match child {
           JSXElementChild::JSXText(jsx_text) => {
             let text = jsx_text_to_str(jsx_text);
-            Some(string_lit_expr(text))
+            Some(string_lit_expr(text.into()))
           }
           JSXElementChild::JSXExprContainer(jsx_expr_container) => {
             match &jsx_expr_container.expr {
@@ -444,70 +562,93 @@ impl JsxPrecompile {
         }
       }
       _ => {
+        let (normalized_children, text_count, serializable_count) =
+          merge_serializable_children(children);
+
+        // Merge sibling children when they can be serialized into one
+        // serialized child. If all children are serializable, we'll
+        // merge everything into one big jsxssr() call. If everything
+        // can be merged into a single string, then we'll go with that.
+        // First flattend sibling children if possible
         let mut elems: Vec<Option<ExprOrSpread>> = vec![];
-        for child in children.iter() {
-          match child {
-            // Case: <div>foo</div>
-            JSXElementChild::JSXText(jsx_text) => {
-              let text = jsx_text_to_str(jsx_text);
 
-              // Text nodes which only contain whitespace can be ignored
-              if text.is_empty() {
-                continue;
+        // Determine whether we should wrap children with a template
+        // Case: <Foo>foo<span /></Foo>
+        // Case: <Foo>foo<Bar /><span /></Foo>
+        // Case: <Foo><span /><Bar /><span /></Foo>
+        if serializable_count > 1 || serializable_count == 1 && text_count > 0 {
+          self.next_index += 1;
+          let index = self.next_index;
+          let mut strings: Vec<String> = vec![];
+          let mut dynamic_exprs: Vec<Expr> = vec![];
+          strings.push("".to_string());
+
+          self.serialize_jsx_children_to_string(
+            &normalized_children,
+            &mut strings,
+            &mut dynamic_exprs,
+          );
+
+          let expr = self.gen_template(index, strings, dynamic_exprs);
+          elems.push(Some(ExprOrSpread {
+            spread: None,
+            expr: Box::new(expr.clone()),
+          }));
+        } else {
+          // Here we parse children the normal way
+
+          for child in normalized_children {
+            match child {
+              // Case: <div>foo</div>
+              JSXElementChild::JSXText(jsx_text) => {
+                elems.push(Some(ExprOrSpread {
+                  spread: None,
+                  expr: Box::new(string_lit_expr(jsx_text.value)),
+                }));
               }
-
-              elems.push(Some(ExprOrSpread {
-                spread: None,
-                expr: Box::new(string_lit_expr(text)),
-              }));
-            }
-            // Case: <div>{2 + 2}</div>
-            JSXElementChild::JSXExprContainer(jsx_expr_container) => {
-              match &jsx_expr_container.expr {
-                // Empty JSX expressions can be ignored as they have no content
-                // Case: <div>{}</div>
-                // Case: <div>{/* some comment */}</div>
-                JSXExpr::JSXEmptyExpr(_) => continue,
-                JSXExpr::Expr(expr) => {
-                  elems.push(Some(ExprOrSpread {
-                    spread: None,
-                    expr: expr.clone(),
-                  }));
+              // Case: <div>{2 + 2}</div>
+              JSXElementChild::JSXExprContainer(jsx_expr_container) => {
+                match jsx_expr_container.expr {
+                  // Empty JSX expressions can be ignored as they have no content
+                  // Case: <div>{}</div>
+                  // Case: <div>{/* some comment */}</div>
+                  JSXExpr::JSXEmptyExpr(_) => continue,
+                  JSXExpr::Expr(expr) => {
+                    elems.push(Some(ExprOrSpread { spread: None, expr }));
+                  }
                 }
               }
-            }
-            // Case: <div><span /></div>
-            JSXElementChild::JSXElement(jsx_el) => {
-              let expr = self.serialize_jsx(jsx_el);
-              elems.push(Some(ExprOrSpread {
-                spread: None,
-                expr: Box::new(expr.clone()),
-              }));
-            }
-            // Case: <div><></></div>
-            JSXElementChild::JSXFragment(jsx_frag) => {
-              if let Some(child_expr) =
-                self.serialize_jsx_children_to_expr(&jsx_frag.children)
-              {
-                match child_expr {
-                  Expr::Array(array_lit) => {
-                    for item in array_lit.elems.iter() {
-                      elems.push(item.clone());
-                    }
-                  }
-                  _ => {
-                    elems.push(Some(ExprOrSpread {
-                      spread: None,
-                      expr: Box::new(child_expr.clone()),
-                    }));
-                  }
-                };
+              // Case: <div><span /></div>
+              JSXElementChild::JSXElement(jsx_el) => {
+                let expr = self.serialize_jsx(&jsx_el);
+                elems.push(Some(ExprOrSpread {
+                  spread: None,
+                  expr: Box::new(expr.clone()),
+                }));
               }
+              // Case: <div><></></div>
+              JSXElementChild::JSXFragment(jsx_frag) => {
+                if let Some(child_expr) =
+                  self.serialize_jsx_children_to_expr(&jsx_frag.children)
+                {
+                  match child_expr {
+                    Expr::Array(array_lit) => {
+                      elems.extend(array_lit.elems);
+                    }
+                    _ => {
+                      elems.push(Some(ExprOrSpread {
+                        spread: None,
+                        expr: Box::new(child_expr.clone()),
+                      }));
+                    }
+                  };
+                }
+              }
+              // Invalid, was part of an earlier JSX iteration, but no
+              // transform supports it. Babel and TypeScript error when they
+              // encounter this.
+              JSXElementChild::JSXSpreadChild(_) => {}
             }
-            // Invalid, was part of an earlier JSX iteration, but no
-            // transform supports it. Babel and TypeScript error when they
-            // encounter this.
-            JSXElementChild::JSXSpreadChild(_) => {}
           }
         }
 
@@ -546,7 +687,7 @@ impl JsxPrecompile {
           is_component = true;
           Expr::Ident(ident.clone())
         } else {
-          string_lit_expr(name.to_string())
+          string_lit_expr(name.clone())
         }
       }
       // Case: <ctx.Provider />
@@ -557,7 +698,7 @@ impl JsxPrecompile {
         let ns = namespace_name.ns.sym.to_string();
         let name = namespace_name.name.sym.to_string();
         let combined = format!("{}:{}", ns, name);
-        string_lit_expr(combined)
+        string_lit_expr(combined.into())
       }
     };
 
@@ -709,7 +850,7 @@ impl JsxPrecompile {
     }
   }
 
-  fn convert_to_jsx_attr_call(&mut self, name: String, expr: Expr) -> CallExpr {
+  fn convert_to_jsx_attr_call(&mut self, name: Atom, expr: Expr) -> CallExpr {
     let args = vec![
       ExprOrSpread {
         spread: None,
@@ -737,23 +878,19 @@ impl JsxPrecompile {
     strings: &mut Vec<String>,
     dynamic_exprs: &mut Vec<Expr>,
   ) {
-    for child in children.iter() {
+    let (normalized_children, _text_count, _serializable_count) =
+      merge_serializable_children(children);
+
+    for child in normalized_children {
       match child {
         // Case: <div>foo</div>
         JSXElementChild::JSXText(jsx_text) => {
-          let text = jsx_text_to_str(jsx_text);
-
-          // Text nodes which only contain whitespace can be ignored
-          if text.is_empty() {
-            continue;
-          }
-
-          let escaped_text = escape_html(text.as_ref());
+          let escaped_text = escape_html(jsx_text.value.as_ref());
           strings.last_mut().unwrap().push_str(escaped_text.as_str());
         }
         // Case: <div>{2 + 2}</div>
         JSXElementChild::JSXExprContainer(jsx_expr_container) => {
-          match &jsx_expr_container.expr {
+          match jsx_expr_container.expr {
             // Empty JSX expressions can be ignored as they have no content
             // Case: <div>{}</div>
             // Case: <div>{/* fooo */}</div>
@@ -763,14 +900,14 @@ impl JsxPrecompile {
             // Case: <div>{() => null}</div>
             JSXExpr::Expr(expr) => {
               strings.push("".to_string());
-              dynamic_exprs.push(*expr.clone());
+              dynamic_exprs.push(*expr);
             }
           }
         }
         // Case: <div><span /></div>
         JSXElementChild::JSXElement(jsx_element) => self
           .serialize_jsx_element_to_string_vec(
-            jsx_element,
+            &jsx_element,
             strings,
             dynamic_exprs,
           ),
@@ -859,8 +996,8 @@ impl JsxPrecompile {
                   strings.last_mut().unwrap().push(' ');
                   strings.push("".to_string());
                   let expr = self.convert_to_jsx_attr_call(
-                    attr_name,
-                    string_lit_expr(string_lit.value.to_string()),
+                    attr_name.into(),
+                    string_lit_expr(string_lit.value.clone()),
                   );
                   dynamic_exprs.push(Expr::Call(expr));
                   continue;
@@ -922,7 +1059,7 @@ impl JsxPrecompile {
                   strings.push("".to_string());
 
                   let call_expr =
-                    self.convert_to_jsx_attr_call(attr_name.to_string(), expr);
+                    self.convert_to_jsx_attr_call(attr_name.into(), expr);
                   dynamic_exprs.push(Expr::Call(call_expr));
                 }
               }
@@ -1149,7 +1286,7 @@ impl VisitMut for JsxPrecompile {
           let child = &frag.children[0];
           match child {
             JSXElementChild::JSXText(jsx_text) => {
-              *expr = string_lit_expr(jsx_text.value.to_string())
+              *expr = string_lit_expr(jsx_text.value.clone())
             }
             JSXElementChild::JSXExprContainer(jsx_expr_container) => {
               match &jsx_expr_container.expr {
@@ -1839,15 +1976,11 @@ const a = _jsx(Foo, {
       r#"const a = <Foo><span>hello</span>foo<Bar />asdf</Foo>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  "<span>hello</span>"
+  "<span>hello</span>foo",
+  "asdf"
 ];
 const a = _jsx(Foo, {
-  children: [
-    _jsxssr($$_tpl_1),
-    "foo",
-    _jsx(Bar, null),
-    "asdf"
-  ]
+  children: _jsxssr($$_tpl_1, _jsx(Bar, null))
 });"#,
     );
   }
@@ -1858,20 +1991,17 @@ const a = _jsx(Foo, {
       JsxPrecompile::default(),
       r#"const a = <Foo><span>hello</span>foo<Bar><p>asdf</p></Bar></Foo>;"#,
       r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
-const $$_tpl_1 = [
-  "<span>hello</span>"
-];
 const $$_tpl_2 = [
   "<p>asdf</p>"
 ];
+const $$_tpl_1 = [
+  "<span>hello</span>foo",
+  ""
+];
 const a = _jsx(Foo, {
-  children: [
-    _jsxssr($$_tpl_1),
-    "foo",
-    _jsx(Bar, {
-      children: _jsxssr($$_tpl_2)
-    })
-  ]
+  children: _jsxssr($$_tpl_1, _jsx(Bar, {
+    children: _jsxssr($$_tpl_2)
+  }))
 });"#,
     );
   }
@@ -2049,6 +2179,52 @@ import Foo from "./foo.ts";
 import Bar from "./bar.ts";
 const $$_tpl_1 = [
   "<div></div>"
+];
+const a = _jsxssr($$_tpl_1);"#,
+    );
+  }
+
+  #[test]
+  fn merge_component_text_children_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <Foo>foo{" "}bar{' '}</Foo>"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  children: "foo bar "
+});"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <Foo>foo{2}bar{true}{false}baz</Foo>"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  children: "foo2barbaz"
+});"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <Foo>foo<div />bar{" "}</Foo>"#,
+      r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "foo<div></div>bar "
+];
+const a = _jsx(Foo, {
+  children: _jsxssr($$_tpl_1)
+});"#,
+    );
+  }
+
+  #[test]
+  fn merge_element_text_children_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div>foo{" "}bar{' '}</div>"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>foo bar </div>"
 ];
 const a = _jsxssr($$_tpl_1);"#,
     );
