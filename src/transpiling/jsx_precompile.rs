@@ -624,7 +624,7 @@ impl JsxPrecompile {
               }
               // Case: <div><span /></div>
               JSXElementChild::JSXElement(jsx_el) => {
-                let expr = self.serialize_jsx(&*jsx_el);
+                let expr = self.serialize_jsx(&jsx_el);
                 elems.push(Some(ExprOrSpread {
                   spread: None,
                   expr: Box::new(expr.clone()),
@@ -911,7 +911,7 @@ impl JsxPrecompile {
         // Case: <div><span /></div>
         JSXElementChild::JSXElement(jsx_element) => self
           .serialize_jsx_element_to_string_vec(
-            &*jsx_element,
+            &jsx_element,
             strings,
             dynamic_exprs,
           ),
