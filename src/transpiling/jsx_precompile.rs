@@ -413,7 +413,8 @@ impl JsxPrecompile {
         let child = &children[0];
         match child {
           JSXElementChild::JSXText(jsx_text) => {
-            Some(string_lit_expr(jsx_text.value.to_string()))
+            let text = jsx_text_to_str(jsx_text);
+            Some(string_lit_expr(text))
           }
           JSXElementChild::JSXExprContainer(jsx_expr_container) => {
             match &jsx_expr_container.expr {
@@ -1546,6 +1547,17 @@ const $$_tpl_1 = [
 ];
 const a = _jsx(Foo, {
   children: _jsxssr($$_tpl_1)
+});"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <Foo>
+  foo
+</Foo>;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  children: "foo"
 });"#,
     );
   }
