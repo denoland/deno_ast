@@ -1530,12 +1530,13 @@ const a = _jsxssr($$_tpl_1);"#,
 
     test_transform(
       JsxPrecompile::default(),
-      r#"const a = <input type="checkbox" checked={false} required={true} />;"#,
+      r#"const a = <input type="checkbox" checked={false} required={true} selected={foo} />;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  '<input type="checkbox" required>'
+  '<input type="checkbox" required ',
+  ">"
 ];
-const a = _jsxssr($$_tpl_1);"#,
+const a = _jsxssr($$_tpl_1, foo ? "selected" : "");"#,
     );
   }
 
