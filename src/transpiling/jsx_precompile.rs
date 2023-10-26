@@ -347,10 +347,10 @@ fn is_text_valid_identifier(string_value: &str) -> bool {
   true
 }
 
-fn string_lit_expr(str: String) -> Expr {
+fn string_lit_expr(value: Atom) -> Expr {
   Expr::Lit(Lit::Str(Str {
     span: DUMMY_SP,
-    value: str.into(),
+    value,
     raw: None,
   }))
 }
@@ -398,7 +398,7 @@ fn merge_serializable_children(
           // Case: <div>{"foo"}</div>
           // Case: <div>{2 + 2}</div>
           JSXExpr::Expr(expr) => {
-            if let Expr::Lit(lit) = *expr.clone() {
+            if let Expr::Lit(lit) = &**expr {
               match lit {
                 // Booleans are not rendered because people usually use
                 // them for conditional rendering.
@@ -412,8 +412,7 @@ fn merge_serializable_children(
                 }
                 // Can be flattened
                 Lit::Str(str_lit) => {
-                  let text = str_lit.value;
-                  buf.push_str(text.as_ref());
+                  buf.push_str(str_lit.value.as_ref());
                   continue;
                 }
                 _ => {}
@@ -537,7 +536,7 @@ impl JsxPrecompile {
         match child {
           JSXElementChild::JSXText(jsx_text) => {
             let text = jsx_text_to_str(jsx_text);
-            Some(string_lit_expr(text))
+            Some(string_lit_expr(text.into()))
           }
           JSXElementChild::JSXExprContainer(jsx_expr_container) => {
             match &jsx_expr_container.expr {
@@ -604,12 +603,12 @@ impl JsxPrecompile {
               JSXElementChild::JSXText(jsx_text) => {
                 elems.push(Some(ExprOrSpread {
                   spread: None,
-                  expr: Box::new(string_lit_expr(jsx_text.value.to_string())),
+                  expr: Box::new(string_lit_expr(jsx_text.value)),
                 }));
               }
               // Case: <div>{2 + 2}</div>
               JSXElementChild::JSXExprContainer(jsx_expr_container) => {
-                match &jsx_expr_container.expr {
+                match jsx_expr_container.expr {
                   // Empty JSX expressions can be ignored as they have no content
                   // Case: <div>{}</div>
                   // Case: <div>{/* some comment */}</div>
@@ -617,7 +616,7 @@ impl JsxPrecompile {
                   JSXExpr::Expr(expr) => {
                     elems.push(Some(ExprOrSpread {
                       spread: None,
-                      expr: expr.clone(),
+                      expr,
                     }));
                   }
                 }
@@ -691,7 +690,7 @@ impl JsxPrecompile {
           is_component = true;
           Expr::Ident(ident.clone())
         } else {
-          string_lit_expr(name.to_string())
+          string_lit_expr(name.clone())
         }
       }
       // Case: <ctx.Provider />
@@ -702,7 +701,7 @@ impl JsxPrecompile {
         let ns = namespace_name.ns.sym.to_string();
         let name = namespace_name.name.sym.to_string();
         let combined = format!("{}:{}", ns, name);
-        string_lit_expr(combined)
+        string_lit_expr(combined.into())
       }
     };
 
@@ -854,7 +853,7 @@ impl JsxPrecompile {
     }
   }
 
-  fn convert_to_jsx_attr_call(&mut self, name: String, expr: Expr) -> CallExpr {
+  fn convert_to_jsx_attr_call(&mut self, name: Atom, expr: Expr) -> CallExpr {
     let args = vec![
       ExprOrSpread {
         spread: None,
@@ -894,7 +893,7 @@ impl JsxPrecompile {
         }
         // Case: <div>{2 + 2}</div>
         JSXElementChild::JSXExprContainer(jsx_expr_container) => {
-          match &jsx_expr_container.expr {
+          match jsx_expr_container.expr {
             // Empty JSX expressions can be ignored as they have no content
             // Case: <div>{}</div>
             // Case: <div>{/* fooo */}</div>
@@ -904,7 +903,7 @@ impl JsxPrecompile {
             // Case: <div>{() => null}</div>
             JSXExpr::Expr(expr) => {
               strings.push("".to_string());
-              dynamic_exprs.push(*expr.clone());
+              dynamic_exprs.push(*expr);
             }
           }
         }
@@ -1000,8 +999,8 @@ impl JsxPrecompile {
                   strings.last_mut().unwrap().push(' ');
                   strings.push("".to_string());
                   let expr = self.convert_to_jsx_attr_call(
-                    attr_name,
-                    string_lit_expr(string_lit.value.to_string()),
+                    attr_name.into(),
+                    string_lit_expr(string_lit.value.clone()),
                   );
                   dynamic_exprs.push(Expr::Call(expr));
                   continue;
@@ -1063,7 +1062,7 @@ impl JsxPrecompile {
                   strings.push("".to_string());
 
                   let call_expr =
-                    self.convert_to_jsx_attr_call(attr_name.to_string(), expr);
+                    self.convert_to_jsx_attr_call(attr_name.into(), expr);
                   dynamic_exprs.push(Expr::Call(call_expr));
                 }
               }
@@ -1290,7 +1289,7 @@ impl VisitMut for JsxPrecompile {
           let child = &frag.children[0];
           match child {
             JSXElementChild::JSXText(jsx_text) => {
-              *expr = string_lit_expr(jsx_text.value.to_string())
+              *expr = string_lit_expr(jsx_text.value.clone())
             }
             JSXElementChild::JSXExprContainer(jsx_expr_container) => {
               match &jsx_expr_container.expr {
