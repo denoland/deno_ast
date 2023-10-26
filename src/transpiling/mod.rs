@@ -1147,20 +1147,17 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     };
     let code = module.transpile(&options).unwrap().text;
     let expected1 = r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
-const $$_tpl_1 = [
-  "<span>hello</span>"
-];
 const $$_tpl_2 = [
   "<p>asdf</p>"
 ];
+const $$_tpl_1 = [
+  "<span>hello</span>foo",
+  ""
+];
 const a = _jsx(Foo, {
-  children: [
-    _jsxssr($$_tpl_1),
-    "foo",
-    _jsx(Bar, {
-      children: _jsxssr($$_tpl_2)
-    })
-  ]
+  children: _jsxssr($$_tpl_1, _jsx(Bar, {
+    children: _jsxssr($$_tpl_2)
+  }))
 });
 //# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
     assert_eq!(&code[0..expected1.len()], expected1);
@@ -1168,20 +1165,17 @@ const a = _jsx(Foo, {
     options.jsx_development = true;
     let code = module.transpile(&options).unwrap().text;
     let expected2 = r#"import { jsxDEV as _jsxDEV, jsxssr as _jsxssr } from "react/jsx-dev-runtime";
-const $$_tpl_1 = [
-  "<span>hello</span>"
-];
 const $$_tpl_2 = [
   "<p>asdf</p>"
 ];
+const $$_tpl_1 = [
+  "<span>hello</span>foo",
+  ""
+];
 const a = _jsxDEV(Foo, {
-  children: [
-    _jsxssr($$_tpl_1),
-    "foo",
-    _jsxDEV(Bar, {
-      children: _jsxssr($$_tpl_2)
-    })
-  ]
+  children: _jsxssr($$_tpl_1, _jsxDEV(Bar, {
+    children: _jsxssr($$_tpl_2)
+  }))
 });
 //# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
     assert_eq!(&code[0..expected2.len()], expected2);
