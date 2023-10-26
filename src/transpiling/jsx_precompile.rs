@@ -614,10 +614,7 @@ impl JsxPrecompile {
                   // Case: <div>{/* some comment */}</div>
                   JSXExpr::JSXEmptyExpr(_) => continue,
                   JSXExpr::Expr(expr) => {
-                    elems.push(Some(ExprOrSpread {
-                      spread: None,
-                      expr,
-                    }));
+                    elems.push(Some(ExprOrSpread { spread: None, expr }));
                   }
                 }
               }
