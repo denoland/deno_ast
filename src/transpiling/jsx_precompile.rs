@@ -598,7 +598,7 @@ impl JsxPrecompile {
         } else {
           // Here we parse children the normal way
 
-          for child in normalized_children.iter() {
+          for child in normalized_children {
             match child {
               // Case: <div>foo</div>
               JSXElementChild::JSXText(jsx_text) => {
@@ -624,7 +624,7 @@ impl JsxPrecompile {
               }
               // Case: <div><span /></div>
               JSXElementChild::JSXElement(jsx_el) => {
-                let expr = self.serialize_jsx(jsx_el);
+                let expr = self.serialize_jsx(&*jsx_el);
                 elems.push(Some(ExprOrSpread {
                   spread: None,
                   expr: Box::new(expr.clone()),
@@ -887,7 +887,7 @@ impl JsxPrecompile {
     let (normalized_children, _text_count, _serializable_count) =
       merge_serializable_children(children);
 
-    for child in normalized_children.iter() {
+    for child in normalized_children {
       match child {
         // Case: <div>foo</div>
         JSXElementChild::JSXText(jsx_text) => {
@@ -913,7 +913,7 @@ impl JsxPrecompile {
         // Case: <div><span /></div>
         JSXElementChild::JSXElement(jsx_element) => self
           .serialize_jsx_element_to_string_vec(
-            jsx_element,
+            &*jsx_element,
             strings,
             dynamic_exprs,
           ),
