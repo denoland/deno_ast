@@ -372,11 +372,7 @@ fn merge_serializable_children(
   children: &Vec<JSXElementChild>,
 ) -> (Vec<JSXElementChild>, usize, usize) {
   // Do a first pass over children to merge sibling text nodes
-  // and check if it contains any serializable nodes. If it
-  // contains multiple serializable nodes or one and at least
-  // one text node, we can wrap the whole children with a static
-  // template. If not, then we need to create an array literal.
-  // Case: <Foo>foo{" "}</Foo
+  // and check if it contains any serializable nodes.
   let mut text_count = 0;
   let mut serializable_count = 0;
   let mut buf = String::new();
@@ -404,8 +400,7 @@ fn merge_serializable_children(
           JSXExpr::Expr(expr) => {
             if let Expr::Lit(lit) = *expr.clone() {
               match lit {
-                // These are not rendered
-                Lit::Null(_) => continue,
+                // Booleans are not rendered
                 Lit::Bool(_) => continue,
                 // Can be flattened
                 Lit::Num(num) => {
@@ -2206,7 +2201,7 @@ const a = _jsx(Foo, {
 
     test_transform(
       JsxPrecompile::default(),
-      r#"const a = <Foo>foo{2}bar{null}{true}{false}baz</Foo>"#,
+      r#"const a = <Foo>foo{2}bar{true}{false}baz</Foo>"#,
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(Foo, {
   children: "foo2barbaz"
