@@ -364,11 +364,7 @@ fn escape_html(str: &str) -> String {
 }
 
 fn serialize_attr(attr_name: &str, value: &str) -> String {
-  format!(
-    " {}=\"{}\"",
-    escape_html(&attr_name).as_str(),
-    escape_html(&value)
-  )
+  format!(" {}=\"{}\"", escape_html(attr_name), escape_html(value))
 }
 
 impl JsxPrecompile {
@@ -871,7 +867,7 @@ impl JsxPrecompile {
                 }
 
                 let serialized_attr =
-                  serialize_attr(&attr_name, &string_lit.value.as_ref());
+                  serialize_attr(&attr_name, &string_lit.value);
 
                 strings
                   .last_mut()
