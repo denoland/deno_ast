@@ -363,6 +363,14 @@ fn escape_html(str: &str) -> String {
     .replace('"', "&quot;")
 }
 
+fn serialize_attr(attr_name: &str, value: &str) -> String {
+  format!(
+    " {}=\"{}\"",
+    escape_html(&attr_name).as_str(),
+    escape_html(&value)
+  )
+}
+
 impl JsxPrecompile {
   /// Mark `jsx` or `jsxDEV` as being used and return the appropriate
   /// identifier.
@@ -862,11 +870,8 @@ impl JsxPrecompile {
                   continue;
                 }
 
-                let serialized_attr = format!(
-                  " {}=\"{}\"",
-                  escape_html(&attr_name).as_str(),
-                  escape_html(string_lit.value.as_ref()).as_str()
-                );
+                let serialized_attr =
+                  serialize_attr(&attr_name, &string_lit.value.as_ref());
 
                 strings
                   .last_mut()
@@ -891,18 +896,30 @@ impl JsxPrecompile {
 
                   // Serialize numeric literal values
                   // Case: <img width={100} />
-                  if let Expr::Lit(Lit::Num(num)) = &expr {
-                    let serialized_attr = format!(
-                      " {}=\"{}\"",
-                      escape_html(&attr_name).as_str(),
-                      &num.value
-                    );
+                  if let Expr::Lit(lit) = &expr {
+                    match lit {
+                      Lit::Num(num) => {
+                        let serialized_attr =
+                          serialize_attr(&attr_name, &num.value.to_string());
 
-                    strings
-                      .last_mut()
-                      .unwrap()
-                      .push_str(serialized_attr.as_str());
-                    continue;
+                        strings
+                          .last_mut()
+                          .unwrap()
+                          .push_str(serialized_attr.as_str());
+                        continue;
+                      }
+                      Lit::Str(str_lit) => {
+                        let serialized_attr =
+                          serialize_attr(&attr_name, &str_lit.value);
+
+                        strings
+                          .last_mut()
+                          .unwrap()
+                          .push_str(serialized_attr.as_str());
+                        continue;
+                      }
+                      _ => {}
+                    }
                   }
 
                   strings.last_mut().unwrap().push(' ');
@@ -1474,12 +1491,24 @@ const a = _jsxssr($$_tpl_1, _jsxattr("ref", "foo"));"#,
 
   #[test]
   fn serialize_lit_attr_test() {
+    // Numeric literals
     test_transform(
       JsxPrecompile::default(),
       r#"const a = <img width={100} />;"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
   '<img width="100">'
+];
+const a = _jsxssr($$_tpl_1);"#,
+    );
+
+    // String literals
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div foo={"b&>'\"ar"} bar={'baz'} />;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  '<div foo="b&amp;&gt;&#39;&quot;ar" bar="baz"></div>'
 ];
 const a = _jsxssr($$_tpl_1);"#,
     );
