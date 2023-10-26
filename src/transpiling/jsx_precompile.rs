@@ -1222,8 +1222,14 @@ impl VisitMut for JsxPrecompile {
       .body
       .iter()
       .position(|stmt| match stmt {
-        ModuleItem::ModuleDecl(_) => false,
-        ModuleItem::Stmt(_) => true,
+        ModuleItem::ModuleDecl(mod_dec) => match mod_dec {
+          ModuleDecl::ExportDecl(_) => true,
+          _ => false,
+        },
+        ModuleItem::Stmt(stmt) => match stmt {
+          Stmt::Empty(_) => false,
+          _ => true,
+        },
       })
       .unwrap_or(0);
 
@@ -2181,6 +2187,23 @@ const $$_tpl_1 = [
   "<div></div>"
 ];
 const a = _jsxssr($$_tpl_1);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"import Foo from "./foo.ts";
+
+export function foo() {
+  return <div />
+}"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+import Foo from "./foo.ts";
+const $$_tpl_1 = [
+  "<div></div>"
+];
+export function foo() {
+  return _jsxssr($$_tpl_1);
+}"#,
     );
   }
 
