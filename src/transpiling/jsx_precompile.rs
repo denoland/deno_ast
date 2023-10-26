@@ -568,11 +568,6 @@ impl JsxPrecompile {
           buf = String::new()
         }
 
-        eprintln!(
-          "text {:#?}, seri: {:#?} non: {}",
-          text_count, serializable_count, non_serializable_count
-        );
-
         // Merge sibling children when they can be serialized into one
         // serialized child. If all children are serializable, we'll
         // merge everything into one big jsxssr() call. If everything
