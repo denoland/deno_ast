@@ -368,6 +368,127 @@ fn serialize_attr(attr_name: &str, value: &str) -> String {
   format!(" {}=\"{}\"", escape_html(attr_name), escape_html(value))
 }
 
+fn merge_serializable_children(
+  children: &Vec<JSXElementChild>,
+) -> (Vec<JSXElementChild>, usize, usize) {
+  // Do a first pass over children to merge sibling text nodes
+  // and check if it contains any serializable nodes. If it
+  // contains multiple serializable nodes or one and at least
+  // one text node, we can wrap the whole children with a static
+  // template. If not, then we need to create an array literal.
+  // Case: <Foo>foo{" "}</Foo
+  let mut text_count = 0;
+  let mut serializable_count = 0;
+  let mut buf = String::new();
+
+  let mut normalized_children: Vec<JSXElementChild> = vec![];
+  for child in children.iter() {
+    match child {
+      JSXElementChild::JSXText(jsx_text) => {
+        let text = jsx_text_to_str(&jsx_text);
+        if text.is_empty() {
+          continue;
+        }
+        text_count += 1;
+
+        buf.push_str(&text);
+      }
+      JSXElementChild::JSXExprContainer(jsx_expr_container) => {
+        match &jsx_expr_container.expr {
+          // Empty JSX expressions can be ignored as they have no content
+          // Case: <div>{}</div>
+          // Case: <div>{/* fooo */}</div>
+          JSXExpr::JSXEmptyExpr(_) => {}
+          // Case: <div>{"foo"}</div>
+          // Case: <div>{2 + 2}</div>
+          JSXExpr::Expr(expr) => {
+            if let Expr::Lit(lit) = *expr.clone() {
+              match lit {
+                // These are not rendered
+                Lit::Null(_) => continue,
+                Lit::Bool(_) => continue,
+                // Can be flattened
+                Lit::Num(num) => {
+                  let text = num.to_string();
+                  buf.push_str(&text);
+                  continue;
+                }
+                // Can be flattened
+                Lit::Str(str_lit) => {
+                  let text = str_lit.value;
+                  buf.push_str(text.as_ref());
+                  continue;
+                }
+                _ => {}
+              }
+            }
+
+            if !buf.is_empty() {
+              let atom = Atom::new(buf);
+              normalized_children.push(JSXElementChild::JSXText(JSXText {
+                span: DUMMY_SP,
+                value: atom.clone(),
+                raw: atom,
+              }));
+
+              buf = String::new()
+            }
+
+            normalized_children.push(child.clone());
+          }
+        }
+      }
+      JSXElementChild::JSXElement(jsx_el) => {
+        if !buf.is_empty() {
+          let atom = Atom::new(buf);
+          normalized_children.push(JSXElementChild::JSXText(JSXText {
+            span: DUMMY_SP,
+            value: atom.clone(),
+            raw: atom,
+          }));
+
+          buf = String::new()
+        }
+
+        if is_serializable(&jsx_el.opening) {
+          serializable_count += 1;
+        }
+
+        normalized_children.push(JSXElementChild::JSXElement(jsx_el.clone()));
+      }
+      // Invalid, was part of an earlier JSX iteration, but no
+      // transform supports it. Babel and TypeScript error when they
+      // encounter this.
+      JSXElementChild::JSXSpreadChild(_) => {}
+      child => {
+        if !buf.is_empty() {
+          let atom = Atom::new(buf);
+          normalized_children.push(JSXElementChild::JSXText(JSXText {
+            span: DUMMY_SP,
+            value: atom.clone(),
+            raw: atom,
+          }));
+
+          buf = String::new()
+        }
+
+        normalized_children.push(child.clone());
+      }
+    }
+  }
+
+  if !buf.is_empty() {
+    let atom = Atom::new(buf);
+    normalized_children.push(JSXElementChild::JSXText(JSXText {
+      span: DUMMY_SP,
+      value: atom.clone(),
+      raw: atom,
+    }));
+  }
+
+  (normalized_children, text_count, serializable_count)
+}
+
 impl JsxPrecompile {
   /// Mark `jsx` or `jsxDEV` as being used and return the appropriate
   /// identifier.
@@ -445,128 +566,8 @@ impl JsxPrecompile {
         }
       }
       _ => {
-        // Do a first pass over children to merge sibling text nodes
-        // and check if it contains any serializable nodes. If it
-        // contains multiple serializable nodes or one and at least
-        // one text node, we can wrap the whole children with a static
-        // template. If not, then we need to create an array literal.
-        // Case: <Foo>foo{" "}</Foo
-        let mut text_count = 0;
-        let mut serializable_count = 0;
-        let mut non_serializable_count = 0;
-        let mut buf = String::new();
-
-        let mut normalized_children: Vec<JSXElementChild> = vec![];
-        for child in children.iter() {
-          match child {
-            JSXElementChild::JSXText(jsx_text) => {
-              let text = jsx_text_to_str(&jsx_text);
-              if text.is_empty() {
-                continue;
-              }
-              text_count += 1;
-
-              buf.push_str(&text);
-            }
-            JSXElementChild::JSXExprContainer(jsx_expr_container) => {
-              match &jsx_expr_container.expr {
-                // Empty JSX expressions can be ignored as they have no content
-                // Case: <div>{}</div>
-                // Case: <div>{/* fooo */}</div>
-                JSXExpr::JSXEmptyExpr(_) => {}
-                // Case: <div>{"foo"}</div>
-                // Case: <div>{2 + 2}</div>
-                JSXExpr::Expr(expr) => {
-                  if let Expr::Lit(lit) = *expr.clone() {
-                    match lit {
-                      // These are not rendered
-                      Lit::Null(_) => continue,
-                      Lit::Bool(_) => continue,
-                      // Can be flattened
-                      Lit::Num(num) => {
-                        let text = num.to_string();
-                        buf.push_str(&text);
-                        continue;
-                      }
-                      // Can be flattened
-                      Lit::Str(str_lit) => {
-                        let text = str_lit.value;
-                        buf.push_str(text.as_ref());
-                        continue;
-                      }
-                      _ => {}
-                    }
-                  }
-
-                  if !buf.is_empty() {
-                    let atom = Atom::new(buf);
-                    normalized_children.push(JSXElementChild::JSXText(
-                      JSXText {
-                        span: DUMMY_SP,
-                        value: atom.clone(),
-                        raw: atom,
-                      },
-                    ));
-
-                    buf = String::new()
-                  }
-
-                  non_serializable_count += 1;
-                  normalized_children.push(child.clone());
-                }
-              }
-            }
-            JSXElementChild::JSXElement(jsx_el) => {
-              if !buf.is_empty() {
-                let atom = Atom::new(buf);
-                normalized_children.push(JSXElementChild::JSXText(JSXText {
-                  span: DUMMY_SP,
-                  value: atom.clone(),
-                  raw: atom,
-                }));
-
-                buf = String::new()
-              }
-
-              if is_serializable(&jsx_el.opening) {
-                serializable_count += 1;
-              }
-
-              normalized_children
-                .push(JSXElementChild::JSXElement(jsx_el.clone()));
-            }
-            // Invalid, was part of an earlier JSX iteration, but no
-            // transform supports it. Babel and TypeScript error when they
-            // encounter this.
-            JSXElementChild::JSXSpreadChild(_) => {}
-            child => {
-              if !buf.is_empty() {
-                let atom = Atom::new(buf);
-                normalized_children.push(JSXElementChild::JSXText(JSXText {
-                  span: DUMMY_SP,
-                  value: atom.clone(),
-                  raw: atom,
-                }));
-
-                buf = String::new()
-              }
-
-              non_serializable_count += 1;
-              normalized_children.push(child.clone());
-            }
-          }
-        }
-
-        if !buf.is_empty() {
-          let atom = Atom::new(buf);
-          normalized_children.push(JSXElementChild::JSXText(JSXText {
-            span: DUMMY_SP,
-            value: atom.clone(),
-            raw: atom,
-          }));
-
-          buf = String::new()
-        }
+        let (normalized_children, text_count, serializable_count) =
+          merge_serializable_children(children);
 
         // Merge sibling children when they can be serialized into one
         // serialized child. If all children are serializable, we'll
@@ -882,22 +883,18 @@ impl JsxPrecompile {
 
   fn serialize_jsx_children_to_string(
     &mut self,
-    children: &[JSXElementChild],
+    children: &Vec<JSXElementChild>,
     strings: &mut Vec<String>,
     dynamic_exprs: &mut Vec<Expr>,
   ) {
-    for child in children.iter() {
+    let (normalized_children, _text_count, _serializable_count) =
+      merge_serializable_children(children);
+
+    for child in normalized_children.iter() {
       match child {
         // Case: <div>foo</div>
         JSXElementChild::JSXText(jsx_text) => {
-          let text = jsx_text_to_str(jsx_text);
-
-          // Text nodes which only contain whitespace can be ignored
-          if text.is_empty() {
-            continue;
-          }
-
-          let escaped_text = escape_html(text.as_ref());
+          let escaped_text = escape_html(jsx_text.value.as_ref());
           strings.last_mut().unwrap().push_str(escaped_text.as_str());
         }
         // Case: <div>{2 + 2}</div>
@@ -2226,6 +2223,19 @@ const $$_tpl_1 = [
 const a = _jsx(Foo, {
   children: _jsxssr($$_tpl_1)
 });"#,
+    );
+  }
+
+  #[test]
+  fn merge_element_text_children_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div>foo{" "}bar{' '}</div>"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>foo bar </div>"
+];
+const a = _jsxssr($$_tpl_1);"#,
     );
   }
 
