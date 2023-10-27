@@ -1060,8 +1060,8 @@ impl JsxPrecompile {
 
                   // Serialize numeric literal values
                   // Case: <img width={100} />
-                  if let Expr::Lit(lit) = &expr {
-                    match lit {
+                  match &expr {
+                    Expr::Lit(lit) => match lit {
                       Lit::Bool(lit_bool) => {
                         if is_boolean_attr(&attr_name) {
                           if !lit_bool.value {
@@ -1094,7 +1094,23 @@ impl JsxPrecompile {
                         continue;
                       }
                       _ => {}
+                    },
+                    Expr::Unary(unary_expr) => {
+                      if unary_expr.op == UnaryOp::Minus {
+                        if let Expr::Lit(Lit::Num(num_lit)) = &*unary_expr.arg {
+                          let value = format!("-{}", &num_lit.value);
+                          let serialized_attr =
+                            serialize_attr(&attr_name, &value);
+
+                          strings
+                            .last_mut()
+                            .unwrap()
+                            .push_str(serialized_attr.as_str());
+                          continue;
+                        };
+                      }
                     }
+                    _ => {}
                   }
 
                   strings.last_mut().unwrap().push(' ');
@@ -1685,6 +1701,16 @@ const a = _jsxssr($$_tpl_1, _jsxattr("ref", "foo"));"#,
       r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
 const $$_tpl_1 = [
   '<img width="100">'
+];
+const a = _jsxssr($$_tpl_1);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div tabIndex={-1} />;"#,
+      r#"import { jsxssr as _jsxssr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  '<div tabindex="-1"></div>'
 ];
 const a = _jsxssr($$_tpl_1);"#,
     );
