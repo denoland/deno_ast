@@ -591,8 +591,8 @@ impl JsxPrecompile {
         Lit::Bool(_) => expr,
         Lit::Null(_) => expr,
         Lit::Str(string_lit) => {
-          let escaped_value = escape_html(&string_lit.value.to_string());
-          if escaped_value != string_lit.value.to_string() {
+          let escaped_value = escape_html(string_lit.value.as_ref());
+          if string_lit.value != escaped_value {
             self.wrap_with_escape_call(expr)
           } else {
             expr
