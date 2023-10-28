@@ -310,7 +310,7 @@ fn jsx_text_to_str(jsx_text: &JSXText) -> String {
     text.push_str(line);
   }
 
-  text
+  escape_html(&text)
 }
 
 /// Convert a JSXMemberExpr to MemberExpr. We offload this to a
@@ -967,8 +967,10 @@ impl JsxPrecompile {
       match child {
         // Case: <div>foo</div>
         JSXElementChild::JSXText(jsx_text) => {
-          let escaped_text = escape_html(jsx_text.value.as_ref());
-          strings.last_mut().unwrap().push_str(escaped_text.as_str());
+          strings
+            .last_mut()
+            .unwrap()
+            .push_str(jsx_text.value.as_ref());
         }
         // Case: <div>{2 + 2}</div>
         JSXElementChild::JSXExprContainer(jsx_expr_container) => {
@@ -1412,7 +1414,8 @@ impl VisitMut for JsxPrecompile {
           let child = &frag.children[0];
           match child {
             JSXElementChild::JSXText(jsx_text) => {
-              *expr = string_lit_expr(jsx_text.value.clone())
+              let text = jsx_text_to_str(&jsx_text);
+              *expr = string_lit_expr(text.into())
             }
             JSXElementChild::JSXExprContainer(jsx_expr_container) => {
               match &jsx_expr_container.expr {
@@ -1991,6 +1994,12 @@ const a = _jsxTemplate($$_tpl_1, 2 + 2);"#,
       JsxPrecompile::default(),
       r#"const a = <>foo</>;"#,
       r#"const a = "foo";"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>&'"</>;"#,
+      r#"const a = "&amp;&#39;&quot;";"#,
     );
   }
 
