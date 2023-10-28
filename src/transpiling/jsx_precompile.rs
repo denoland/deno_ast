@@ -1420,7 +1420,9 @@ impl VisitMut for JsxPrecompile {
                 // Case: <>{}</>
                 // Case: <>{/* some comment */}</>
                 JSXExpr::JSXEmptyExpr(_) => {}
-                JSXExpr::Expr(jsx_expr) => *expr = *jsx_expr.clone(),
+                JSXExpr::Expr(jsx_expr) => {
+                  *expr = self.maybe_wrap_with_escape_call(*jsx_expr.clone())
+                }
               }
             }
             // Case: <><span /></>
@@ -1855,6 +1857,18 @@ const child = [
 ].join("");
 const a = _jsxTemplate($$_tpl_1, _jsxEscape(child));"#,
     );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div>{foo}{bar}</div>;"#,
+      r#"import { jsxssr as _jsxssr, escape as _escape } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>",
+  "",
+  "</div>"
+];
+const a = _jsxssr($$_tpl_1, _escape(foo), _escape(bar));"#,
+    );
   }
 
   #[test]
@@ -2000,6 +2014,37 @@ const $$_tpl_1 = [
   ""
 ];
 const a = _jsxTemplate($$_tpl_1, _jsx(Foo, null));"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>{foo}<Foo /></>;"#,
+      r#"import { jsx as _jsx, jsxssr as _jsxssr, escape as _escape } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "",
+  "",
+  ""
+];
+const a = _jsxssr($$_tpl_1, _escape(foo), _jsx(Foo, null));"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>{foo}</>;"#,
+      r#"import { escape as _escape } from "react/jsx-runtime";
+const a = _escape(foo);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>{foo}{bar}</>;"#,
+      r#"import { jsxssr as _jsxssr, escape as _escape } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "",
+  "",
+  ""
+];
+const a = _jsxssr($$_tpl_1, _escape(foo), _escape(bar));"#,
     );
 
     test_transform(
