@@ -1414,7 +1414,7 @@ impl VisitMut for JsxPrecompile {
           let child = &frag.children[0];
           match child {
             JSXElementChild::JSXText(jsx_text) => {
-              let text = jsx_text_to_str(&jsx_text);
+              let text = jsx_text_to_str(jsx_text);
               *expr = string_lit_expr(text.into())
             }
             JSXElementChild::JSXExprContainer(jsx_expr_container) => {
