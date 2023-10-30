@@ -319,7 +319,6 @@ pub fn fold_program(
     Optional::new(
       as_folder(jsx_precompile::JsxPrecompile::new(
         options.jsx_import_source.clone().unwrap_or_default(),
-        options.jsx_development,
       )),
       options.jsx_import_source.is_some()
         && !options.transform_jsx
@@ -1139,7 +1138,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       scope_analysis: false,
     })
     .unwrap();
-    let mut options = EmitOptions {
+    let options = EmitOptions {
       transform_jsx: false,
       precompile_jsx: true,
       jsx_import_source: Some("react".to_string()),
@@ -1161,23 +1160,5 @@ const a = _jsx(Foo, {
 });
 //# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
     assert_eq!(&code[0..expected1.len()], expected1);
-
-    options.jsx_development = true;
-    let code = module.transpile(&options).unwrap().text;
-    let expected2 = r#"import { jsxDEV as _jsxDEV, jsxssr as _jsxssr } from "react/jsx-dev-runtime";
-const $$_tpl_2 = [
-  "<p>asdf</p>"
-];
-const $$_tpl_1 = [
-  "<span>hello</span>foo",
-  ""
-];
-const a = _jsxDEV(Foo, {
-  children: _jsxssr($$_tpl_1, _jsxDEV(Bar, {
-    children: _jsxssr($$_tpl_2)
-  }))
-});
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
-    assert_eq!(&code[0..expected2.len()], expected2);
   }
 }

@@ -11,8 +11,6 @@ use swc_ecma_visit::VisitMut;
 use swc_ecma_visit::VisitMutWith;
 
 pub struct JsxPrecompile {
-  // Specify whether to use the jsx dev runtime or not
-  development: bool,
   // The import path to import the jsx runtime from. Will be
   // `<import_source>/jsx-runtime`.
   import_source: String,
@@ -20,7 +18,7 @@ pub struct JsxPrecompile {
   // Internal state
   next_index: usize,
   templates: Vec<(usize, Vec<String>)>,
-  // Track if we need to import `jsx` or `jsxDEV` and which identifier
+  // Track if we need to import `jsx` and which identifier
   // to use if we do.
   import_jsx: Option<Ident>,
   // Track if we need to import `jsxssr` and which identifier
@@ -36,7 +34,6 @@ impl Default for JsxPrecompile {
     Self {
       next_index: 0,
       templates: vec![],
-      development: false,
       import_source: "react".to_string(),
       import_jsx: None,
       import_jsx_ssr: None,
@@ -46,10 +43,9 @@ impl Default for JsxPrecompile {
 }
 
 impl JsxPrecompile {
-  pub fn new(import_source: String, development: bool) -> Self {
+  pub fn new(import_source: String) -> Self {
     Self {
       import_source,
-      development,
       ..JsxPrecompile::default()
     }
   }
@@ -517,14 +513,12 @@ fn merge_serializable_children(
 }
 
 impl JsxPrecompile {
-  /// Mark `jsx` or `jsxDEV` as being used and return the appropriate
-  /// identifier.
+  /// Mark `jsx` as being used and return the identifier.
   fn get_jsx_identifier(&mut self) -> Ident {
     match &self.import_jsx {
       Some(ident) => ident.clone(),
       None => {
-        let jsx = if self.development { "_jsxDEV" } else { "_jsx" };
-        let ident = Ident::new(jsx.into(), DUMMY_SP);
+        let ident = Ident::new("_jsx".into(), DUMMY_SP);
         self.import_jsx = Some(ident.clone());
         ident
       }
@@ -1223,9 +1217,7 @@ impl JsxPrecompile {
     let mut imports: Vec<(Ident, Ident)> = vec![];
 
     if let Some(jsx_ident) = &self.import_jsx {
-      let jsx_imported = if self.development { "jsxDEV" } else { "jsx" };
-      imports
-        .push((jsx_ident.clone(), Ident::new(jsx_imported.into(), DUMMY_SP)))
+      imports.push((jsx_ident.clone(), Ident::new("jsx".into(), DUMMY_SP)))
     }
 
     if let Some(jsx_ssr_ident) = &self.import_jsx_ssr {
@@ -1241,13 +1233,7 @@ impl JsxPrecompile {
     }
 
     if !imports.is_empty() {
-      let jsx_runtime = if self.development {
-        "jsx-dev-runtime"
-      } else {
-        "jsx-runtime"
-      };
-
-      let src = format!("{}/{}", self.import_source, jsx_runtime);
+      let src = format!("{}/jsx-runtime", self.import_source);
 
       let specifiers = imports
         .into_iter()
@@ -2191,25 +2177,13 @@ const a = _jsx(a.b.c.d, {
   #[test]
   fn import_source_option_test() {
     test_transform(
-      JsxPrecompile::new("foobar".to_string(), false),
+      JsxPrecompile::new("foobar".to_string()),
       r#"const a = <div>foo</div>;"#,
       r#"import { jsxssr as _jsxssr } from "foobar/jsx-runtime";
 const $$_tpl_1 = [
   "<div>foo</div>"
 ];
 const a = _jsxssr($$_tpl_1);"#,
-    );
-  }
-
-  #[test]
-  fn development_option_test() {
-    test_transform(
-      JsxPrecompile::new("react".to_string(), true),
-      r#"const a = <Foo>foo</Foo>;"#,
-      r#"import { jsxDEV as _jsxDEV } from "react/jsx-dev-runtime";
-const a = _jsxDEV(Foo, {
-  children: "foo"
-});"#,
     );
   }
 
