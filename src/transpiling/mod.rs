@@ -1145,7 +1145,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       ..Default::default()
     };
     let code = module.transpile(&options).unwrap().text;
-    let expected1 = r#"import { jsx as _jsx, jsxssr as _jsxssr } from "react/jsx-runtime";
+    let expected1 = r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_2 = [
   "<p>asdf</p>"
 ];
@@ -1154,8 +1154,8 @@ const $$_tpl_1 = [
   ""
 ];
 const a = _jsx(Foo, {
-  children: _jsxssr($$_tpl_1, _jsx(Bar, {
-    children: _jsxssr($$_tpl_2)
+  children: _jsxTemplate($$_tpl_1, _jsx(Bar, {
+    children: _jsxTemplate($$_tpl_2)
   }))
 });
 //# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
