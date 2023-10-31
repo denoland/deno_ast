@@ -585,7 +585,7 @@ impl JsxPrecompile {
   /// If we have a string literal and know that it doesn't need
   /// to be encoded we can skip the escape call.
   fn maybe_wrap_with_jsx_escape_call(&mut self, expr: Expr) -> Expr {
-    match expr.clone() {
+    match &expr {
       Expr::Lit(lit_expr) => match lit_expr {
         Lit::Num(_) => expr,
         Lit::Bool(_) => expr,
