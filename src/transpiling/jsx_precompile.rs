@@ -1292,11 +1292,8 @@ impl JsxPrecompile {
       ))
     }
 
-    if let Some(espace_ident) = &self.import_jsx_escape {
-      imports.push((
-        espace_ident.clone(),
-        Ident::new("jsxEscape".into(), DUMMY_SP),
-      ))
+    if let Some(espace_ident) = self.import_jsx_escape.take() {
+      imports.push((espace_ident, Ident::new("jsxEscape".into(), DUMMY_SP)))
     }
 
     if !imports.is_empty() {
