@@ -27,6 +27,9 @@ pub struct JsxPrecompile {
   // Track if we need to import `jsxAttr` and which identifier
   // to use if we do.
   import_jsx_attr: Option<Ident>,
+  // Track if we need to import `jsxEscape` and which identifier
+  // to use if we do.
+  import_jsx_escape: Option<Ident>,
 }
 
 impl Default for JsxPrecompile {
@@ -38,6 +41,7 @@ impl Default for JsxPrecompile {
       import_jsx: None,
       import_jsx_ssr: None,
       import_jsx_attr: None,
+      import_jsx_escape: None,
     }
   }
 }
@@ -306,7 +310,7 @@ fn jsx_text_to_str(jsx_text: &JSXText) -> String {
     text.push_str(line);
   }
 
-  text
+  escape_html(&text)
 }
 
 /// Convert a JSXMemberExpr to MemberExpr. We offload this to a
@@ -546,6 +550,57 @@ impl JsxPrecompile {
         self.import_jsx_attr = Some(ident.clone());
         ident
       }
+    }
+  }
+
+  /// Mark `jsxEscape` as being used and return the identifier.
+  fn get_jsx_escape_fn_identifier(&mut self) -> Ident {
+    match &self.import_jsx_escape {
+      Some(ident) => ident.clone(),
+      None => {
+        let ident = Ident::new("_jsxEscape".into(), DUMMY_SP);
+        self.import_jsx_escape = Some(ident.clone());
+        ident
+      }
+    }
+  }
+
+  fn wrap_with_jsx_escape_call(&mut self, expr: Expr) -> Expr {
+    let args: Vec<ExprOrSpread> = vec![ExprOrSpread {
+      spread: None,
+      expr: Box::new(expr),
+    }];
+
+    Expr::Call(CallExpr {
+      span: DUMMY_SP,
+      callee: Callee::Expr(Box::new(Expr::Ident(
+        self.get_jsx_escape_fn_identifier(),
+      ))),
+      args,
+      type_args: None,
+    })
+  }
+
+  /// Check if we even need to wrap it with an escape call.
+  /// If we have a string literal and know that it doesn't need
+  /// to be encoded we can skip the escape call.
+  fn maybe_wrap_with_jsx_escape_call(&mut self, expr: Expr) -> Expr {
+    match &expr {
+      Expr::Lit(lit_expr) => match lit_expr {
+        Lit::Num(_) => expr,
+        Lit::Bool(_) => expr,
+        Lit::Null(_) => expr,
+        Lit::Str(string_lit) => {
+          let escaped_value = escape_html(string_lit.value.as_ref());
+          if string_lit.value != escaped_value {
+            self.wrap_with_jsx_escape_call(expr)
+          } else {
+            expr
+          }
+        }
+        _ => expr,
+      },
+      _ => self.wrap_with_jsx_escape_call(expr),
     }
   }
 
@@ -910,8 +965,10 @@ impl JsxPrecompile {
       match child {
         // Case: <div>foo</div>
         JSXElementChild::JSXText(jsx_text) => {
-          let escaped_text = escape_html(jsx_text.value.as_ref());
-          strings.last_mut().unwrap().push_str(escaped_text.as_str());
+          strings
+            .last_mut()
+            .unwrap()
+            .push_str(jsx_text.value.as_ref());
         }
         // Case: <div>{2 + 2}</div>
         JSXElementChild::JSXExprContainer(jsx_expr_container) => {
@@ -925,7 +982,8 @@ impl JsxPrecompile {
             // Case: <div>{() => null}</div>
             JSXExpr::Expr(expr) => {
               strings.push("".to_string());
-              dynamic_exprs.push(*expr);
+              let escaped_expr = self.maybe_wrap_with_jsx_escape_call(*expr);
+              dynamic_exprs.push(escaped_expr);
             }
           }
         }
@@ -1234,6 +1292,10 @@ impl JsxPrecompile {
       ))
     }
 
+    if let Some(espace_ident) = self.import_jsx_escape.take() {
+      imports.push((espace_ident, Ident::new("jsxEscape".into(), DUMMY_SP)))
+    }
+
     if !imports.is_empty() {
       let src = format!("{}/jsx-runtime", self.import_source);
 
@@ -1347,7 +1409,8 @@ impl VisitMut for JsxPrecompile {
           let child = &frag.children[0];
           match child {
             JSXElementChild::JSXText(jsx_text) => {
-              *expr = string_lit_expr(jsx_text.value.clone())
+              let text = jsx_text_to_str(jsx_text);
+              *expr = string_lit_expr(text.into())
             }
             JSXElementChild::JSXExprContainer(jsx_expr_container) => {
               match &jsx_expr_container.expr {
@@ -1355,7 +1418,10 @@ impl VisitMut for JsxPrecompile {
                 // Case: <>{}</>
                 // Case: <>{/* some comment */}</>
                 JSXExpr::JSXEmptyExpr(_) => {}
-                JSXExpr::Expr(jsx_expr) => *expr = *jsx_expr.clone(),
+                JSXExpr::Expr(jsx_expr) => {
+                  *expr =
+                    self.maybe_wrap_with_jsx_escape_call(*jsx_expr.clone())
+                }
               }
             }
             // Case: <><span /></>
@@ -1425,7 +1491,7 @@ mod tests {
 const b = <div>Hello {name}!</div>;
 const c = <button class="btn" onClick={onClick}>Hello {name}!</button>;
 "#,
-      r#"import { jsxTemplate as _jsxTemplate, jsxAttr as _jsxAttr } from "react/jsx-runtime";
+      r#"import { jsxTemplate as _jsxTemplate, jsxAttr as _jsxAttr, jsxEscape as _jsxEscape } from "react/jsx-runtime";
 const $$_tpl_1 = [
   "<div>Hello!</div>"
 ];
@@ -1439,8 +1505,8 @@ const $$_tpl_3 = [
   "!</button>"
 ];
 const a = _jsxTemplate($$_tpl_1);
-const b = _jsxTemplate($$_tpl_2, name);
-const c = _jsxTemplate($$_tpl_3, _jsxAttr("onclick", onClick), name);"#,
+const b = _jsxTemplate($$_tpl_2, _jsxEscape(name));
+const c = _jsxTemplate($$_tpl_3, _jsxAttr("onclick", onClick), _jsxEscape(name));"#,
     );
   }
 
@@ -1641,6 +1707,17 @@ const $$_tpl_1 = [
 ];
 const a = _jsxTemplate($$_tpl_1, _jsxAttr("key", "foo"));"#,
     );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div key={foo}>foo</div>;"#,
+      r#"import { jsxTemplate as _jsxTemplate, jsxAttr as _jsxAttr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div ",
+  ">foo</div>"
+];
+const a = _jsxTemplate($$_tpl_1, _jsxAttr("key", foo));"#,
+    );
   }
 
   #[test]
@@ -1680,6 +1757,17 @@ const $$_tpl_1 = [
   ">foo</div>"
 ];
 const a = _jsxTemplate($$_tpl_1, _jsxAttr("ref", "foo"));"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div ref={bar}>foo</div>;"#,
+      r#"import { jsxTemplate as _jsxTemplate, jsxAttr as _jsxAttr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div ",
+  ">foo</div>"
+];
+const a = _jsxTemplate($$_tpl_1, _jsxAttr("ref", bar));"#,
     );
   }
 
@@ -1732,7 +1820,7 @@ const a = _jsxTemplate($$_tpl_1);"#,
   }
 
   #[test]
-  fn escape_text_test() {
+  fn escape_children_test() {
     test_transform(
       JsxPrecompile::default(),
       r#"const a = <div>"a&>'</div>;"#,
@@ -1741,6 +1829,33 @@ const $$_tpl_1 = [
   "<div>&quot;a&amp;&gt;&#39;</div>"
 ];
 const a = _jsxTemplate($$_tpl_1);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const child = [`"a&>'`].join("");
+const a = <div>{child}</div>;"#,
+      r#"import { jsxTemplate as _jsxTemplate, jsxEscape as _jsxEscape } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>",
+  "</div>"
+];
+const child = [
+  `"a&>'`
+].join("");
+const a = _jsxTemplate($$_tpl_1, _jsxEscape(child));"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div>{foo}{bar}</div>;"#,
+      r#"import { jsxTemplate as _jsxTemplate, jsxEscape as _jsxEscape } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>",
+  "",
+  "</div>"
+];
+const a = _jsxTemplate($$_tpl_1, _jsxEscape(foo), _jsxEscape(bar));"#,
     );
   }
 
@@ -1840,12 +1955,12 @@ const a = _jsx(Foo, {
     test_transform(
       JsxPrecompile::default(),
       r#"const a = <p>{2 + 2}</p>;"#,
-      r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+      r#"import { jsxTemplate as _jsxTemplate, jsxEscape as _jsxEscape } from "react/jsx-runtime";
 const $$_tpl_1 = [
   "<p>",
   "</p>"
 ];
-const a = _jsxTemplate($$_tpl_1, 2 + 2);"#,
+const a = _jsxTemplate($$_tpl_1, _jsxEscape(2 + 2));"#,
     );
   }
 
@@ -1864,6 +1979,12 @@ const a = _jsxTemplate($$_tpl_1, 2 + 2);"#,
       JsxPrecompile::default(),
       r#"const a = <>foo</>;"#,
       r#"const a = "foo";"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>&'"</>;"#,
+      r#"const a = "&amp;&#39;&quot;";"#,
     );
   }
 
@@ -1887,6 +2008,37 @@ const $$_tpl_1 = [
   ""
 ];
 const a = _jsxTemplate($$_tpl_1, _jsx(Foo, null));"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>{foo}<Foo /></>;"#,
+      r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate, jsxEscape as _jsxEscape } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "",
+  "",
+  ""
+];
+const a = _jsxTemplate($$_tpl_1, _jsxEscape(foo), _jsx(Foo, null));"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>{foo}</>;"#,
+      r#"import { jsxEscape as _jsxEscape } from "react/jsx-runtime";
+const a = _jsxEscape(foo);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>{foo}{bar}</>;"#,
+      r#"import { jsxTemplate as _jsxTemplate, jsxEscape as _jsxEscape } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "",
+  "",
+  ""
+];
+const a = _jsxTemplate($$_tpl_1, _jsxEscape(foo), _jsxEscape(bar));"#,
     );
 
     test_transform(
