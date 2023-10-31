@@ -27,7 +27,7 @@ pub struct JsxPrecompile {
   // Track if we need to import `jsxAttr` and which identifier
   // to use if we do.
   import_jsx_attr: Option<Ident>,
-  // Track if we need to import `escape` and which identifier
+  // Track if we need to import `jsxEscape` and which identifier
   // to use if we do.
   import_jsx_escape: Option<Ident>,
 }
@@ -553,7 +553,7 @@ impl JsxPrecompile {
     }
   }
 
-  /// Mark `escape` as being used and return the identifier.
+  /// Mark `jsxEscape` as being used and return the identifier.
   fn get_jsx_escape_fn_identifier(&mut self) -> Ident {
     match &self.import_jsx_escape {
       Some(ident) => ident.clone(),
