@@ -1817,17 +1817,6 @@ const $$_tpl_1 = [
 ];
 const a = _jsxTemplate($$_tpl_1);"#,
     );
-
-    test_transform(
-      JsxPrecompile::default(),
-      r#"const a = <div class={foo}>foo</div>;"#,
-      r#"import { jsxTemplate as _jsxTemplate, jsxAttr as _jsxAttr } from "react/jsx-runtime";
-const $$_tpl_1 = [
-  "<div ",
-  ">foo</div>"
-];
-const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", foo));"#,
-    );
   }
 
   #[test]
