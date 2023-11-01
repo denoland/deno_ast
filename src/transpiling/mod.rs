@@ -234,6 +234,9 @@ impl ParsedSource {
           .to_writer(&mut buf)?;
 
         if options.inline_source_map {
+          if !src.ends_with('\n') {
+            src.push('\n');
+          }
           src.push_str("//# sourceMappingURL=data:application/json;base64,");
           base64::encode_config_buf(
             buf,
@@ -1158,6 +1161,32 @@ const a = _jsx(Foo, {
     children: _jsxTemplate($$_tpl_2)
   }))
 });
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
+    assert_eq!(&code[0..expected1.len()], expected1);
+  }
+
+  #[test]
+  fn test_inline_source_map_newline() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source = r#"{ const foo = "bar"; };"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let options = EmitOptions {
+      inline_source_map: true,
+      ..Default::default()
+    };
+    let code = module.transpile(&options).unwrap().text;
+    let expected1 = r#"{
+  const foo = "bar";
+}
 //# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
     assert_eq!(&code[0..expected1.len()], expected1);
   }
