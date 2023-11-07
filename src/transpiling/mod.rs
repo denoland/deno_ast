@@ -466,6 +466,8 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
         SyntaxError::UnterminatedStrLit |
         // nullish coalescing with logical op
         SyntaxError::NullishCoalescingWithLogicalOp |
+        // init required for using
+        SyntaxError::InitRequiredForUsingDecl |
         // missing a token
         SyntaxError::Expected(_, _)
   )
@@ -1077,6 +1079,15 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
         "  ~~~~~~~~~~~~~~~~~",
       ),
     );
+  }
+
+  #[test]
+  fn diagnostic_missing_init_in_using() {
+    assert_eq!(get_diagnostic("using test"), concat!(
+      "Using declaration requires initializer at https://deno.land/x/mod.ts:1:1\n\n",
+      "  using test\n",
+      "  ~~~~~~~~~~",
+    ));
   }
 
   fn get_diagnostic(source: &str) -> String {

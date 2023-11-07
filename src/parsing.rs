@@ -552,6 +552,15 @@ function _bar(...Foo: Foo) {
     assert_eq!(diagnostic.message(), "Expression expected");
   }
 
+  #[test]
+  fn should_diganotic_missing_init_in_using() {
+    let diagnostic = parse_for_diagnostic("using test");
+    assert_eq!(
+      diagnostic.message(),
+      "Using declaration requires initializer"
+    );
+  }
+
   fn parse_for_diagnostic(text: &str) -> Diagnostic {
     let result = parse_ts_module(text).unwrap();
     result.diagnostics().first().unwrap().to_owned()
