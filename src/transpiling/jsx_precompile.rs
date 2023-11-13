@@ -1051,11 +1051,24 @@ impl JsxPrecompile {
           // Case: <input required />
           let Some(attr_value) = &jsx_attr.value else {
             strings.last_mut().unwrap().push(' ');
+
             let escaped_attr_name = escape_html(&attr_name);
-            strings
-              .last_mut()
-              .unwrap()
-              .push_str(escaped_attr_name.as_str());
+            if is_boolean_attr(&attr_name) {
+              strings
+                .last_mut()
+                .unwrap()
+                .push_str(escaped_attr_name.as_str());
+            } else {
+              strings.push("".to_string());
+              let expr = self.convert_to_jsx_attr_call(
+                attr_name.into(),
+                Expr::Lit(Lit::Bool(Bool {
+                  span: DUMMY_SP,
+                  value: true,
+                })),
+              );
+              dynamic_exprs.push(Expr::Call(expr));
+            }
             continue;
           };
 
@@ -1612,6 +1625,28 @@ const $$_tpl_1 = [
   ">"
 ];
 const a = _jsxTemplate($$_tpl_1, foo ? "selected" : "");"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div f-client-nav />;"#,
+      r#"import { jsxTemplate as _jsxTemplate, jsxAttr as _jsxAttr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div ",
+  "></div>"
+];
+const a = _jsxTemplate($$_tpl_1, _jsxAttr("f-client-nav", true));"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div f-client-nav={false} />;"#,
+      r#"import { jsxTemplate as _jsxTemplate, jsxAttr as _jsxAttr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div ",
+  "></div>"
+];
+const a = _jsxTemplate($$_tpl_1, _jsxAttr("f-client-nav", false));"#,
     );
   }
 
