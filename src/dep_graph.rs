@@ -9,7 +9,6 @@ use crate::swc::ast;
 use crate::swc::ast::Callee;
 use crate::swc::ast::Expr;
 use crate::swc::atoms::Atom;
-use crate::swc::atoms::JsWord;
 use crate::swc::common::comments::CommentKind;
 use crate::swc::common::comments::Comments;
 use crate::swc::visit::Visit;
@@ -88,21 +87,67 @@ pub struct DependencyComment {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DependencyDescriptor {
+pub enum DependencyDescriptor {
+  Declaration(DeclarationDependencyDescriptor),
+  DynamicImport(DynamicImportDependencyDescriptor),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeclarationDependencyDescriptor {
   pub kind: DependencyKind,
-  /// A flag indicating if the import is dynamic or not.
-  pub is_dynamic: bool,
-  /// Any leading comments associated with the dependency.  This is used for
+  /// Any leading comments associated with the dependency. This is used for
   /// further processing of supported pragma that impact the dependency.
   pub leading_comments: Vec<DependencyComment>,
   /// The range of the import/export statement.
   pub range: SourceRange,
   /// The text specifier associated with the import/export statement.
-  pub specifier: JsWord,
+  pub specifier: Atom,
   /// The range of the specifier.
   pub specifier_range: SourceRange,
   /// Import attributes for this dependency.
   pub import_attributes: ImportAttributes,
+}
+
+impl From<DeclarationDependencyDescriptor> for DependencyDescriptor {
+  fn from(descriptor: DeclarationDependencyDescriptor) -> Self {
+    DependencyDescriptor::Declaration(descriptor)
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DynamicImportDependencyDescriptor {
+  /// Any leading comments associated with the dependency. This is used for
+  /// further processing of supported pragma that impact the dependency.
+  pub leading_comments: Vec<DependencyComment>,
+  /// The range of the import/export statement.
+  pub range: SourceRange,
+  /// The argument associated with the dynamic import
+  pub argument: DynamicImportArgument,
+  /// The range of the specifier.
+  pub argument_range: SourceRange,
+  /// Import attributes for this dependency.
+  pub import_attributes: ImportAttributes,
+}
+
+impl From<DynamicImportDependencyDescriptor> for DependencyDescriptor {
+  fn from(descriptor: DynamicImportDependencyDescriptor) -> Self {
+    DependencyDescriptor::DynamicImport(descriptor)
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DynamicImportArgument {
+  String(Atom),
+  Template(Vec<DynamicImportTemplatePart>),
+  /// An expression that could not be analyzed.
+  Expr,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DynamicImportTemplatePart {
+  String(Atom),
+  /// An expression that could not be analyzed.
+  Expr,
 }
 
 struct DependencyCollector<'a> {
@@ -135,16 +180,17 @@ impl<'a> Visit for DependencyCollector<'a> {
     } else {
       DependencyKind::Import
     };
-    let import_attributes = parse_import_attributes(node.with.as_deref());
-    self.items.push(DependencyDescriptor {
-      kind,
-      is_dynamic: false,
-      leading_comments,
-      range: node.range(),
-      specifier,
-      specifier_range: node.src.range(),
-      import_attributes,
-    });
+    self.items.push(
+      DeclarationDependencyDescriptor {
+        kind,
+        leading_comments,
+        range: node.range(),
+        specifier,
+        specifier_range: node.src.range(),
+        import_attributes: parse_import_attributes(node.with.as_deref()),
+      }
+      .into(),
+    );
   }
 
   fn visit_named_export(&mut self, node: &ast::NamedExport) {
@@ -156,16 +202,17 @@ impl<'a> Visit for DependencyCollector<'a> {
       } else {
         DependencyKind::Export
       };
-      let import_attributes = parse_import_attributes(node.with.as_deref());
-      self.items.push(DependencyDescriptor {
-        kind,
-        is_dynamic: false,
-        leading_comments,
-        range: node.range(),
-        specifier,
-        specifier_range: src.range(),
-        import_attributes,
-      });
+      self.items.push(
+        DeclarationDependencyDescriptor {
+          kind,
+          leading_comments,
+          range: node.range(),
+          specifier,
+          specifier_range: src.range(),
+          import_attributes: parse_import_attributes(node.with.as_deref()),
+        }
+        .into(),
+      );
     }
   }
 
@@ -177,30 +224,33 @@ impl<'a> Visit for DependencyCollector<'a> {
     } else {
       DependencyKind::Export
     };
-    let import_attributes = parse_import_attributes(node.with.as_deref());
-    self.items.push(DependencyDescriptor {
-      kind,
-      is_dynamic: false,
-      leading_comments,
-      range: node.range(),
-      specifier,
-      specifier_range: node.src.range(),
-      import_attributes,
-    });
+    self.items.push(
+      DeclarationDependencyDescriptor {
+        kind,
+        leading_comments,
+        range: node.range(),
+        specifier,
+        specifier_range: node.src.range(),
+        import_attributes: parse_import_attributes(node.with.as_deref()),
+      }
+      .into(),
+    );
   }
 
   fn visit_ts_import_type(&mut self, node: &ast::TsImportType) {
     let specifier = node.arg.value.clone();
     let leading_comments = self.get_leading_comments(node.start());
-    self.items.push(DependencyDescriptor {
-      kind: DependencyKind::ImportType,
-      is_dynamic: false,
-      leading_comments,
-      range: node.range(),
-      specifier,
-      specifier_range: node.arg.range(),
-      import_attributes: Default::default(),
-    });
+    self.items.push(
+      DeclarationDependencyDescriptor {
+        kind: DependencyKind::ImportType,
+        leading_comments,
+        range: node.range(),
+        specifier,
+        specifier_range: node.arg.range(),
+        import_attributes: Default::default(),
+      }
+      .into(),
+    );
     node.visit_children_with(self);
   }
 
@@ -214,32 +264,52 @@ impl<'a> Visit for DependencyCollector<'a> {
 
   fn visit_call_expr(&mut self, node: &ast::CallExpr) {
     swc_ecma_visit::visit_call_expr(self, node);
-    let kind = match &node.callee {
-      Callee::Super(_) => return,
-      Callee::Import(_) => DependencyKind::Import,
-      _ => return,
+
+    if !matches!(&node.callee, Callee::Import(_)) {
+      return;
+    }
+    let Some(arg) = node.args.first() else {
+      return;
     };
 
-    if let Some(arg) = node.args.first() {
-      if let Expr::Lit(ast::Lit::Str(str_)) = &*arg.expr {
-        let dynamic_import_attributes = if kind == DependencyKind::Import {
-          parse_dynamic_import_attributes(node.args.get(1))
-        } else {
-          Default::default()
-        };
-        let specifier = str_.value.clone();
-        let leading_comments = self.get_leading_comments(node.start());
-        self.items.push(DependencyDescriptor {
-          kind,
-          is_dynamic: true,
-          leading_comments,
-          range: node.range(),
-          specifier,
-          specifier_range: str_.range(),
-          import_attributes: dynamic_import_attributes,
-        });
+    let argument = match &*arg.expr {
+      Expr::Lit(ast::Lit::Str(specifier)) => {
+        DynamicImportArgument::String(specifier.value.clone())
       }
-    }
+      Expr::Tpl(tpl) => {
+        if tpl.quasis.len() == 1 && tpl.exprs.is_empty() {
+          DynamicImportArgument::String(tpl.quasis[0].raw.clone())
+        } else {
+          let mut parts =
+            Vec::with_capacity(tpl.quasis.len() + tpl.exprs.len());
+          for i in 0..tpl.quasis.len() {
+            if tpl.quasis[i].raw.len() > 0 {
+              parts.push(DynamicImportTemplatePart::String(
+                tpl.quasis[i].raw.clone(),
+              ));
+            }
+            if tpl.exprs.get(i).is_some() {
+              parts.push(DynamicImportTemplatePart::Expr);
+            }
+          }
+          DynamicImportArgument::Template(parts)
+        }
+      }
+      _ => DynamicImportArgument::Expr,
+    };
+    let dynamic_import_attributes =
+      parse_dynamic_import_attributes(node.args.get(1));
+    let leading_comments = self.get_leading_comments(node.start());
+    self.items.push(
+      DynamicImportDependencyDescriptor {
+        leading_comments,
+        range: node.range(),
+        argument,
+        argument_range: arg.range(),
+        import_attributes: dynamic_import_attributes,
+      }
+      .into(),
+    );
   }
 
   fn visit_ts_import_equals_decl(&mut self, node: &ast::TsImportEqualsDecl) {
@@ -258,15 +328,17 @@ impl<'a> Visit for DependencyCollector<'a> {
         DependencyKind::ImportEquals
       };
 
-      self.items.push(DependencyDescriptor {
-        kind,
-        is_dynamic: false,
-        leading_comments,
-        range: node.range(),
-        specifier,
-        specifier_range: expr.range(),
-        import_attributes: Default::default(),
-      });
+      self.items.push(
+        DeclarationDependencyDescriptor {
+          kind,
+          leading_comments,
+          range: node.range(),
+          specifier,
+          specifier_range: expr.range(),
+          import_attributes: Default::default(),
+        }
+        .into(),
+      );
     }
   }
 }
@@ -274,10 +346,11 @@ impl<'a> Visit for DependencyCollector<'a> {
 /// Parses import attributes into a hashmap. According to proposal the values
 /// can only be strings (https://github.com/tc39/proposal-import-attributes#should-more-than-just-strings-be-supported-as-attribute-values)
 /// and thus non-string values are skipped.
-fn parse_import_attributes(attrs: Option<&ast::ObjectLit>) -> ImportAttributes {
-  let attrs = match attrs {
-    Some(with) => with,
-    None => return ImportAttributes::None,
+fn parse_import_attributes(
+  maybe_attrs: Option<&ast::ObjectLit>,
+) -> ImportAttributes {
+  let Some(attrs) = maybe_attrs else {
+    return ImportAttributes::None;
   };
   let mut import_attributes = HashMap::new();
   for prop in attrs.props.iter() {
@@ -382,6 +455,7 @@ fn parse_dynamic_import_attributes(
 
 #[cfg(test)]
 mod tests {
+  use crate::swc::atoms::JsWord;
   use crate::swc::common::comments::CommentKind;
   use crate::SourcePos;
   use crate::SourceRange;
@@ -452,18 +526,17 @@ try {
     assert_eq!(
       dependencies,
       vec![
-        DependencyDescriptor {
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::Import,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos, start_pos + 33),
           specifier: JsWord::from("./test.ts"),
           specifier_range: SourceRange::new(start_pos + 21, start_pos + 32),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::ImportType,
-          is_dynamic: false,
           leading_comments: vec![DependencyComment {
             kind: CommentKind::Block,
             text: r#"* JSDoc "#.into(),
@@ -473,10 +546,10 @@ try {
           specifier: JsWord::from("./foo.d.ts"),
           specifier_range: SourceRange::new(start_pos + 72, start_pos + 84),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::Export,
-          is_dynamic: false,
           leading_comments: vec![DependencyComment {
             kind: CommentKind::Line,
             text: r#"/ <reference foo="bar" />"#.into(),
@@ -486,10 +559,10 @@ try {
           specifier: JsWord::from("./buzz.ts"),
           specifier_range: SourceRange::new(start_pos + 136, start_pos + 147),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::ExportType,
-          is_dynamic: false,
           leading_comments: vec![
             DependencyComment {
               kind: CommentKind::Line,
@@ -506,52 +579,51 @@ try {
           specifier: JsWord::from("./fizz.d.ts"),
           specifier_range: SourceRange::new(start_pos + 206, start_pos + 219),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 272, start_pos + 291),
-          specifier: JsWord::from("./foo1.ts"),
-          specifier_range: SourceRange::new(start_pos + 279, start_pos + 290),
+          argument: DynamicImportArgument::String(JsWord::from("./foo1.ts")),
+          argument_range: SourceRange::new(start_pos + 279, start_pos + 290),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 321, start_pos + 339),
-          specifier: JsWord::from("./foo.ts"),
-          specifier_range: SourceRange::new(start_pos + 328, start_pos + 338),
+          argument: DynamicImportArgument::String(JsWord::from("./foo.ts")),
+          argument_range: SourceRange::new(start_pos + 328, start_pos + 338),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::ImportEquals,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 444, start_pos + 486),
           specifier: JsWord::from("some_package_foo"),
           specifier_range: SourceRange::new(start_pos + 466, start_pos + 484),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::ImportType,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 487, start_pos + 542),
           specifier: JsWord::from("some_package_foo_type"),
           specifier_range: SourceRange::new(start_pos + 517, start_pos + 540),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::ExportEquals,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 543, start_pos + 592),
           specifier: JsWord::from("some_package_bar"),
           specifier_range: SourceRange::new(start_pos + 572, start_pos + 590),
           import_attributes: Default::default(),
-        },
+        }
+        .into(),
       ]
     );
   }
@@ -603,154 +675,246 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
     assert_eq!(
       dependencies,
       vec![
-        DependencyDescriptor {
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::Import,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos, start_pos + 63),
           specifier: JsWord::from("./test.ts"),
           specifier_range: SourceRange::new(start_pos + 21, start_pos + 32),
           import_attributes: expected_attributes1.clone(),
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::Export,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 64, start_pos + 120),
           specifier: JsWord::from("./test.ts"),
           specifier_range: SourceRange::new(start_pos + 78, start_pos + 89),
           import_attributes: expected_attributes1,
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::Export,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 121, start_pos + 179),
           specifier: JsWord::from("./test.json"),
           specifier_range: SourceRange::new(start_pos + 141, start_pos + 154),
           import_attributes: expected_attributes2.clone(),
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::Import,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 180, start_pos + 231),
           specifier: JsWord::from("./foo.json"),
           specifier_range: SourceRange::new(start_pos + 196, start_pos + 208),
           import_attributes: expected_attributes2,
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 251, start_pos + 302),
-          specifier: JsWord::from("./fizz.json"),
-          specifier_range: SourceRange::new(start_pos + 258, start_pos + 271),
+          argument: DynamicImportArgument::String(JsWord::from("./fizz.json")),
+          argument_range: SourceRange::new(start_pos + 258, start_pos + 271),
           import_attributes: dynamic_expected_attributes2.clone(),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 323, start_pos + 374),
-          specifier: JsWord::from("./buzz.json"),
-          specifier_range: SourceRange::new(start_pos + 330, start_pos + 343),
+          argument: DynamicImportArgument::String(JsWord::from("./buzz.json")),
+          argument_range: SourceRange::new(start_pos + 330, start_pos + 343),
           import_attributes: dynamic_expected_attributes2,
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 393, start_pos + 412),
-          specifier: JsWord::from("./d1.json"),
-          specifier_range: SourceRange::new(start_pos + 400, start_pos + 411),
+          argument: DynamicImportArgument::String(JsWord::from("./d1.json")),
+          argument_range: SourceRange::new(start_pos + 400, start_pos + 411),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 431, start_pos + 454),
-          specifier: JsWord::from("./d2.json"),
-          specifier_range: SourceRange::new(start_pos + 438, start_pos + 449),
+          argument: DynamicImportArgument::String(JsWord::from("./d2.json")),
+          argument_range: SourceRange::new(start_pos + 438, start_pos + 449),
           import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 473, start_pos + 497),
-          specifier: JsWord::from("./d3.json"),
-          specifier_range: SourceRange::new(start_pos + 480, start_pos + 491),
+          argument: DynamicImportArgument::String(JsWord::from("./d3.json")),
+          argument_range: SourceRange::new(start_pos + 480, start_pos + 491),
           import_attributes: ImportAttributes::Unknown,
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 516, start_pos + 549),
-          specifier: JsWord::from("./d4.json"),
-          specifier_range: SourceRange::new(start_pos + 523, start_pos + 534),
+          argument: DynamicImportArgument::String(JsWord::from("./d4.json")),
+          argument_range: SourceRange::new(start_pos + 523, start_pos + 534),
           import_attributes: ImportAttributes::Known(HashMap::new()),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 568, start_pos + 602),
-          specifier: JsWord::from("./d5.json"),
-          specifier_range: SourceRange::new(start_pos + 575, start_pos + 586),
+          argument: DynamicImportArgument::String(JsWord::from("./d5.json")),
+          argument_range: SourceRange::new(start_pos + 575, start_pos + 586),
           import_attributes: ImportAttributes::Unknown,
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 621, start_pos + 662),
-          specifier: JsWord::from("./d6.json"),
-          specifier_range: SourceRange::new(start_pos + 628, start_pos + 639),
+          argument: DynamicImportArgument::String(JsWord::from("./d6.json")),
+          argument_range: SourceRange::new(start_pos + 628, start_pos + 639),
           import_attributes: ImportAttributes::Unknown,
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 681, start_pos + 733),
-          specifier: JsWord::from("./d7.json"),
-          specifier_range: SourceRange::new(start_pos + 688, start_pos + 699),
+          argument: DynamicImportArgument::String(JsWord::from("./d7.json")),
+          argument_range: SourceRange::new(start_pos + 688, start_pos + 699),
           import_attributes: ImportAttributes::Unknown,
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 752, start_pos + 796),
-          specifier: JsWord::from("./d8.json"),
-          specifier_range: SourceRange::new(start_pos + 759, start_pos + 770),
+          argument: DynamicImportArgument::String(JsWord::from("./d8.json")),
+          argument_range: SourceRange::new(start_pos + 759, start_pos + 770),
           import_attributes: ImportAttributes::Known({
             let mut map = HashMap::new();
             map.insert("type".to_string(), ImportAttribute::Unknown);
             map
           }),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 815, start_pos + 870),
-          specifier: JsWord::from("./d9.json"),
-          specifier_range: SourceRange::new(start_pos + 822, start_pos + 833),
+          argument: DynamicImportArgument::String(JsWord::from("./d9.json")),
+          argument_range: SourceRange::new(start_pos + 822, start_pos + 833),
           import_attributes: ImportAttributes::Unknown,
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 890, start_pos + 955),
-          specifier: JsWord::from("./d10.json"),
-          specifier_range: SourceRange::new(start_pos + 897, start_pos + 909),
+          argument: DynamicImportArgument::String(JsWord::from("./d10.json")),
+          argument_range: SourceRange::new(start_pos + 897, start_pos + 909),
           import_attributes: ImportAttributes::Unknown,
-        },
+        }
+        .into(),
+      ]
+    );
+  }
+
+  #[test]
+  fn test_dynamic_imports() {
+    let source = r#"const d1 = await import(`./d1.json`);
+const d2 = await import(`${value}`);
+const d3 = await import(`./test/${value}`);
+const d4 = await import(`${value}/test`);
+const d5 = await import(`${value}${value2}`);
+const d6 = await import(`${value}/test/${value2}`);
+const d7 = await import(`./${value}/test/${value2}/`);
+const d8 = await import(expr);
+"#;
+    let (start_pos, dependencies) = helper("test.ts", source);
+    assert_eq!(
+      dependencies,
+      vec![
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 17, start_pos + 36),
+          argument: DynamicImportArgument::String(JsWord::from("./d1.json")),
+          argument_range: SourceRange::new(start_pos + 24, start_pos + 35),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 55, start_pos + 73),
+          argument: DynamicImportArgument::Template(vec![
+            DynamicImportTemplatePart::Expr
+          ]),
+          argument_range: SourceRange::new(start_pos + 62, start_pos + 72),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 92, start_pos + 117),
+          argument: DynamicImportArgument::Template(vec![
+            DynamicImportTemplatePart::String(JsWord::from("./test/")),
+            DynamicImportTemplatePart::Expr,
+          ]),
+          argument_range: SourceRange::new(start_pos + 99, start_pos + 116),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 136, start_pos + 159),
+          argument: DynamicImportArgument::Template(vec![
+            DynamicImportTemplatePart::Expr,
+            DynamicImportTemplatePart::String(JsWord::from("/test")),
+          ]),
+          argument_range: SourceRange::new(start_pos + 143, start_pos + 158),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 178, start_pos + 205),
+          argument: DynamicImportArgument::Template(vec![
+            DynamicImportTemplatePart::Expr,
+            DynamicImportTemplatePart::Expr,
+          ]),
+          argument_range: SourceRange::new(start_pos + 185, start_pos + 204),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 224, start_pos + 257),
+          argument: DynamicImportArgument::Template(vec![
+            DynamicImportTemplatePart::Expr,
+            DynamicImportTemplatePart::String(JsWord::from("/test/")),
+            DynamicImportTemplatePart::Expr,
+          ]),
+          argument_range: SourceRange::new(start_pos + 231, start_pos + 256),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 276, start_pos + 312),
+          argument: DynamicImportArgument::Template(vec![
+            DynamicImportTemplatePart::String(JsWord::from("./")),
+            DynamicImportTemplatePart::Expr,
+            DynamicImportTemplatePart::String(JsWord::from("/test/")),
+            DynamicImportTemplatePart::Expr,
+            DynamicImportTemplatePart::String(JsWord::from("/")),
+          ]),
+          argument_range: SourceRange::new(start_pos + 283, start_pos + 311),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 331, start_pos + 343),
+          argument: DynamicImportArgument::Expr,
+          argument_range: SourceRange::new(start_pos + 338, start_pos + 342),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
       ]
     );
   }
@@ -766,33 +930,33 @@ export declare const SomeValue: typeof Core & import("./a.d.ts").Constructor<{
     assert_eq!(
       dependencies,
       vec![
-        DependencyDescriptor {
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::ImportType,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 46, start_pos + 174),
           specifier: JsWord::from("./a.d.ts"),
           specifier_range: SourceRange::new(start_pos + 53, start_pos + 63),
           import_attributes: ImportAttributes::None,
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::ImportType,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 93, start_pos + 129),
           specifier: JsWord::from("./b.d.ts"),
           specifier_range: SourceRange::new(start_pos + 100, start_pos + 110),
           import_attributes: ImportAttributes::None,
-        },
-        DependencyDescriptor {
+        }
+        .into(),
+        DeclarationDependencyDescriptor {
           kind: DependencyKind::ImportType,
-          is_dynamic: false,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 135, start_pos + 173),
           specifier: JsWord::from("./c.d.ts"),
           specifier_range: SourceRange::new(start_pos + 142, start_pos + 152),
           import_attributes: ImportAttributes::None,
         }
+        .into()
       ]
     );
   }
