@@ -3,11 +3,13 @@
 use std::collections::HashMap;
 
 use crate::swc::ast;
+use crate::swc::atoms::Atom;
 use crate::swc::atoms::JsWord;
-use crate::swc::common::comments::Comment;
+use crate::swc::common::comments::CommentKind;
 use crate::swc::common::comments::Comments;
 use crate::swc::visit::Visit;
 use crate::swc::visit::VisitWith;
+use crate::SourcePos;
 use crate::SourceRange;
 use crate::SourceRangedForSpanned;
 
@@ -68,13 +70,20 @@ impl ImportAttributes {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DependencyComment {
+  pub kind: CommentKind,
+  pub range: SourceRange,
+  pub text: Atom,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DependencyDescriptor {
   pub kind: DependencyKind,
   /// A flag indicating if the import is dynamic or not.
   pub is_dynamic: bool,
   /// Any leading comments associated with the dependency.  This is used for
   /// further processing of supported pragma that impact the dependency.
-  pub leading_comments: Vec<Comment>,
+  pub leading_comments: Vec<DependencyComment>,
   /// The range of the import/export statement.
   pub range: SourceRange,
   /// The text specifier associated with the import/export statement.
@@ -94,19 +103,25 @@ struct DependencyCollector<'a> {
 }
 
 impl<'a> DependencyCollector<'a> {
-  #[allow(clippy::disallowed_types)]
-  fn get_leading_comments(
-    &self,
-    span: crate::swc::common::Span,
-  ) -> Vec<Comment> {
-    self.comments.get_leading(span.lo).unwrap_or_default()
+  fn get_leading_comments(&self, start: SourcePos) -> Vec<DependencyComment> {
+    self
+      .comments
+      .get_leading(start.as_byte_pos())
+      .unwrap_or_default()
+      .into_iter()
+      .map(|c| DependencyComment {
+        kind: c.kind,
+        range: c.range(),
+        text: c.text,
+      })
+      .collect()
   }
 }
 
 impl<'a> Visit for DependencyCollector<'a> {
   fn visit_import_decl(&mut self, node: &ast::ImportDecl) {
     let specifier = node.src.value.clone();
-    let leading_comments = self.get_leading_comments(node.span);
+    let leading_comments = self.get_leading_comments(node.start());
     let kind = if node.type_only {
       DependencyKind::ImportType
     } else {
@@ -127,7 +142,7 @@ impl<'a> Visit for DependencyCollector<'a> {
   fn visit_named_export(&mut self, node: &ast::NamedExport) {
     if let Some(src) = &node.src {
       let specifier = src.value.clone();
-      let leading_comments = self.get_leading_comments(node.span);
+      let leading_comments = self.get_leading_comments(node.start());
       let kind = if node.type_only {
         DependencyKind::ExportType
       } else {
@@ -148,7 +163,7 @@ impl<'a> Visit for DependencyCollector<'a> {
 
   fn visit_export_all(&mut self, node: &ast::ExportAll) {
     let specifier = node.src.value.clone();
-    let leading_comments = self.get_leading_comments(node.span);
+    let leading_comments = self.get_leading_comments(node.start());
     let kind = if node.type_only {
       DependencyKind::ExportType
     } else {
@@ -168,8 +183,7 @@ impl<'a> Visit for DependencyCollector<'a> {
 
   fn visit_ts_import_type(&mut self, node: &ast::TsImportType) {
     let specifier = node.arg.value.clone();
-    let span = node.span;
-    let leading_comments = self.get_leading_comments(span);
+    let leading_comments = self.get_leading_comments(node.start());
     self.items.push(DependencyDescriptor {
       kind: DependencyKind::ImportType,
       is_dynamic: false,
@@ -226,7 +240,7 @@ impl<'a> Visit for DependencyCollector<'a> {
           Default::default()
         };
         let specifier = str_.value.clone();
-        let leading_comments = self.get_leading_comments(node.span);
+        let leading_comments = self.get_leading_comments(node.start());
         self.items.push(DependencyDescriptor {
           kind,
           is_dynamic,
@@ -244,7 +258,7 @@ impl<'a> Visit for DependencyCollector<'a> {
     use ast::TsModuleRef;
 
     if let TsModuleRef::TsExternalModuleRef(module) = &node.module_ref {
-      let leading_comments = self.get_leading_comments(node.span);
+      let leading_comments = self.get_leading_comments(node.start());
       let expr = &module.expr;
       let specifier = expr.value.clone();
 
@@ -380,10 +394,7 @@ fn parse_dynamic_import_assertions(
 
 #[cfg(test)]
 mod tests {
-  use crate::swc::common;
-  use crate::swc::common::comments::Comment;
   use crate::swc::common::comments::CommentKind;
-  use crate::swc::common::SyntaxContext;
   use crate::SourcePos;
   use crate::SourceRange;
   use crate::SourceRangedForSpanned;
@@ -466,18 +477,11 @@ try {
         DependencyDescriptor {
           kind: DependencyKind::ImportType,
           is_dynamic: false,
-          leading_comments: vec![
-            #[allow(clippy::disallowed_types)]
-            Comment {
-              kind: CommentKind::Block,
-              text: r#"* JSDoc "#.into(),
-              span: common::Span::new(
-                common::BytePos(35),
-                common::BytePos(47),
-                SyntaxContext::empty()
-              ),
-            }
-          ],
+          leading_comments: vec![DependencyComment {
+            kind: CommentKind::Block,
+            text: r#"* JSDoc "#.into(),
+            range: SourceRange::new(start_pos + 34, start_pos + 46),
+          }],
           range: SourceRange::new(start_pos + 47, start_pos + 85),
           specifier: JsWord::from("./foo.d.ts"),
           specifier_range: SourceRange::new(start_pos + 72, start_pos + 84),
@@ -486,18 +490,11 @@ try {
         DependencyDescriptor {
           kind: DependencyKind::Export,
           is_dynamic: false,
-          leading_comments: vec![
-            #[allow(clippy::disallowed_types)]
-            Comment {
-              kind: CommentKind::Line,
-              text: r#"/ <reference foo="bar" />"#.into(),
-              span: common::Span::new(
-                common::BytePos(87),
-                common::BytePos(114),
-                SyntaxContext::empty()
-              ),
-            }
-          ],
+          leading_comments: vec![DependencyComment {
+            kind: CommentKind::Line,
+            text: r#"/ <reference foo="bar" />"#.into(),
+            range: SourceRange::new(start_pos + 86, start_pos + 113),
+          }],
           range: SourceRange::new(start_pos + 114, start_pos + 148),
           specifier: JsWord::from("./buzz.ts"),
           specifier_range: SourceRange::new(start_pos + 136, start_pos + 147),
@@ -507,25 +504,15 @@ try {
           kind: DependencyKind::ExportType,
           is_dynamic: false,
           leading_comments: vec![
-            #[allow(clippy::disallowed_types)]
-            Comment {
+            DependencyComment {
               kind: CommentKind::Line,
               text: r#" @some-pragma"#.into(),
-              span: common::Span::new(
-                common::BytePos(150),
-                common::BytePos(165),
-                SyntaxContext::empty()
-              ),
+              range: SourceRange::new(start_pos + 149, start_pos + 164),
             },
-            #[allow(clippy::disallowed_types)]
-            Comment {
+            DependencyComment {
               kind: CommentKind::Block,
               text: "*\n * Foo\n ".into(),
-              span: common::Span::new(
-                common::BytePos(166),
-                common::BytePos(180),
-                SyntaxContext::empty()
-              ),
+              range: SourceRange::new(start_pos + 165, start_pos + 179),
             }
           ],
           range: SourceRange::new(start_pos + 180, start_pos + 220),
