@@ -265,48 +265,51 @@ impl<'a> Visit for DependencyCollector<'a> {
   fn visit_call_expr(&mut self, node: &ast::CallExpr) {
     swc_ecma_visit::visit_call_expr(self, node);
 
-    if matches!(&node.callee, Callee::Import(_)) {
-      if let Some(arg) = node.args.first() {
-        let argument = match &*arg.expr {
-          Expr::Lit(ast::Lit::Str(specifier)) => {
-            DynamicImportArgument::String(specifier.value.clone())
-          }
-          Expr::Tpl(tpl) => {
-            if tpl.quasis.len() == 1 && tpl.exprs.is_empty() {
-              DynamicImportArgument::String(tpl.quasis[0].raw.clone())
-            } else {
-              let mut parts =
-                Vec::with_capacity(tpl.quasis.len() + tpl.exprs.len());
-              for i in 0..tpl.quasis.len() {
-                if tpl.quasis[i].raw.len() > 0 {
-                  parts.push(DynamicImportTemplatePart::String(
-                    tpl.quasis[i].raw.clone(),
-                  ));
-                }
-                if tpl.exprs.get(i).is_some() {
-                  parts.push(DynamicImportTemplatePart::Expr);
-                }
-              }
-              DynamicImportArgument::Template(parts)
+    if !matches!(&node.callee, Callee::Import(_)) {
+      return;
+    }
+    let Some(arg) = node.args.first() else {
+      return;
+    };
+
+    let argument = match &*arg.expr {
+      Expr::Lit(ast::Lit::Str(specifier)) => {
+        DynamicImportArgument::String(specifier.value.clone())
+      }
+      Expr::Tpl(tpl) => {
+        if tpl.quasis.len() == 1 && tpl.exprs.is_empty() {
+          DynamicImportArgument::String(tpl.quasis[0].raw.clone())
+        } else {
+          let mut parts =
+            Vec::with_capacity(tpl.quasis.len() + tpl.exprs.len());
+          for i in 0..tpl.quasis.len() {
+            if tpl.quasis[i].raw.len() > 0 {
+              parts.push(DynamicImportTemplatePart::String(
+                tpl.quasis[i].raw.clone(),
+              ));
+            }
+            if tpl.exprs.get(i).is_some() {
+              parts.push(DynamicImportTemplatePart::Expr);
             }
           }
-          _ => DynamicImportArgument::Expr,
-        };
-        let dynamic_import_attributes =
-          parse_dynamic_import_attributes(node.args.get(1));
-        let leading_comments = self.get_leading_comments(node.start());
-        self.items.push(
-          DynamicImportDependencyDescriptor {
-            leading_comments,
-            range: node.range(),
-            argument,
-            argument_range: arg.range(),
-            import_attributes: dynamic_import_attributes,
-          }
-          .into(),
-        );
+          DynamicImportArgument::Template(parts)
+        }
       }
-    }
+      _ => DynamicImportArgument::Expr,
+    };
+    let dynamic_import_attributes =
+      parse_dynamic_import_attributes(node.args.get(1));
+    let leading_comments = self.get_leading_comments(node.start());
+    self.items.push(
+      DynamicImportDependencyDescriptor {
+        leading_comments,
+        range: node.range(),
+        argument,
+        argument_range: arg.range(),
+        import_attributes: dynamic_import_attributes,
+      }
+      .into(),
+    );
   }
 
   fn visit_ts_import_equals_decl(&mut self, node: &ast::TsImportEqualsDecl) {
