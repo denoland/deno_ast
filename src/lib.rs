@@ -6,6 +6,8 @@
 #[cfg(feature = "cjs")]
 mod cjs_parse;
 mod comments;
+#[cfg(feature = "dep_graph")]
+pub mod dep_graph;
 mod lexing;
 mod parsed_source;
 mod parsing;
@@ -46,8 +48,6 @@ pub mod swc {
   pub use swc_ecma_ast as ast;
   #[cfg(feature = "codegen")]
   pub use swc_ecma_codegen as codegen;
-  #[cfg(feature = "dep_graph")]
-  pub use swc_ecma_dep_graph as dep_graph;
   pub use swc_ecma_parser as parser;
   #[cfg(feature = "transforms")]
   pub mod transforms {

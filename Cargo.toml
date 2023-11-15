@@ -17,7 +17,7 @@ bundler = ["swc_bundler", "swc_ecma_transforms_optimization", "swc_graph_analyze
 cjs = ["utils", "visit"]
 codegen = ["swc_ecma_codegen", "swc_ecma_codegen_macros", "swc_macros_common"]
 compat = ["transforms", "swc_ecma_transforms_compat", "swc_trace_macro", "swc_config", "swc_config_macro"]
-dep_graph = ["swc_ecma_dep_graph"]
+dep_graph = ["visit"]
 module_specifier = ["deno_media_type/module_specifier", "url"]
 proposal = ["transforms", "swc_ecma_transforms_proposal", "swc_ecma_transforms_classes", "swc_ecma_transforms_macros", "swc_macros_common"]
 react = ["transforms", "swc_ecma_transforms_react", "swc_ecma_transforms_macros", "swc_config", "swc_config_macro", "swc_macros_common"]
@@ -50,7 +50,6 @@ swc_config_macro = { version = "=0.1.2", optional = true }
 swc_ecma_ast = { version = "=0.110.0", features = ["serde-impl"] }
 swc_ecma_codegen = { version = "=0.146.3", optional = true }
 swc_ecma_codegen_macros = { version = "=0.7.3", optional = true }
-swc_ecma_dep_graph = { version = "=0.113.3", optional = true }
 swc_ecma_loader = { version = "=0.45.0", optional = true }
 swc_ecma_parser = "=0.141.3"
 swc_ecma_transforms_base = { version = "=0.134.8", optional = true }
