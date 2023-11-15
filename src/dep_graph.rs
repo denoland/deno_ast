@@ -6,6 +6,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::swc::ast;
+use crate::swc::ast::Callee;
+use crate::swc::ast::Expr;
 use crate::swc::atoms::Atom;
 use crate::swc::atoms::JsWord;
 use crate::swc::common::comments::CommentKind;
@@ -23,7 +25,6 @@ pub fn analyze_dependencies(
   let mut v = DependencyCollector {
     comments,
     items: vec![],
-    is_top_level: true,
   };
   module.visit_with(&mut v);
   v.items
@@ -38,7 +39,6 @@ pub enum DependencyKind {
   Export,
   ExportType,
   ExportEquals,
-  Require,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -108,9 +108,6 @@ pub struct DependencyDescriptor {
 struct DependencyCollector<'a> {
   comments: &'a dyn Comments,
   pub items: Vec<DependencyDescriptor>,
-  // This field is used to determine if currently visited "require"
-  // is top level and "static", or inside module body and "dynamic".
-  is_top_level: bool,
 }
 
 impl<'a> DependencyCollector<'a> {
@@ -212,39 +209,19 @@ impl<'a> Visit for DependencyCollector<'a> {
   }
 
   fn visit_stmts(&mut self, items: &[ast::Stmt]) {
-    self.is_top_level = false;
     swc_ecma_visit::visit_stmts(self, items);
-    self.is_top_level = true;
   }
 
   fn visit_call_expr(&mut self, node: &ast::CallExpr) {
-    use ast::{Callee, Expr, Ident, MemberProp};
-
     swc_ecma_visit::visit_call_expr(self, node);
     let kind = match &node.callee {
       Callee::Super(_) => return,
       Callee::Import(_) => DependencyKind::Import,
-      Callee::Expr(expr) => match &**expr {
-        Expr::Ident(Ident { sym: require, .. }) if &**require == "require" => {
-          DependencyKind::Require
-        }
-        Expr::Member(member) => match (&*member.obj, &member.prop) {
-          (
-            Expr::Ident(Ident { sym: obj_sym, .. }),
-            MemberProp::Ident(Ident { sym: prop_sym, .. }),
-          ) if obj_sym == "require" && prop_sym == "resolve" => {
-            DependencyKind::Require
-          }
-          _ => return,
-        },
-        _ => return,
-      },
+      _ => return,
     };
 
     if let Some(arg) = node.args.first() {
       if let Expr::Lit(ast::Lit::Str(str_)) = &*arg.expr {
-        // import() are always dynamic, even if at top level
-        let is_dynamic = !self.is_top_level || kind == DependencyKind::Import;
         let dynamic_import_attributes = if kind == DependencyKind::Import {
           parse_dynamic_import_attributes(node.args.get(1))
         } else {
@@ -254,7 +231,7 @@ impl<'a> Visit for DependencyCollector<'a> {
         let leading_comments = self.get_leading_comments(node.start());
         self.items.push(DependencyDescriptor {
           kind,
-          is_dynamic,
+          is_dynamic: true,
           leading_comments,
           range: node.range(),
           specifier,
@@ -472,7 +449,6 @@ try {
 }
       "#;
     let (start_pos, dependencies) = helper("test.ts", source);
-    assert_eq!(dependencies.len(), 13);
     assert_eq!(
       dependencies,
       vec![
@@ -532,15 +508,6 @@ try {
           import_attributes: Default::default(),
         },
         DependencyDescriptor {
-          kind: DependencyKind::Require,
-          is_dynamic: false,
-          leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 238, start_pos + 253),
-          specifier: JsWord::from("path"),
-          specifier_range: SourceRange::new(start_pos + 246, start_pos + 252),
-          import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
@@ -556,15 +523,6 @@ try {
           range: SourceRange::new(start_pos + 321, start_pos + 339),
           specifier: JsWord::from("./foo.ts"),
           specifier_range: SourceRange::new(start_pos + 328, start_pos + 338),
-          import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Require,
-          is_dynamic: true,
-          leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 391, start_pos + 414),
-          specifier: JsWord::from("some_package"),
-          specifier_range: SourceRange::new(start_pos + 399, start_pos + 413),
           import_attributes: Default::default(),
         },
         DependencyDescriptor {
@@ -592,24 +550,6 @@ try {
           range: SourceRange::new(start_pos + 543, start_pos + 592),
           specifier: JsWord::from("some_package_bar"),
           specifier_range: SourceRange::new(start_pos + 572, start_pos + 590),
-          import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Require,
-          is_dynamic: false,
-          leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 606, start_pos + 645),
-          specifier: JsWord::from("some_package_resolve"),
-          specifier_range: SourceRange::new(start_pos + 622, start_pos + 644),
-          import_attributes: Default::default(),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Require,
-          is_dynamic: true,
-          leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 670, start_pos + 713),
-          specifier: JsWord::from("some_package_resolve_foo"),
-          specifier_range: SourceRange::new(start_pos + 686, start_pos + 712),
           import_attributes: Default::default(),
         },
       ]
@@ -660,7 +600,6 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
       );
       map
     });
-    assert_eq!(dependencies.len(), 16);
     assert_eq!(
       dependencies,
       vec![
