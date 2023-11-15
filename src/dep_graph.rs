@@ -821,6 +821,7 @@ const d4 = await import(`${value}/test`);
 const d5 = await import(`${value}${value2}`);
 const d6 = await import(`${value}/test/${value2}`);
 const d7 = await import(`./${value}/test/${value2}/`);
+const d8 = await import(expr);
 "#;
     let (start_pos, dependencies) = helper("test.ts", source);
     assert_eq!(
@@ -900,6 +901,14 @@ const d7 = await import(`./${value}/test/${value2}/`);
             DynamicImportTemplatePart::String(JsWord::from("/")),
           ]),
           argument_range: SourceRange::new(start_pos + 283, start_pos + 311),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 331, start_pos + 343),
+          argument: DynamicImportArgument::Expr,
+          argument_range: SourceRange::new(start_pos + 338, start_pos + 342),
           import_attributes: ImportAttributes::None,
         }
         .into(),
