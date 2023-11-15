@@ -7,7 +7,7 @@
 mod cjs_parse;
 mod comments;
 #[cfg(feature = "dep_analysis")]
-pub mod dep_analysis;
+pub mod dep;
 mod lexing;
 mod parsed_source;
 mod parsing;

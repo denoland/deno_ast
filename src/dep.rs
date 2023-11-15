@@ -13,20 +13,26 @@ use crate::swc::common::comments::CommentKind;
 use crate::swc::common::comments::Comments;
 use crate::swc::visit::Visit;
 use crate::swc::visit::VisitWith;
+use crate::ParsedSource;
 use crate::SourcePos;
 use crate::SourceRange;
 use crate::SourceRangedForSpanned;
 
-pub fn analyze_dependencies(
-  module: &ast::Module,
-  comments: &dyn Comments,
-) -> Vec<DependencyDescriptor> {
-  let mut v = DependencyCollector {
-    comments,
-    items: vec![],
-  };
-  module.visit_with(&mut v);
-  v.items
+impl ParsedSource {
+  /// Analyzes the module for a list of its imports and exports.
+  pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
+    let module = match self.program_ref() {
+      ast::Program::Module(module) => module,
+      ast::Program::Script(_) => return vec![],
+    };
+
+    let mut v = DependencyCollector {
+      comments: &self.comments().as_swc_comments(),
+      items: vec![],
+    };
+    module.visit_with(&mut v);
+    v.items
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -478,13 +484,7 @@ mod tests {
       maybe_syntax: None,
     })
     .unwrap();
-    (
-      source.module().start(),
-      analyze_dependencies(
-        source.module(),
-        &source.comments().as_swc_comments(),
-      ),
-    )
+    (source.module().start(), source.analyze_dependencies())
   }
 
   #[test]
