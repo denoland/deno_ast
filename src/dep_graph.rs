@@ -2,6 +2,9 @@
 
 use std::collections::HashMap;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::swc::ast;
 use crate::swc::atoms::Atom;
 use crate::swc::atoms::JsWord;
@@ -26,7 +29,8 @@ pub fn analyze_dependencies(
   v.items
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum DependencyKind {
   Import,
   ImportType,
@@ -37,31 +41,38 @@ pub enum DependencyKind {
   Require,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ImportAssertion {
-  /// The value of this assertion could not be statically analyzed.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum ImportAttribute {
+  /// The value of this attribute could not be statically analyzed.
   Unknown,
-  /// The value of this assertion is a statically analyzed string.
+  /// The value of this attribute is a statically analyzed string.
   Known(String),
 }
 
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ImportAttributes {
-  /// There was no import assertions object literal.
+  /// There was no import attributes object literal.
   #[default]
   None,
-  /// The set of assertion keys could not be statically analyzed.
+  /// The set of attribute keys could not be statically analyzed.
   Unknown,
-  /// The set of assertion keys is statically analyzed, though each respective
+  /// The set of attribute keys is statically analyzed, though each respective
   /// value may or may not not be for dynamic imports.
-  Known(HashMap<String, ImportAssertion>),
+  Known(HashMap<String, ImportAttribute>),
 }
 
 impl ImportAttributes {
+  pub fn is_none(&self) -> bool {
+    matches!(self, ImportAttributes::None)
+  }
+
   pub fn get(&self, key: &str) -> Option<&String> {
     match self {
       ImportAttributes::Known(map) => match map.get(key) {
-        Some(ImportAssertion::Known(value)) => Some(value),
+        Some(ImportAttribute::Known(value)) => Some(value),
         _ => None,
       },
       _ => None,
@@ -90,7 +101,7 @@ pub struct DependencyDescriptor {
   pub specifier: JsWord,
   /// The range of the specifier.
   pub specifier_range: SourceRange,
-  /// Import assertions for this dependency.
+  /// Import attributes for this dependency.
   pub import_attributes: ImportAttributes,
 }
 
@@ -234,8 +245,8 @@ impl<'a> Visit for DependencyCollector<'a> {
       if let Expr::Lit(ast::Lit::Str(str_)) = &*arg.expr {
         // import() are always dynamic, even if at top level
         let is_dynamic = !self.is_top_level || kind == DependencyKind::Import;
-        let dynamic_import_assertions = if kind == DependencyKind::Import {
-          parse_dynamic_import_assertions(node.args.get(1))
+        let dynamic_import_attributes = if kind == DependencyKind::Import {
+          parse_dynamic_import_attributes(node.args.get(1))
         } else {
           Default::default()
         };
@@ -248,7 +259,7 @@ impl<'a> Visit for DependencyCollector<'a> {
           range: node.range(),
           specifier,
           specifier_range: str_.range(),
-          import_attributes: dynamic_import_assertions,
+          import_attributes: dynamic_import_attributes,
         });
       }
     }
@@ -283,15 +294,15 @@ impl<'a> Visit for DependencyCollector<'a> {
   }
 }
 
-/// Parses import assertions into a hashmap. According to proposal the values
-/// can only be strings (https://github.com/tc39/proposal-import-assertions#should-more-than-just-strings-be-supported-as-attribute-values)
+/// Parses import attributes into a hashmap. According to proposal the values
+/// can only be strings (https://github.com/tc39/proposal-import-attributes#should-more-than-just-strings-be-supported-as-attribute-values)
 /// and thus non-string values are skipped.
 fn parse_import_attributes(attrs: Option<&ast::ObjectLit>) -> ImportAttributes {
   let attrs = match attrs {
     Some(with) => with,
     None => return ImportAttributes::None,
   };
-  let mut import_assertions = HashMap::new();
+  let mut import_attributes = HashMap::new();
   for prop in attrs.props.iter() {
     if let ast::PropOrSpread::Prop(prop) = prop {
       if let ast::Prop::KeyValue(key_value) = &**prop {
@@ -303,18 +314,18 @@ fn parse_import_attributes(attrs: Option<&ast::ObjectLit>) -> ImportAttributes {
 
         if let Some(key) = maybe_key {
           if let ast::Expr::Lit(ast::Lit::Str(str_)) = &*key_value.value {
-            import_assertions
-              .insert(key, ImportAssertion::Known(str_.value.to_string()));
+            import_attributes
+              .insert(key, ImportAttribute::Known(str_.value.to_string()));
           }
         }
       }
     }
   }
-  ImportAttributes::Known(import_assertions)
+  ImportAttributes::Known(import_attributes)
 }
 
-/// Parses import assertions from the second arg of a dynamic import.
-fn parse_dynamic_import_assertions(
+/// Parses import attributes from the second arg of a dynamic import.
+fn parse_dynamic_import_attributes(
   arg: Option<&ast::ExprOrSpread>,
 ) -> ImportAttributes {
   let arg = match arg {
@@ -331,8 +342,8 @@ fn parse_dynamic_import_assertions(
     _ => return ImportAttributes::Unknown,
   };
 
-  let mut assertions_map = HashMap::new();
-  let mut had_assert_key = false;
+  let mut attributes_map = HashMap::new();
+  let mut had_attributes_key = false;
 
   for prop in object_lit.props.iter() {
     let prop = match prop {
@@ -349,13 +360,13 @@ fn parse_dynamic_import_assertions(
       _ => return ImportAttributes::Unknown,
     };
     if key == "assert" || key == "with" {
-      had_assert_key = true;
-      let assertions_lit = match &*key_value.value {
-        ast::Expr::Object(assertions_lit) => assertions_lit,
+      had_attributes_key = true;
+      let attributes_lit = match &*key_value.value {
+        ast::Expr::Object(lit) => lit,
         _ => return ImportAttributes::Unknown,
       };
 
-      for prop in assertions_lit.props.iter() {
+      for prop in attributes_lit.props.iter() {
         let prop = match prop {
           ast::PropOrSpread::Prop(prop) => prop,
           _ => return ImportAttributes::Unknown,
@@ -370,23 +381,23 @@ fn parse_dynamic_import_assertions(
           _ => return ImportAttributes::Unknown,
         };
         if let ast::Expr::Lit(value_lit) = &*key_value.value {
-          assertions_map.insert(
+          attributes_map.insert(
             key,
             if let ast::Lit::Str(str_) = value_lit {
-              ImportAssertion::Known(str_.value.to_string())
+              ImportAttribute::Known(str_.value.to_string())
             } else {
-              ImportAssertion::Unknown
+              ImportAttribute::Unknown
             },
           );
         } else {
-          assertions_map.insert(key, ImportAssertion::Unknown);
+          attributes_map.insert(key, ImportAttribute::Unknown);
         }
       }
     }
   }
 
-  if had_assert_key {
-    ImportAttributes::Known(assertions_map)
+  if had_attributes_key {
+    ImportAttributes::Known(attributes_map)
   } else {
     ImportAttributes::None
   }
@@ -606,46 +617,46 @@ try {
   }
 
   #[test]
-  fn test_import_assertions() {
-    let source = r#"import * as bar from "./test.ts" assert { "type": "typescript" };
-export * from "./test.ts" assert { "type": "typescript" };
-export { bar } from "./test.json" assert { "type": "json" };
-import foo from "./foo.json" assert { type: "json" };
-const fizz = await import("./fizz.json", { "assert": { type: "json" } });
-const buzz = await import("./buzz.json", { assert: { "type": "json" } });
+  fn test_import_attributes() {
+    let source = r#"import * as bar from "./test.ts" with { "type": "typescript" };
+export * from "./test.ts" with { "type": "typescript" };
+export { bar } from "./test.json" with { "type": "json" };
+import foo from "./foo.json" with { type: "json" };
+const fizz = await import("./fizz.json", { "with": { type: "json" } });
+const buzz = await import("./buzz.json", { with: { "type": "json" } });
 const d1 = await import("./d1.json");
 const d2 = await import("./d2.json", {});
 const d3 = await import("./d3.json", bar);
-const d4 = await import("./d4.json", { assert: {} });
-const d5 = await import("./d5.json", { assert: bar });
-const d6 = await import("./d6.json", { assert: {}, ...bar });
-const d7 = await import("./d7.json", { assert: {}, ["assert"]: "bad" });
-const d8 = await import("./d8.json", { assert: { type: bar } });
-const d9 = await import("./d9.json", { assert: { type: "json", ...bar } });
-const d10 = await import("./d10.json", { assert: { type: "json", ["type"]: "bad" } });
+const d4 = await import("./d4.json", { with: {} });
+const d5 = await import("./d5.json", { with: bar });
+const d6 = await import("./d6.json", { with: {}, ...bar });
+const d7 = await import("./d7.json", { with: {}, ["assert"]: "bad" });
+const d8 = await import("./d8.json", { with: { type: bar } });
+const d9 = await import("./d9.json", { with: { type: "json", ...bar } });
+const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" } });
       "#;
     let (start_pos, dependencies) = helper("test.ts", source);
-    let expected_assertions1 = ImportAttributes::Known({
+    let expected_attributes1 = ImportAttributes::Known({
       let mut map = HashMap::new();
       map.insert(
         "type".to_string(),
-        ImportAssertion::Known("typescript".to_string()),
+        ImportAttribute::Known("typescript".to_string()),
       );
       map
     });
-    let expected_assertions2 = ImportAttributes::Known({
+    let expected_attributes2 = ImportAttributes::Known({
       let mut map = HashMap::new();
       map.insert(
         "type".to_string(),
-        ImportAssertion::Known("json".to_string()),
+        ImportAttribute::Known("json".to_string()),
       );
       map
     });
-    let dynamic_expected_assertions2 = ImportAttributes::Known({
+    let dynamic_expected_attributes2 = ImportAttributes::Known({
       let mut map = HashMap::new();
       map.insert(
         "type".to_string(),
-        ImportAssertion::Known("json".to_string()),
+        ImportAttribute::Known("json".to_string()),
       );
       map
     });
@@ -657,129 +668,129 @@ const d10 = await import("./d10.json", { assert: { type: "json", ["type"]: "bad"
           kind: DependencyKind::Import,
           is_dynamic: false,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos, start_pos + 65),
+          range: SourceRange::new(start_pos, start_pos + 63),
           specifier: JsWord::from("./test.ts"),
           specifier_range: SourceRange::new(start_pos + 21, start_pos + 32),
-          import_attributes: expected_assertions1.clone(),
+          import_attributes: expected_attributes1.clone(),
         },
         DependencyDescriptor {
           kind: DependencyKind::Export,
           is_dynamic: false,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 66, start_pos + 124),
+          range: SourceRange::new(start_pos + 64, start_pos + 120),
           specifier: JsWord::from("./test.ts"),
-          specifier_range: SourceRange::new(start_pos + 80, start_pos + 91),
-          import_attributes: expected_assertions1,
+          specifier_range: SourceRange::new(start_pos + 78, start_pos + 89),
+          import_attributes: expected_attributes1,
         },
         DependencyDescriptor {
           kind: DependencyKind::Export,
           is_dynamic: false,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 125, start_pos + 185),
+          range: SourceRange::new(start_pos + 121, start_pos + 179),
           specifier: JsWord::from("./test.json"),
-          specifier_range: SourceRange::new(start_pos + 145, start_pos + 158),
-          import_attributes: expected_assertions2.clone(),
+          specifier_range: SourceRange::new(start_pos + 141, start_pos + 154),
+          import_attributes: expected_attributes2.clone(),
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: false,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 186, start_pos + 239),
+          range: SourceRange::new(start_pos + 180, start_pos + 231),
           specifier: JsWord::from("./foo.json"),
-          specifier_range: SourceRange::new(start_pos + 202, start_pos + 214),
-          import_attributes: expected_assertions2,
+          specifier_range: SourceRange::new(start_pos + 196, start_pos + 208),
+          import_attributes: expected_attributes2,
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 259, start_pos + 312),
+          range: SourceRange::new(start_pos + 251, start_pos + 302),
           specifier: JsWord::from("./fizz.json"),
-          specifier_range: SourceRange::new(start_pos + 266, start_pos + 279),
-          import_attributes: dynamic_expected_assertions2.clone(),
+          specifier_range: SourceRange::new(start_pos + 258, start_pos + 271),
+          import_attributes: dynamic_expected_attributes2.clone(),
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 333, start_pos + 386),
+          range: SourceRange::new(start_pos + 323, start_pos + 374),
           specifier: JsWord::from("./buzz.json"),
-          specifier_range: SourceRange::new(start_pos + 340, start_pos + 353),
-          import_attributes: dynamic_expected_assertions2,
+          specifier_range: SourceRange::new(start_pos + 330, start_pos + 343),
+          import_attributes: dynamic_expected_attributes2,
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 405, start_pos + 424),
+          range: SourceRange::new(start_pos + 393, start_pos + 412),
           specifier: JsWord::from("./d1.json"),
-          specifier_range: SourceRange::new(start_pos + 412, start_pos + 423),
+          specifier_range: SourceRange::new(start_pos + 400, start_pos + 411),
           import_attributes: Default::default(),
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 443, start_pos + 466),
+          range: SourceRange::new(start_pos + 431, start_pos + 454),
           specifier: JsWord::from("./d2.json"),
-          specifier_range: SourceRange::new(start_pos + 450, start_pos + 461),
+          specifier_range: SourceRange::new(start_pos + 438, start_pos + 449),
           import_attributes: Default::default(),
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 485, start_pos + 509),
+          range: SourceRange::new(start_pos + 473, start_pos + 497),
           specifier: JsWord::from("./d3.json"),
-          specifier_range: SourceRange::new(start_pos + 492, start_pos + 503),
+          specifier_range: SourceRange::new(start_pos + 480, start_pos + 491),
           import_attributes: ImportAttributes::Unknown,
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 528, start_pos + 563),
+          range: SourceRange::new(start_pos + 516, start_pos + 549),
           specifier: JsWord::from("./d4.json"),
-          specifier_range: SourceRange::new(start_pos + 535, start_pos + 546),
+          specifier_range: SourceRange::new(start_pos + 523, start_pos + 534),
           import_attributes: ImportAttributes::Known(HashMap::new()),
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 582, start_pos + 618),
+          range: SourceRange::new(start_pos + 568, start_pos + 602),
           specifier: JsWord::from("./d5.json"),
-          specifier_range: SourceRange::new(start_pos + 589, start_pos + 600),
+          specifier_range: SourceRange::new(start_pos + 575, start_pos + 586),
           import_attributes: ImportAttributes::Unknown,
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 637, start_pos + 680),
+          range: SourceRange::new(start_pos + 621, start_pos + 662),
           specifier: JsWord::from("./d6.json"),
-          specifier_range: SourceRange::new(start_pos + 644, start_pos + 655),
+          specifier_range: SourceRange::new(start_pos + 628, start_pos + 639),
           import_attributes: ImportAttributes::Unknown,
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 699, start_pos + 753),
+          range: SourceRange::new(start_pos + 681, start_pos + 733),
           specifier: JsWord::from("./d7.json"),
-          specifier_range: SourceRange::new(start_pos + 706, start_pos + 717),
+          specifier_range: SourceRange::new(start_pos + 688, start_pos + 699),
           import_attributes: ImportAttributes::Unknown,
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 772, start_pos + 818),
+          range: SourceRange::new(start_pos + 752, start_pos + 796),
           specifier: JsWord::from("./d8.json"),
-          specifier_range: SourceRange::new(start_pos + 779, start_pos + 790),
+          specifier_range: SourceRange::new(start_pos + 759, start_pos + 770),
           import_attributes: ImportAttributes::Known({
             let mut map = HashMap::new();
-            map.insert("type".to_string(), ImportAssertion::Unknown);
+            map.insert("type".to_string(), ImportAttribute::Unknown);
             map
           }),
         },
@@ -787,18 +798,18 @@ const d10 = await import("./d10.json", { assert: { type: "json", ["type"]: "bad"
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 837, start_pos + 894),
+          range: SourceRange::new(start_pos + 815, start_pos + 870),
           specifier: JsWord::from("./d9.json"),
-          specifier_range: SourceRange::new(start_pos + 844, start_pos + 855),
+          specifier_range: SourceRange::new(start_pos + 822, start_pos + 833),
           import_attributes: ImportAttributes::Unknown,
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 914, start_pos + 981),
+          range: SourceRange::new(start_pos + 890, start_pos + 955),
           specifier: JsWord::from("./d10.json"),
-          specifier_range: SourceRange::new(start_pos + 921, start_pos + 933),
+          specifier_range: SourceRange::new(start_pos + 897, start_pos + 909),
           import_attributes: ImportAttributes::Unknown,
         },
       ]
