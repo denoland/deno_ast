@@ -272,7 +272,7 @@ impl<'a> Visit for DependencyCollector<'a> {
             DynamicImportArgument::String(specifier.value.clone())
           }
           Expr::Tpl(tpl) => {
-            if tpl.quasis.len() == 1 && tpl.exprs.len() == 0 {
+            if tpl.quasis.len() == 1 && tpl.exprs.is_empty() {
               DynamicImportArgument::String(tpl.quasis[0].raw.clone())
             } else {
               let mut parts =
@@ -819,6 +819,8 @@ const d2 = await import(`${value}`);
 const d3 = await import(`./test/${value}`);
 const d4 = await import(`${value}/test`);
 const d5 = await import(`${value}${value2}`);
+const d6 = await import(`${value}/test/${value2}`);
+const d7 = await import(`./${value}/test/${value2}/`);
 "#;
     let (start_pos, dependencies) = helper("test.ts", source);
     assert_eq!(
@@ -872,6 +874,32 @@ const d5 = await import(`${value}${value2}`);
             DynamicImportTemplatePart::Expr,
           ]),
           argument_range: SourceRange::new(start_pos + 185, start_pos + 204),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 224, start_pos + 257),
+          argument: DynamicImportArgument::Template(vec![
+            DynamicImportTemplatePart::Expr,
+            DynamicImportTemplatePart::String(JsWord::from("/test/")),
+            DynamicImportTemplatePart::Expr,
+          ]),
+          argument_range: SourceRange::new(start_pos + 231, start_pos + 256),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicImportDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 276, start_pos + 312),
+          argument: DynamicImportArgument::Template(vec![
+            DynamicImportTemplatePart::String(JsWord::from("./")),
+            DynamicImportTemplatePart::Expr,
+            DynamicImportTemplatePart::String(JsWord::from("/test/")),
+            DynamicImportTemplatePart::Expr,
+            DynamicImportTemplatePart::String(JsWord::from("/")),
+          ]),
+          argument_range: SourceRange::new(start_pos + 283, start_pos + 311),
           import_attributes: ImportAttributes::None,
         }
         .into(),
