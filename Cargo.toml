@@ -49,7 +49,7 @@ swc_common = "=0.33.9"
 swc_config = { version = "=0.1.7", optional = true }
 swc_config_macro = { version = "=0.1.2", optional = true }
 swc_ecma_ast = { version = "=0.110.10", features = ["serde-impl"] }
-swc_ecma_codegen = { version = "=0.146.27", optional = true }
+swc_ecma_codegen = { version = "=0.146.28", optional = true }
 swc_ecma_codegen_macros = { version = "=0.7.3", optional = true }
 swc_ecma_loader = { version = "=0.45.10", optional = true }
 swc_ecma_parser = "=0.141.23"
