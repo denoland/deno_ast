@@ -6,8 +6,8 @@
 #[cfg(feature = "cjs")]
 mod cjs_parse;
 mod comments;
-#[cfg(feature = "dep_graph")]
-pub mod dep_graph;
+#[cfg(feature = "dep_analysis")]
+pub mod dep;
 mod lexing;
 mod parsed_source;
 mod parsing;
