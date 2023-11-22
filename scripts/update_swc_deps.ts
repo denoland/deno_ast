@@ -20,6 +20,6 @@ for (const dep of swcDeps) {
   const newReq = dep.name === "dprint-swc-ext" ? "^" + version : "=" + version;
   if (newReq !== dep.req) {
     $.logStep("Updating", dep.name, "from", dep.req, "to", newReq);
-    crate.setDependencyVersion(dep.name, newReq);
+    crate.setDependencyVersion(dep.name, newReq.replace(/^\^/, ""));
   }
 }
