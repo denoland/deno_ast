@@ -17,7 +17,7 @@ for (const dep of swcDeps) {
     throw new Error(`Could not find latest version for ${dep.name}`);
   }
 
-  const newReq = dep.name === "dprint-swc-ext" ? version : "=" + version;
+  const newReq = dep.name === "dprint-swc-ext" ? "^" + version : "=" + version;
   if (newReq !== dep.req) {
     $.logStep("Updating", dep.name, "from", dep.req, "to", newReq);
     crate.setDependencyVersion(dep.name, newReq);
