@@ -1,3 +1,3 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-export * from "https://raw.githubusercontent.com/denoland/automation/0.19.2/mod.ts";
+export * from "https://raw.githubusercontent.com/denoland/automation/0.20.0/mod.ts";

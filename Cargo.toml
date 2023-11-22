@@ -44,6 +44,8 @@ url = { version = "2.3.1", features = ["serde"], optional = true }
 # swc's version bumping is very buggy and there will often be patch versions
 # published that break our build, so we pin all swc versions to prevent
 # pulling in new versions of swc crates
+#
+# NOTE: You can automatically update these dependencies by running ./scripts/update_swc_deps.ts
 swc_atoms = "=0.6.4"
 swc_common = "=0.33.9"
 swc_config = { version = "=0.1.7", optional = true }
