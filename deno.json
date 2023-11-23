@@ -1,14 +1,6 @@
 {
   "lock": false,
-  "fmt": {
-    "include": [
-      "./README.md",
-      "./scripts"
-    ]
-  },
-  "lint": {
-    "include": [
-      "./scripts"
-    ]
-  }
+  "exclude": [
+    "target"
+  ]
 }

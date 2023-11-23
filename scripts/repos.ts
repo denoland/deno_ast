@@ -2,9 +2,7 @@
 
 import { $, Crate, Repo } from "./deps.ts";
 
-export const rootDir = $.path.resolve(
-  $.path.join($.path.fromFileUrl(import.meta.url), "../../../../"),
-);
+export const rootDir = $.path(import.meta).join("../../../").resolve();
 
 const repoNames = [
   "deno_ast",
@@ -42,7 +40,7 @@ export class Repos {
     function loadRepo(name: string) {
       return Repo.load({
         name,
-        path: $.path.join(rootDir, name),
+        path: rootDir.join(name),
         skipLoadingCrates,
       }).catch((err) => {
         console.error(`Error loading: ${name}`);
