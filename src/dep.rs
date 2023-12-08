@@ -24,9 +24,9 @@ impl ParsedSource {
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
     match self.program_ref() {
       ast::Program::Module(module) => {
-        analyze_module_dependencies(&module, &self.comments().as_swc_comments())
+        analyze_module_dependencies(module, &self.comments().as_swc_comments())
       }
-      ast::Program::Script(_) => return vec![],
+      ast::Program::Script(_) => vec![],
     }
   }
 }
