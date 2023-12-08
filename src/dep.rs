@@ -11,9 +11,9 @@ use crate::swc::ast::Callee;
 use crate::swc::ast::Expr;
 use crate::swc::atoms::Atom;
 use crate::swc::common::comments::CommentKind;
-use crate::swc::common::comments::Comments;
 use crate::swc::visit::Visit;
 use crate::swc::visit::VisitWith;
+use crate::MultiThreadedComments;
 use crate::ParsedSource;
 use crate::SourcePos;
 use crate::SourceRange;
@@ -24,7 +24,7 @@ impl ParsedSource {
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
     match self.program_ref() {
       ast::Program::Module(module) => {
-        analyze_module_dependencies(module, &self.comments().as_swc_comments())
+        analyze_module_dependencies(module, &self.comments())
       }
       ast::Program::Script(_) => vec![],
     }
@@ -33,7 +33,7 @@ impl ParsedSource {
 
 pub fn analyze_module_dependencies(
   module: &Module,
-  comments: &dyn Comments,
+  comments: &MultiThreadedComments,
 ) -> Vec<DependencyDescriptor> {
   let mut v = DependencyCollector {
     comments,
@@ -165,23 +165,23 @@ pub enum DynamicTemplatePart {
 }
 
 struct DependencyCollector<'a> {
-  comments: &'a dyn Comments,
+  comments: &'a MultiThreadedComments,
   pub items: Vec<DependencyDescriptor>,
 }
 
 impl<'a> DependencyCollector<'a> {
   fn get_leading_comments(&self, start: SourcePos) -> Vec<DependencyComment> {
-    self
-      .comments
-      .get_leading(start.as_byte_pos())
-      .unwrap_or_default()
-      .into_iter()
-      .map(|c| DependencyComment {
-        kind: c.kind,
-        range: c.range(),
-        text: c.text,
-      })
-      .collect()
+    match self.comments.get_leading(start) {
+      Some(leading) => leading
+        .iter()
+        .map(|c| DependencyComment {
+          kind: c.kind,
+          range: c.range(),
+          text: c.text.clone(),
+        })
+        .collect(),
+      None => Vec::new(),
+    }
   }
 }
 

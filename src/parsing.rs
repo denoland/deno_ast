@@ -299,8 +299,8 @@ mod test {
       program.script().body[0],
       crate::swc::ast::Stmt::Expr(..)
     ));
-    assert_eq!(program.get_leading_comments().len(), 1);
-    assert_eq!(program.get_leading_comments()[0].text, " 1");
+    assert_eq!(program.get_leading_comments().unwrap().len(), 1);
+    assert_eq!(program.get_leading_comments().unwrap()[0].text, " 1");
     assert_eq!(program.tokens().len(), 3);
     assert_eq!(program.comments().get_vec().len(), 2);
   }

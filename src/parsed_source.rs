@@ -117,13 +117,8 @@ impl ParsedSource {
 
   /// Get the source's leading comments, where triple slash directives might
   /// be located.
-  pub fn get_leading_comments(&self) -> Vec<Comment> {
-    self
-      .inner
-      .comments
-      .get_leading(self.inner.program.range().start)
-      .cloned()
-      .unwrap_or_default()
+  pub fn get_leading_comments(&self) -> Option<&Vec<Comment>> {
+    self.inner.comments.get_leading(self.inner.program.start())
   }
 
   /// Gets the tokens found in the source file.

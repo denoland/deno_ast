@@ -10,6 +10,7 @@ use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::comments::SingleThreadedCommentsMapInner;
 use crate::swc::common::BytePos as SwcBytePos;
 use crate::SourcePos;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -63,16 +64,19 @@ impl MultiThreadedComments {
 
   /// Gets a vector of all the comments sorted by position.
   pub fn get_vec(&self) -> Vec<Comment> {
-    let mut comments = self
+    let mut comments = self.iter_unstable().cloned().collect::<Vec<_>>();
+    comments.sort_by_key(|comment| comment.span.lo);
+    comments
+  }
+
+  /// Iterates through all the comments in an unstable order.
+  pub fn iter_unstable(&self) -> impl Iterator<Item = &Comment> {
+    self
       .inner
       .leading
       .values()
       .chain(self.inner.trailing.values())
       .flatten()
-      .cloned()
-      .collect::<Vec<_>>();
-    comments.sort_by_key(|comment| comment.span.lo);
-    comments
   }
 
   pub fn has_leading(&self, pos: SourcePos) -> bool {
