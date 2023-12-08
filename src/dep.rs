@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use ast::Module;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -21,18 +22,25 @@ use crate::SourceRangedForSpanned;
 impl ParsedSource {
   /// Analyzes the module for a list of its imports and exports.
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
-    let module = match self.program_ref() {
-      ast::Program::Module(module) => module,
+    match self.program_ref() {
+      ast::Program::Module(module) => {
+        analyze_module_dependencies(&module, &self.comments().as_swc_comments())
+      }
       ast::Program::Script(_) => return vec![],
-    };
-
-    let mut v = DependencyCollector {
-      comments: &self.comments().as_swc_comments(),
-      items: vec![],
-    };
-    module.visit_with(&mut v);
-    v.items
+    }
   }
+}
+
+pub fn analyze_module_dependencies(
+  module: &Module,
+  comments: &dyn Comments,
+) -> Vec<DependencyDescriptor> {
+  let mut v = DependencyCollector {
+    comments,
+    items: vec![],
+  };
+  module.visit_with(&mut v);
+  v.items
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

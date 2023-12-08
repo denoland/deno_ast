@@ -91,6 +91,9 @@ impl MultiThreadedComments {
     self.inner.trailing.get(&pos.as_byte_pos())
   }
 
+  /// Gets the comments as an `SwcComments` trait.
+  ///
+  /// Calling this is fast because it uses a shared reference.
   pub fn as_swc_comments(&self) -> Box<dyn SwcComments> {
     Box::new(SwcMultiThreadedComments(self.clone()))
   }
