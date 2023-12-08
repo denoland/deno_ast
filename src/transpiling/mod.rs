@@ -474,7 +474,7 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
   )
 }
 
-pub(crate) fn swc_codegen_config() -> crate::swc::codegen::Config {
+pub fn swc_codegen_config() -> crate::swc::codegen::Config {
   // NOTICE ON UPGRADE: This struct has #[non_exhaustive] on it,
   // which prevents creating a struct expr here. For that reason,
   // inspect the struct on swc upgrade and explicitly specify any
