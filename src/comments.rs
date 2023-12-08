@@ -59,6 +59,19 @@ impl MultiThreadedComments {
     SingleThreadedComments::from_leading_and_trailing(leading, trailing)
   }
 
+  pub fn into_single_threaded(self) -> SingleThreadedComments {
+    let inner = match Arc::try_unwrap(self.inner) {
+      Ok(inner) => inner,
+      Err(inner) => MultiThreadedCommentsInner {
+        leading: inner.leading.clone(),
+        trailing: inner.trailing.clone(),
+      },
+    };
+    let leading = Rc::new(RefCell::new(inner.leading));
+    let trailing = Rc::new(RefCell::new(inner.trailing));
+    SingleThreadedComments::from_leading_and_trailing(leading, trailing)
+  }
+
   /// Gets a reference to the leading comment map.
   pub fn leading_map(&self) -> &SingleThreadedCommentsMapInner {
     &self.inner.leading

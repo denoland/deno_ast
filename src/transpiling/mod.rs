@@ -189,7 +189,8 @@ impl ParsedSource {
       Ok(specifier) => FileName::Url(specifier),
       Err(_) => FileName::Custom(self.specifier().to_string()),
     };
-    source_map.new_source_file(file_name, self.text_info().text().to_string());
+    source_map
+      .new_source_file(file_name, self.text_info().text_str().to_string());
     // needs to align with what's done internally in source map
     assert_eq!(1, self.text_info().range().start.as_byte_pos().0);
     // we need the comments to be mutable, so make it single threaded
