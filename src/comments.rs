@@ -10,6 +10,7 @@ use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::comments::SingleThreadedCommentsMapInner;
 use crate::swc::common::BytePos as SwcBytePos;
 use crate::SourcePos;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -35,7 +36,14 @@ impl MultiThreadedComments {
     let (leading, trailing) = comments.take_all();
     let leading = Rc::try_unwrap(leading).unwrap().into_inner();
     let trailing = Rc::try_unwrap(trailing).unwrap().into_inner();
-    MultiThreadedComments {
+    Self::from_leading_and_trailing(leading, trailing)
+  }
+
+  pub fn from_leading_and_trailing(
+    leading: SingleThreadedCommentsMapInner,
+    trailing: SingleThreadedCommentsMapInner,
+  ) -> Self {
+    Self {
       inner: Arc::new(MultiThreadedCommentsInner { leading, trailing }),
     }
   }
@@ -51,6 +59,19 @@ impl MultiThreadedComments {
     SingleThreadedComments::from_leading_and_trailing(leading, trailing)
   }
 
+  pub fn into_single_threaded(self) -> SingleThreadedComments {
+    let inner = match Arc::try_unwrap(self.inner) {
+      Ok(inner) => inner,
+      Err(inner) => MultiThreadedCommentsInner {
+        leading: inner.leading.clone(),
+        trailing: inner.trailing.clone(),
+      },
+    };
+    let leading = Rc::new(RefCell::new(inner.leading));
+    let trailing = Rc::new(RefCell::new(inner.trailing));
+    SingleThreadedComments::from_leading_and_trailing(leading, trailing)
+  }
+
   /// Gets a reference to the leading comment map.
   pub fn leading_map(&self) -> &SingleThreadedCommentsMapInner {
     &self.inner.leading
@@ -63,16 +84,19 @@ impl MultiThreadedComments {
 
   /// Gets a vector of all the comments sorted by position.
   pub fn get_vec(&self) -> Vec<Comment> {
-    let mut comments = self
+    let mut comments = self.iter_unstable().cloned().collect::<Vec<_>>();
+    comments.sort_by_key(|comment| comment.span.lo);
+    comments
+  }
+
+  /// Iterates through all the comments in an unstable order.
+  pub fn iter_unstable(&self) -> impl Iterator<Item = &Comment> {
+    self
       .inner
       .leading
       .values()
       .chain(self.inner.trailing.values())
       .flatten()
-      .cloned()
-      .collect::<Vec<_>>();
-    comments.sort_by_key(|comment| comment.span.lo);
-    comments
   }
 
   pub fn has_leading(&self, pos: SourcePos) -> bool {
@@ -91,6 +115,9 @@ impl MultiThreadedComments {
     self.inner.trailing.get(&pos.as_byte_pos())
   }
 
+  /// Gets the comments as an `SwcComments` trait.
+  ///
+  /// Calling this is fast because it uses a shared reference.
   pub fn as_swc_comments(&self) -> Box<dyn SwcComments> {
     Box::new(SwcMultiThreadedComments(self.clone()))
   }

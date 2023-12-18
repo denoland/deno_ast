@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use ast::Module;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -10,9 +11,9 @@ use crate::swc::ast::Callee;
 use crate::swc::ast::Expr;
 use crate::swc::atoms::Atom;
 use crate::swc::common::comments::CommentKind;
-use crate::swc::common::comments::Comments;
 use crate::swc::visit::Visit;
 use crate::swc::visit::VisitWith;
+use crate::MultiThreadedComments;
 use crate::ParsedSource;
 use crate::SourcePos;
 use crate::SourceRange;
@@ -21,18 +22,25 @@ use crate::SourceRangedForSpanned;
 impl ParsedSource {
   /// Analyzes the module for a list of its imports and exports.
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
-    let module = match self.program_ref() {
-      ast::Program::Module(module) => module,
-      ast::Program::Script(_) => return vec![],
-    };
-
-    let mut v = DependencyCollector {
-      comments: &self.comments().as_swc_comments(),
-      items: vec![],
-    };
-    module.visit_with(&mut v);
-    v.items
+    match self.program_ref() {
+      ast::Program::Module(module) => {
+        analyze_module_dependencies(module, self.comments())
+      }
+      ast::Program::Script(_) => vec![],
+    }
   }
+}
+
+pub fn analyze_module_dependencies(
+  module: &Module,
+  comments: &MultiThreadedComments,
+) -> Vec<DependencyDescriptor> {
+  let mut v = DependencyCollector {
+    comments,
+    items: vec![],
+  };
+  module.visit_with(&mut v);
+  v.items
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -157,23 +165,23 @@ pub enum DynamicTemplatePart {
 }
 
 struct DependencyCollector<'a> {
-  comments: &'a dyn Comments,
+  comments: &'a MultiThreadedComments,
   pub items: Vec<DependencyDescriptor>,
 }
 
 impl<'a> DependencyCollector<'a> {
   fn get_leading_comments(&self, start: SourcePos) -> Vec<DependencyComment> {
-    self
-      .comments
-      .get_leading(start.as_byte_pos())
-      .unwrap_or_default()
-      .into_iter()
-      .map(|c| DependencyComment {
-        kind: c.kind,
-        range: c.range(),
-        text: c.text,
-      })
-      .collect()
+    match self.comments.get_leading(start) {
+      Some(leading) => leading
+        .iter()
+        .map(|c| DependencyComment {
+          kind: c.kind,
+          range: c.range(),
+          text: c.text.clone(),
+        })
+        .collect(),
+      None => Vec::new(),
+    }
   }
 }
 
