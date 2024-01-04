@@ -4,6 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::comments::MultiThreadedComments;
+use crate::scope_analysis_transform;
 use crate::swc::ast::Module;
 use crate::swc::ast::Program;
 use crate::swc::ast::Script;
@@ -15,6 +16,7 @@ use crate::MediaType;
 use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
 
+#[derive(Clone)]
 pub(crate) struct SyntaxContexts {
   pub unresolved: SyntaxContext,
   pub top_level: SyntaxContext,
@@ -130,6 +132,48 @@ impl ParsedSource {
       .tokens
       .as_ref()
       .expect("Tokens not found because they were not captured during parsing.")
+  }
+
+  /// Adds scope analysis to the parsed source if not parsed
+  /// with scope analysis.
+  ///
+  /// Note: This will attempt to not clone the underlying data, but
+  /// will clone if multiple clones of the `ParsedSource` exist.
+  pub fn into_with_scope_analysis(self) -> Self {
+    if self.has_scope_analysis() {
+      self
+    } else {
+      let mut inner = match Arc::try_unwrap(self.inner) {
+        Ok(inner) => inner,
+        Err(arc_inner) => ParsedSourceInner {
+          // all of these are/should be cheap to clone
+          specifier: arc_inner.specifier.clone(),
+          media_type: arc_inner.media_type,
+          text_info: arc_inner.text_info.clone(),
+          comments: arc_inner.comments.clone(),
+          program: arc_inner.program.clone(),
+          tokens: arc_inner.tokens.clone(),
+          syntax_contexts: arc_inner.syntax_contexts.clone(),
+          diagnostics: arc_inner.diagnostics.clone(),
+        },
+      };
+      let program = match Arc::try_unwrap(inner.program) {
+        Ok(program) => program,
+        Err(program) => (*program).clone(),
+      };
+      let (program, context) = scope_analysis_transform(program);
+      inner.program = Arc::new(program);
+      inner.syntax_contexts = context;
+      ParsedSource {
+        inner: Arc::new(inner),
+      }
+    }
+  }
+
+  /// Gets if the source's program has scope information stored
+  /// in the identifiers.
+  pub fn has_scope_analysis(&self) -> bool {
+    self.inner.syntax_contexts.is_some()
   }
 
   /// Gets the top level context used when parsing with scope analysis.

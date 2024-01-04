@@ -138,35 +138,7 @@ fn parse(
   let program = post_process(program);
 
   let (program, syntax_contexts) = if params.scope_analysis {
-    #[cfg(feature = "transforms")]
-    {
-      use crate::swc::common::Globals;
-      use crate::swc::common::Mark;
-      use crate::swc::common::SyntaxContext;
-      use crate::swc::transforms::resolver;
-      use crate::swc::visit::FoldWith;
-
-      let globals = Globals::new();
-      crate::swc::common::GLOBALS.set(&globals, || {
-        let unresolved_mark = Mark::new();
-        let top_level_mark = Mark::new();
-        let program = program.fold_with(&mut resolver(
-          unresolved_mark,
-          top_level_mark,
-          true,
-        ));
-
-        (
-          program,
-          Some(crate::SyntaxContexts {
-            unresolved: SyntaxContext::empty().apply_mark(unresolved_mark),
-            top_level: SyntaxContext::empty().apply_mark(top_level_mark),
-          }),
-        )
-      })
-    }
-    #[cfg(not(feature = "transforms"))]
-    panic!("Cannot parse with scope analysis. Please enable the 'transforms' feature.")
+    scope_analysis_transform(program)
   } else {
     (program, None)
   };
@@ -181,6 +153,46 @@ fn parse(
     syntax_contexts,
     diagnostics,
   ))
+}
+
+pub(crate) fn scope_analysis_transform(
+  _program: Program,
+) -> (Program, Option<crate::SyntaxContexts>) {
+  #[cfg(feature = "transforms")]
+  {
+    scope_analysis_transform_inner(_program)
+  }
+  #[cfg(not(feature = "transforms"))]
+  panic!(
+    "Cannot parse with scope analysis. Please enable the 'transforms' feature."
+  )
+}
+
+#[cfg(feature = "transforms")]
+fn scope_analysis_transform_inner(
+  program: Program,
+) -> (Program, Option<crate::SyntaxContexts>) {
+  use crate::swc::common::Globals;
+  use crate::swc::common::Mark;
+  use crate::swc::common::SyntaxContext;
+  use crate::swc::transforms::resolver;
+  use crate::swc::visit::FoldWith;
+
+  let globals = Globals::new();
+  crate::swc::common::GLOBALS.set(&globals, || {
+    let unresolved_mark = Mark::new();
+    let top_level_mark = Mark::new();
+    let program =
+      program.fold_with(&mut resolver(unresolved_mark, top_level_mark, true));
+
+    (
+      program,
+      Some(crate::SyntaxContexts {
+        unresolved: SyntaxContext::empty().apply_mark(unresolved_mark),
+        top_level: SyntaxContext::empty().apply_mark(top_level_mark),
+      }),
+    )
+  })
 }
 
 #[allow(clippy::type_complexity)]
@@ -452,6 +464,53 @@ mod test {
       // these should be the same identifier
       assert_eq!(func_decl.ident.to_id(), call_expr_id.to_id());
       // but these shouldn't be
+      assert_ne!(func_decl.ident.to_id(), func_decl_inner_expr.to_id());
+    });
+  }
+
+  #[cfg(all(feature = "view", feature = "transforms"))]
+  #[test]
+  fn should_allow_scope_analysis_after_the_fact() {
+    let parsed_source = parse_module(ParseParams {
+      specifier: "my_file.js".to_string(),
+      text_info: SourceTextInfo::from_string(
+        "export function test() { const test = 2; test; } test()".to_string(),
+      ),
+      media_type: MediaType::JavaScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+
+    parsed_source.with_view(|view| {
+      use crate::view::*;
+      let func_decl = view.children()[0]
+        .expect::<ExportDecl>()
+        .decl
+        .expect::<FnDecl>();
+      let func_decl_inner_expr = func_decl.function.body.unwrap().stmts[1]
+        .expect::<ExprStmt>()
+        .expr
+        .expect::<Ident>();
+      // these will be equal because scope analysis hasn't been done
+      assert_eq!(func_decl.ident.to_id(), func_decl_inner_expr.to_id());
+    });
+
+    // now do scope analysis
+    let parsed_source = parsed_source.into_with_scope_analysis();
+
+    parsed_source.with_view(|view| {
+      use crate::view::*;
+      let func_decl = view.children()[0]
+        .expect::<ExportDecl>()
+        .decl
+        .expect::<FnDecl>();
+      let func_decl_inner_expr = func_decl.function.body.unwrap().stmts[1]
+        .expect::<ExprStmt>()
+        .expr
+        .expect::<Ident>();
+      // now they'll be not equal because scope analysis has occurred
       assert_ne!(func_decl.ident.to_id(), func_decl_inner_expr.to_id());
     });
   }
