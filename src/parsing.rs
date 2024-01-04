@@ -156,11 +156,11 @@ fn parse(
 }
 
 pub(crate) fn scope_analysis_transform(
-  program: Program,
+  _program: Program,
 ) -> (Program, Option<crate::SyntaxContexts>) {
   #[cfg(feature = "transforms")]
   {
-    scope_analysis_transform_inner(program)
+    scope_analysis_transform_inner(_program)
   }
   #[cfg(not(feature = "transforms"))]
   panic!(
