@@ -139,7 +139,7 @@ impl ParsedSource {
   ///
   /// Note: This will attempt to not clone the underlying data, but
   /// will clone if multiple clones of the `ParsedSource` exist.
-  pub fn with_scope_analysis(self) -> Self {
+  pub fn into_with_scope_analysis(self) -> Self {
     if self.has_scope_analysis() {
       self
     } else {
