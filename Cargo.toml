@@ -33,7 +33,7 @@ visit = ["swc_ecma_visit", "swc_visit", "swc_visit_macros", "swc_macros_common"]
 
 [dependencies]
 anyhow = { version = "1.0.64", optional = true }
-base64 = { version = "0.13.1", optional = true }
+base64 = { version = "0.21.6", optional = true }
 deno_media_type = { version = "0.1.2", default-features = false }
 
 dprint-swc-ext = "0.13.0"

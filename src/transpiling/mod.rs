@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use base64::Engine;
 use swc_ecma_visit::as_folder;
 
 use crate::swc::ast::Program;
@@ -239,11 +240,7 @@ impl ParsedSource {
             src.push('\n');
           }
           src.push_str("//# sourceMappingURL=data:application/json;base64,");
-          base64::encode_config_buf(
-            buf,
-            base64::Config::new(base64::CharacterSet::Standard, true),
-            &mut src,
-          );
+          base64::prelude::BASE64_STANDARD.encode_string(buf, &mut src);
         } else {
           map = Some(String::from_utf8(buf)?);
         }
@@ -1135,7 +1132,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let last_line = lines.last().unwrap();
     let input = last_line
       .trim_start_matches("//# sourceMappingURL=data:application/json;base64,");
-    base64::decode(input).unwrap();
+    base64::prelude::BASE64_STANDARD.decode(input).unwrap();
   }
 
   #[test]
