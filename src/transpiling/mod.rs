@@ -494,7 +494,6 @@ mod tests {
   use crate::ParseParams;
   use crate::SourceTextInfo;
 
-  use base64::engine::general_purpose::STANDARD;
   use pretty_assertions::assert_eq;
 
   #[test]
