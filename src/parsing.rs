@@ -277,7 +277,7 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
       allow_super_outside_method: true,
       auto_accessors: true,
       decorators: true,
-      decorators_before_export: true,
+      decorators_before_export: false,
       export_default_from: true,
       fn_bind: false,
       import_attributes: true,
