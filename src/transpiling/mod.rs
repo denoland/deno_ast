@@ -49,6 +49,7 @@ pub enum ImportsNotUsedAsValues {
 /// This implements `Hash` so the CLI can use it to bust the emit cache.
 #[derive(Debug, Clone, Hash)]
 pub struct EmitOptions {
+  pub use_decorator_proposal: bool,
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
@@ -96,6 +97,7 @@ pub struct EmitOptions {
 impl Default for EmitOptions {
   fn default() -> Self {
     EmitOptions {
+      use_decorator_proposal: false,
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
@@ -290,11 +292,15 @@ pub fn fold_program(
   let mut passes = chain!(
     Optional::new(transforms::StripExportsFolder, options.var_decl_imports),
     resolver(unresolved_mark, top_level_mark, true),
-    proposal::decorators::decorators(proposal::decorators::Config {
-      legacy: true,
-      emit_metadata: options.emit_metadata,
-      use_define_for_class_fields: true,
-    }),
+    Optional::new(
+      proposal::decorators::decorators(proposal::decorators::Config {
+        legacy: true,
+        emit_metadata: options.emit_metadata,
+  
+        use_define_for_class_fields: true,
+      }),
+      !options.use_decorator_proposal,
+    ),
     proposal::explicit_resource_management::explicit_resource_management(),
     helpers::inject_helpers(top_level_mark),
     // transform imports to var decls before doing the typescript pass
@@ -948,6 +954,57 @@ export class A {
 _ts_decorate([
   enumerable(false)
 ], A.prototype, "a", null);"#;
+    assert_eq!(&code[0..expected.len()], expected);
+  }
+
+  #[test]
+  fn test_transpile_decorators_proposal() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"
+    function enumerable(value: boolean) {
+      return function (
+        _target: any,
+        _propertyKey: string,
+        descriptor: PropertyDescriptor,
+      ) {
+        descriptor.enumerable = value;
+        return descriptor;
+      };
+    }
+
+    export class A {
+      @enumerable(false)
+      a() {
+        Test.value;
+      }
+    }
+    "#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let mut emit_options = EmitOptions::default();
+    emit_options.use_decorator_proposal = true;
+    let code = module.transpile(&emit_options).unwrap().text;
+    let expected = r#"function enumerable(value) {
+  return function(_target, _propertyKey, descriptor) {
+    descriptor.enumerable = value;
+    return descriptor;
+  };
+}
+export class A {
+  @enumerable(false)
+  a() {
+    Test.value;
+  }
+}
+"#;
     assert_eq!(&code[0..expected.len()], expected);
   }
 
