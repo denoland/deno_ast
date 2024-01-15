@@ -49,7 +49,7 @@ pub enum ImportsNotUsedAsValues {
 /// This implements `Hash` so the CLI can use it to bust the emit cache.
 #[derive(Debug, Clone, Hash)]
 pub struct EmitOptions {
-  pub use_decorator_proposal: bool,
+  pub use_ts_decorators: bool,
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
@@ -97,7 +97,7 @@ pub struct EmitOptions {
 impl Default for EmitOptions {
   fn default() -> Self {
     EmitOptions {
-      use_decorator_proposal: false,
+      use_ts_decorators: false,
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
@@ -299,7 +299,7 @@ pub fn fold_program(
 
         use_define_for_class_fields: true,
       }),
-      !options.use_decorator_proposal,
+      options.use_ts_decorators,
     ),
     proposal::explicit_resource_management::explicit_resource_management(),
     helpers::inject_helpers(top_level_mark),
@@ -934,7 +934,13 @@ function App() {
       scope_analysis: false,
     })
     .unwrap();
-    let code = module.transpile(&EmitOptions::default()).unwrap().text;
+    let code = module
+      .transpile(&EmitOptions {
+        use_ts_decorators: true,
+        ..Default::default()
+      })
+      .unwrap()
+      .text;
     let expected = r#"function _ts_decorate(decorators, target, key, desc) {
   var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
   if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -989,13 +995,7 @@ _ts_decorate([
       scope_analysis: false,
     })
     .unwrap();
-    let code = module
-      .transpile(&EmitOptions {
-        use_decorator_proposal: true,
-        ..Default::default()
-      })
-      .unwrap()
-      .text;
+    let code = module.transpile(&EmitOptions::default()).unwrap().text;
     let expected = r#"function enumerable(value) {
   return function(_target, _propertyKey, descriptor) {
     descriptor.enumerable = value;
