@@ -989,10 +989,13 @@ _ts_decorate([
       scope_analysis: false,
     })
     .unwrap();
-    let code = module.transpile(&EmitOptions {
-      use_decorator_proposal: true,
-      ..Default::default()
-    }).unwrap().text;
+    let code = module
+      .transpile(&EmitOptions {
+        use_decorator_proposal: true,
+        ..Default::default()
+      })
+      .unwrap()
+      .text;
     let expected = r#"function enumerable(value) {
   return function(_target, _propertyKey, descriptor) {
     descriptor.enumerable = value;
