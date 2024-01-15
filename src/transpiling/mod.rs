@@ -296,7 +296,7 @@ pub fn fold_program(
       proposal::decorators::decorators(proposal::decorators::Config {
         legacy: true,
         emit_metadata: options.emit_metadata,
-  
+
         use_define_for_class_fields: true,
       }),
       !options.use_decorator_proposal,
@@ -989,9 +989,10 @@ _ts_decorate([
       scope_analysis: false,
     })
     .unwrap();
-    let mut emit_options = EmitOptions::default();
-    emit_options.use_decorator_proposal = true;
-    let code = module.transpile(&emit_options).unwrap().text;
+    let code = module.transpile(&EmitOptions {
+      use_decorator_proposal: true,
+      ..Default::default()
+    }).unwrap().text;
     let expected = r#"function enumerable(value) {
   return function(_target, _propertyKey, descriptor) {
     descriptor.enumerable = value;
