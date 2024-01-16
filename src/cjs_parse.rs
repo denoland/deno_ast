@@ -332,7 +332,7 @@ fn get_call_expr_require_value(call_expr: &CallExpr) -> Option<&str> {
   let ident = callee_expr.as_ident()?;
   match &*ident.sym {
     "require" => {
-      let arg = call_expr.args.get(0)?;
+      let arg = call_expr.args.first()?;
       let lit = arg.expr.as_lit()?;
       if let Lit::Str(str) = lit {
         return Some(&*str.value);
@@ -340,7 +340,7 @@ fn get_call_expr_require_value(call_expr: &CallExpr) -> Option<&str> {
     }
     // _interopRequireWildcard(require(...))
     "_interopRequireWildcard" => {
-      let arg = call_expr.args.get(0)?;
+      let arg = call_expr.args.first()?;
       let call_expr = arg.expr.as_call()?;
       return get_call_expr_require_value(call_expr);
     }
@@ -361,7 +361,7 @@ fn get_callee_member_expr(callee: &Callee) -> Option<&MemberExpr> {
       if seq.exprs.len() != 2 {
         return None;
       }
-      let first_expr = seq.exprs.get(0)?.as_lit()?;
+      let first_expr = seq.exprs.first()?.as_lit()?;
       let is_first_expr_zero =
         matches!(first_expr, Lit::Num(num) if num.value == 0f64);
       if !is_first_expr_zero {
@@ -479,7 +479,7 @@ fn get_block_stmt_return_expr(stmt: &BlockStmt) -> Option<&Expr> {
   if stmt.stmts.len() > 1 || stmt.stmts.is_empty() {
     return None;
   }
-  match stmt.stmts.get(0)? {
+  match stmt.stmts.first()? {
     Stmt::Return(stmt) => match &stmt.arg {
       Some(expr) => Some(expr),
       _ => None,
