@@ -3,6 +3,7 @@
 use std::rc::Rc;
 
 use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Result;
 use base64::Engine;
 use swc_ecma_visit::as_folder;
@@ -189,6 +190,10 @@ pub struct TranspiledSource {
 impl ParsedSource {
   /// Transform a TypeScript file into a JavaScript file.
   pub fn transpile(&self, options: &EmitOptions) -> Result<TranspiledSource> {
+    if options.use_decorators_proposal && options.use_ts_decorators {
+      bail!("Can't use EmitOptions::use_decorators_proposal and EmitOptions::use_ts_decorators together.");
+    }
+
     let program = (*self.program()).clone();
     let source_map = Rc::new(SourceMap::default());
     let source_map_config = SourceMapConfig {
@@ -1005,12 +1010,38 @@ _ts_decorate([
       scope_analysis: false,
     })
     .unwrap();
-    let code = module.transpile(&EmitOptions {
-      use_decorators_proposal: true,
-      ..Default::default()
-    }).unwrap().text;
+    let code = module
+      .transpile(&EmitOptions {
+        use_decorators_proposal: true,
+        ..Default::default()
+      })
+      .unwrap()
+      .text;
     let expected = include_str!("./tc39_decorator_proposal_output.txt");
     assert_eq!(&code[0..expected.len()], expected);
+  }
+
+  #[test]
+  fn test_transpile_decorators_both() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = "";
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    module
+      .transpile(&EmitOptions {
+        use_decorators_proposal: true,
+        use_ts_decorators: true,
+        ..Default::default()
+      })
+      .unwrap_err();
   }
 
   #[test]
