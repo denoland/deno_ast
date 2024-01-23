@@ -49,7 +49,12 @@ pub enum ImportsNotUsedAsValues {
 /// This implements `Hash` so the CLI can use it to bust the emit cache.
 #[derive(Debug, Clone, Hash)]
 pub struct EmitOptions {
+  /// TypeScript experimental decorators.
   pub use_ts_decorators: bool,
+
+  /// TC39 Decorators Proposal - https://github.com/tc39/proposal-decorators
+  pub use_decorators_proposal: bool,
+
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
@@ -98,6 +103,7 @@ impl Default for EmitOptions {
   fn default() -> Self {
     EmitOptions {
       use_ts_decorators: false,
+      use_decorators_proposal: false,
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
@@ -300,6 +306,10 @@ pub fn fold_program(
         use_define_for_class_fields: true,
       }),
       options.use_ts_decorators,
+    ),
+    Optional::new(
+      proposal::decorator_2022_03::decorator_2022_03(),
+      options.use_decorators_proposal,
     ),
     proposal::explicit_resource_management::explicit_resource_management(),
     helpers::inject_helpers(top_level_mark),
@@ -965,6 +975,46 @@ _ts_decorate([
 
   #[test]
   fn test_transpile_decorators_proposal() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"
+    function enumerable(value: boolean) {
+      return function (
+        _target: any,
+        _propertyKey: string,
+        descriptor: PropertyDescriptor,
+      ) {
+        descriptor.enumerable = value;
+        return descriptor;
+      };
+    }
+
+    export class A {
+      @enumerable(false)
+      a() {
+        Test.value;
+      }
+    }
+    "#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let code = module.transpile(&EmitOptions {
+      use_decorators_proposal: true,
+      ..Default::default()
+    }).unwrap().text;
+    let expected = include_str!("./tc39_decorator_proposal_output.txt");
+    assert_eq!(&code[0..expected.len()], expected);
+  }
+
+  #[test]
+  fn test_transpile_no_decorators() {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = r#"
