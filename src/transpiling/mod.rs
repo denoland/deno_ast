@@ -1017,7 +1017,8 @@ _ts_decorate([
       })
       .unwrap()
       .text;
-    let expected = include_str!("./tc39_decorator_proposal_output.txt");
+    let expected =
+      include_str!("./testdata/tc39_decorator_proposal_output.txt");
     assert_eq!(&code[0..expected.len()], expected);
   }
 
