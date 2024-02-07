@@ -19,13 +19,12 @@ codegen = ["swc_ecma_codegen", "swc_ecma_codegen_macros", "swc_macros_common"]
 compat = ["transforms", "swc_ecma_transforms_compat", "swc_trace_macro", "swc_config", "swc_config_macro"]
 dep_analysis = ["visit"]
 dep_graph = ["swc_ecma_dep_graph"]
-module_specifier = ["deno_media_type/module_specifier", "url"]
 proposal = ["transforms", "swc_ecma_transforms_proposal", "swc_ecma_transforms_classes", "swc_ecma_transforms_macros", "swc_macros_common"]
 react = ["transforms", "swc_ecma_transforms_react", "swc_ecma_transforms_macros", "swc_config", "swc_config_macro", "swc_macros_common"]
 scopes = ["view", "utils", "visit"]
 sourcemap = ["dprint-swc-ext/sourcemap"]
 transforms = ["swc_ecma_loader", "swc_ecma_transforms_base"]
-transpiling = ["anyhow", "base64", "codegen", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "utils", "visit"]
+transpiling = ["anyhow", "base64", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "utils", "visit"]
 typescript = ["transforms", "swc_ecma_transforms_typescript"]
 utils = ["swc_ecma_utils"]
 view = ["dprint-swc-ext/view"]
@@ -34,12 +33,15 @@ visit = ["swc_ecma_visit", "swc_visit", "swc_visit_macros", "swc_macros_common"]
 [dependencies]
 anyhow = { version = "1.0.64", optional = true }
 base64 = { version = "0.21.6", optional = true }
-deno_media_type = { version = "0.1.2", default-features = false }
+deno_media_type = "0.1.2"
+deno_terminal = "0.1.0"
 
 dprint-swc-ext = "0.13.0"
+once_cell = "1.19.0"
 serde = { version = "1.0.144", features = ["derive"] }
 text_lines = { version = "0.6.0", features = ["serialization"] }
-url = { version = "2.3.1", features = ["serde"], optional = true }
+url = { version = "2.3.1", features = ["serde"] }
+unicode-width = "0.1"
 
 # swc's version bumping is very buggy and there will often be patch versions
 # published that break our build, so we pin all swc versions to prevent

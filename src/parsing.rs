@@ -15,8 +15,8 @@ use crate::swc::parser::token::TokenAndSpan;
 use crate::swc::parser::EsConfig;
 use crate::swc::parser::Syntax;
 use crate::swc::parser::TsConfig;
-use crate::Diagnostic;
 use crate::MediaType;
+use crate::ParseDiagnostic;
 use crate::ParsedSource;
 use crate::SourceTextInfo;
 
@@ -44,7 +44,9 @@ pub struct ParseParams {
 
 /// Parses the provided information attempting to figure out if the provided
 /// text is for a script or a module.
-pub fn parse_program(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
+pub fn parse_program(
+  params: ParseParams,
+) -> Result<ParsedSource, ParseDiagnostic> {
   parse(params, ParseMode::Program, |p| p)
 }
 
@@ -72,12 +74,14 @@ pub fn parse_program(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
 pub fn parse_program_with_post_process(
   params: ParseParams,
   post_process: impl FnOnce(Program) -> Program,
-) -> Result<ParsedSource, Diagnostic> {
+) -> Result<ParsedSource, ParseDiagnostic> {
   parse(params, ParseMode::Program, post_process)
 }
 
 /// Parses the provided information to a module.
-pub fn parse_module(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
+pub fn parse_module(
+  params: ParseParams,
+) -> Result<ParsedSource, ParseDiagnostic> {
   parse(params, ParseMode::Module, |p| p)
 }
 
@@ -85,7 +89,7 @@ pub fn parse_module(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
 pub fn parse_module_with_post_process(
   params: ParseParams,
   post_process: impl FnOnce(Module) -> Module,
-) -> Result<ParsedSource, Diagnostic> {
+) -> Result<ParsedSource, ParseDiagnostic> {
   parse(params, ParseMode::Module, |program| match program {
     Program::Module(module) => Program::Module(post_process(module)),
     Program::Script(_) => unreachable!(),
@@ -93,7 +97,9 @@ pub fn parse_module_with_post_process(
 }
 
 /// Parses the provided information to a script.
-pub fn parse_script(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
+pub fn parse_script(
+  params: ParseParams,
+) -> Result<ParsedSource, ParseDiagnostic> {
   parse(params, ParseMode::Script, |p| p)
 }
 
@@ -101,7 +107,7 @@ pub fn parse_script(params: ParseParams) -> Result<ParsedSource, Diagnostic> {
 pub fn parse_script_with_post_process(
   params: ParseParams,
   post_process: impl FnOnce(Script) -> Script,
-) -> Result<ParsedSource, Diagnostic> {
+) -> Result<ParsedSource, ParseDiagnostic> {
   parse(params, ParseMode::Script, |program| match program {
     Program::Module(_) => unreachable!(),
     Program::Script(script) => Program::Script(post_process(script)),
@@ -118,7 +124,7 @@ fn parse(
   params: ParseParams,
   parse_mode: ParseMode,
   post_process: impl FnOnce(Program) -> Program,
-) -> Result<ParsedSource, Diagnostic> {
+) -> Result<ParsedSource, ParseDiagnostic> {
   let source = params.text_info;
   let specifier = params.specifier;
   let input = source.as_string_input();
@@ -129,11 +135,11 @@ fn parse(
   let (comments, program, tokens, errors) =
     parse_string_input(input, syntax, params.capture_tokens, parse_mode)
       .map_err(|err| {
-        Diagnostic::from_swc_error(err, &specifier, source.clone())
+        ParseDiagnostic::from_swc_error(err, &specifier, source.clone())
       })?;
   let diagnostics = errors
     .into_iter()
-    .map(|err| Diagnostic::from_swc_error(err, &specifier, source.clone()))
+    .map(|err| ParseDiagnostic::from_swc_error(err, &specifier, source.clone()))
     .collect();
   let program = post_process(program);
 
@@ -289,6 +295,7 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
 
 #[cfg(test)]
 mod test {
+  use crate::diagnostics::Diagnostic;
   use crate::LineAndColumnDisplay;
 
   use super::*;
@@ -398,7 +405,10 @@ mod test {
         column_number: 3,
       }
     );
-    assert_eq!(diagnostic.message(), "Expected ';', '}' or <eof>");
+    assert_eq!(
+      diagnostic.message().to_string(),
+      "Expected ';', '}' or <eof>"
+    );
   }
 
   #[test]
@@ -572,7 +582,10 @@ function _bar(...Foo: Foo) {
   #[test]
   fn should_error_on_syntax_diagnostic() {
     let diagnostic = parse_ts_module("test;\nas#;").err().unwrap();
-    assert_eq!(diagnostic.message(), concat!("Expected ';', '}' or <eof>"));
+    assert_eq!(
+      diagnostic.message().to_string(),
+      concat!("Expected ';', '}' or <eof>")
+    );
   }
 
   #[test]
@@ -582,7 +595,7 @@ function _bar(...Foo: Foo) {
       "test;\n",
       r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
     )).err().unwrap();
-    assert_eq!(diagnostic.message(), "Expression expected",);
+    assert_eq!(diagnostic.message().to_string(), "Expression expected",);
   }
 
   #[test]
@@ -590,7 +603,7 @@ function _bar(...Foo: Foo) {
     let diagnostic =
       parse_for_diagnostic("const Methods {\nf: (x, y) => x + y,\n};");
     assert_eq!(
-      diagnostic.message(),
+      diagnostic.message().to_string(),
       "'const' declarations must be initialized"
     );
   }
@@ -599,7 +612,7 @@ function _bar(...Foo: Foo) {
   fn should_diganotic_when_var_stmts_sep_by_comma() {
     let diagnostic = parse_for_diagnostic("let a = 0, let b = 1;");
     assert_eq!(
-      diagnostic.message(),
+      diagnostic.message().to_string(),
       "`let` cannot be used as an identifier in strict mode"
     );
   }
@@ -608,24 +621,24 @@ function _bar(...Foo: Foo) {
   fn should_diagnostic_for_exected_expr_type_alias() {
     let diagnostic =
       parse_for_diagnostic("type T =\n  | unknown\n  { } & unknown;");
-    assert_eq!(diagnostic.message(), "Expression expected");
+    assert_eq!(diagnostic.message().to_string(), "Expression expected");
   }
 
   #[test]
   fn should_diganotic_missing_init_in_using() {
     let diagnostic = parse_for_diagnostic("using test");
     assert_eq!(
-      diagnostic.message(),
+      diagnostic.message().to_string(),
       "Using declaration requires initializer"
     );
   }
 
-  fn parse_for_diagnostic(text: &str) -> Diagnostic {
+  fn parse_for_diagnostic(text: &str) -> ParseDiagnostic {
     let result = parse_ts_module(text).unwrap();
     result.diagnostics().first().unwrap().to_owned()
   }
 
-  fn parse_ts_module(text: &str) -> Result<ParsedSource, Diagnostic> {
+  fn parse_ts_module(text: &str) -> Result<ParsedSource, ParseDiagnostic> {
     parse_module(ParseParams {
       specifier: "my_file.ts".to_string(),
       text_info: SourceTextInfo::from_string(text.to_string()),

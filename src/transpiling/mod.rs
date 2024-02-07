@@ -28,9 +28,9 @@ use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
-use crate::Diagnostic;
 use crate::DiagnosticsError;
 use crate::ModuleSpecifier;
+use crate::ParseDiagnostic;
 use crate::ParsedSource;
 
 use std::cell::RefCell;
@@ -295,7 +295,7 @@ pub fn fold_program(
   source_map: Rc<SourceMap>,
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
-  diagnostics: &[Diagnostic],
+  diagnostics: &[ParseDiagnostic],
 ) -> Result<Program> {
   ensure_no_fatal_diagnostics(diagnostics)?;
 
@@ -454,7 +454,7 @@ fn format_swc_diagnostic(
 }
 
 fn ensure_no_fatal_diagnostics(
-  diagnostics: &[Diagnostic],
+  diagnostics: &[ParseDiagnostic],
 ) -> Result<(), DiagnosticsError> {
   let fatal_diagnostics = diagnostics
     .iter()

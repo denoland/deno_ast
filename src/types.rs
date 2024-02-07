@@ -3,17 +3,23 @@
 use std::borrow::Cow;
 use std::fmt;
 
+use crate::diagnostics::Diagnostic;
+use crate::diagnostics::DiagnosticLevel;
+use crate::diagnostics::DiagnosticLocation;
+use crate::diagnostics::DiagnosticSnippet;
+use crate::diagnostics::DiagnosticSourcePos;
 use crate::swc::parser::error::SyntaxError;
 use crate::LineAndColumnDisplay;
+use crate::ModuleSpecifier;
 use crate::SourceRange;
 use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
 
 /// Parsing diagnostic.
 #[derive(Debug, Clone)]
-pub struct Diagnostic {
+pub struct ParseDiagnostic {
   /// Specifier of the source the diagnostic occurred in.
-  pub specifier: String,
+  pub specifier: ModuleSpecifier,
   /// Range of the diagnostic.
   pub range: SourceRange,
   /// Swc syntax error
@@ -21,7 +27,9 @@ pub struct Diagnostic {
   source: SourceTextInfo,
 }
 
-impl PartialEq for Diagnostic {
+impl Eq for ParseDiagnostic {}
+
+impl PartialEq for ParseDiagnostic {
   fn eq(&self, other: &Self) -> bool {
     // excludes the source
     self.specifier == other.specifier
@@ -30,25 +38,248 @@ impl PartialEq for Diagnostic {
   }
 }
 
-impl Diagnostic {
-  /// Message text of the diagnostic.
-  pub fn message(&self) -> Cow<str> {
-    self.kind.msg()
-  }
-
+impl ParseDiagnostic {
   /// 1-indexed display position the diagnostic occurred at.
   pub fn display_position(&self) -> LineAndColumnDisplay {
     self.source.line_and_column_display(self.range.start)
   }
 }
 
-impl Diagnostic {
+impl Diagnostic for ParseDiagnostic {
+  fn level(&self) -> DiagnosticLevel {
+    DiagnosticLevel::Error
+  }
+
+  fn code(&self) -> impl fmt::Display + '_ {
+    match &self.kind {
+      SyntaxError::Eof => todo!(),
+      SyntaxError::DeclNotAllowed => todo!(),
+      SyntaxError::UsingDeclNotAllowed => todo!(),
+      SyntaxError::UsingDeclNotAllowedForForInLoop => todo!(),
+      SyntaxError::UsingDeclNotEnabled => todo!(),
+      SyntaxError::InvalidNameInUsingDecl => todo!(),
+      SyntaxError::InitRequiredForUsingDecl => todo!(),
+      SyntaxError::PrivateNameInInterface => todo!(),
+      SyntaxError::InvalidSuperCall => todo!(),
+      SyntaxError::InvalidSuper => todo!(),
+      SyntaxError::InvalidSuperPrivateName => todo!(),
+      SyntaxError::InvalidNewTarget => todo!(),
+      SyntaxError::InvalidImport => todo!(),
+      SyntaxError::ArrowNotAllowed => todo!(),
+      SyntaxError::ExportNotAllowed => todo!(),
+      SyntaxError::GetterSetterCannotBeReadonly => todo!(),
+      SyntaxError::GetterParam => todo!(),
+      SyntaxError::SetterParam => todo!(),
+      SyntaxError::TopLevelAwaitInScript => todo!(),
+      SyntaxError::LegacyDecimal => todo!(),
+      SyntaxError::LegacyOctal => todo!(),
+      SyntaxError::InvalidIdentChar => todo!(),
+      SyntaxError::ExpectedDigit { radix } => todo!(),
+      SyntaxError::SetterParamRequired => todo!(),
+      SyntaxError::RestPatInSetter => todo!(),
+      SyntaxError::UnterminatedBlockComment => todo!(),
+      SyntaxError::UnterminatedStrLit => todo!(),
+      SyntaxError::ExpectedUnicodeEscape => todo!(),
+      SyntaxError::EscapeInReservedWord { word } => todo!(),
+      SyntaxError::UnterminatedRegExp => todo!(),
+      SyntaxError::UnterminatedTpl => todo!(),
+      SyntaxError::IdentAfterNum => todo!(),
+      SyntaxError::UnexpectedChar { c } => todo!(),
+      SyntaxError::InvalidStrEscape => todo!(),
+      SyntaxError::InvalidUnicodeEscape => todo!(),
+      SyntaxError::BadCharacterEscapeSequence { expected } => todo!(),
+      SyntaxError::NumLitTerminatedWithExp => todo!(),
+      SyntaxError::LegacyCommentInModule => todo!(),
+      SyntaxError::InvalidIdentInStrict(_) => todo!(),
+      SyntaxError::InvalidIdentInAsync => todo!(),
+      SyntaxError::EvalAndArgumentsInStrict => todo!(),
+      SyntaxError::ArgumentsInClassField => todo!(),
+      SyntaxError::IllegalLanguageModeDirective => todo!(),
+      SyntaxError::UnaryInExp { left, left_span } => todo!(),
+      SyntaxError::Hash => todo!(),
+      SyntaxError::LineBreakInThrow => todo!(),
+      SyntaxError::LineBreakBeforeArrow => todo!(),
+      SyntaxError::Unexpected { got, expected } => todo!(),
+      SyntaxError::UnexpectedTokenWithSuggestions { candidate_list } => todo!(),
+      SyntaxError::ReservedWordInImport => todo!(),
+      SyntaxError::AssignProperty => todo!(),
+      SyntaxError::Expected(_, _) => todo!(),
+      SyntaxError::ExpectedSemiForExprStmt { expr } => todo!(),
+      SyntaxError::AwaitStar => todo!(),
+      SyntaxError::ReservedWordInObjShorthandOrPat => todo!(),
+      SyntaxError::NullishCoalescingWithLogicalOp => todo!(),
+      SyntaxError::MultipleDefault { previous } => todo!(),
+      SyntaxError::CommaAfterRestElement => todo!(),
+      SyntaxError::NonLastRestParam => todo!(),
+      SyntaxError::SpreadInParenExpr => todo!(),
+      SyntaxError::EmptyParenExpr => todo!(),
+      SyntaxError::InvalidPat => todo!(),
+      SyntaxError::InvalidExpr => todo!(),
+      SyntaxError::NotSimpleAssign => todo!(),
+      SyntaxError::ExpectedIdent => todo!(),
+      SyntaxError::ExpectedSemi => todo!(),
+      SyntaxError::DuplicateLabel(_) => todo!(),
+      SyntaxError::AsyncGenerator => todo!(),
+      SyntaxError::NonTopLevelImportExport => todo!(),
+      SyntaxError::ImportExportInScript => todo!(),
+      SyntaxError::ImportMetaInScript => todo!(),
+      SyntaxError::PatVarWithoutInit => todo!(),
+      SyntaxError::WithInStrict => todo!(),
+      SyntaxError::ReturnNotAllowed => todo!(),
+      SyntaxError::TooManyVarInForInHead => todo!(),
+      SyntaxError::VarInitializerInForInHead => todo!(),
+      SyntaxError::LabelledGeneratorOrAsync => todo!(),
+      SyntaxError::LabelledFunctionInStrict => todo!(),
+      SyntaxError::YieldParamInGen => todo!(),
+      SyntaxError::AwaitParamInAsync => todo!(),
+      SyntaxError::AwaitForStmt => todo!(),
+      SyntaxError::AwaitInFunction => todo!(),
+      SyntaxError::UnterminatedJSXContents => todo!(),
+      SyntaxError::EmptyJSXAttr => todo!(),
+      SyntaxError::InvalidJSXValue => todo!(),
+      SyntaxError::JSXExpectedClosingTagForLtGt => todo!(),
+      SyntaxError::JSXExpectedClosingTag { tag } => todo!(),
+      SyntaxError::InvalidLeadingDecorator => todo!(),
+      SyntaxError::DecoratorOnExport => todo!(),
+      SyntaxError::TsRequiredAfterOptional => todo!(),
+      SyntaxError::TsInvalidParamPropPat => todo!(),
+      SyntaxError::SpaceBetweenHashAndIdent => todo!(),
+      SyntaxError::AsyncConstructor => todo!(),
+      SyntaxError::PropertyNamedConstructor => todo!(),
+      SyntaxError::PrivateConstructor => todo!(),
+      SyntaxError::PrivateNameModifier(_) => todo!(),
+      SyntaxError::ConstructorAccessor => todo!(),
+      SyntaxError::ReadOnlyMethod => todo!(),
+      SyntaxError::GeneratorConstructor => todo!(),
+      SyntaxError::DuplicateConstructor => todo!(),
+      SyntaxError::TsBindingPatCannotBeOptional => todo!(),
+      SyntaxError::SuperCallOptional => todo!(),
+      SyntaxError::OptChainCannotFollowConstructorCall => todo!(),
+      SyntaxError::TaggedTplInOptChain => todo!(),
+      SyntaxError::TrailingCommaInsideImport => todo!(),
+      SyntaxError::ExportDefaultWithOutFrom => todo!(),
+      SyntaxError::ExportExpectFrom(_) => todo!(),
+      SyntaxError::DotsWithoutIdentifier => todo!(),
+      SyntaxError::NumericSeparatorIsAllowedOnlyBetweenTwoDigits => todo!(),
+      SyntaxError::ImportBindingIsString(_) => todo!(),
+      SyntaxError::ExportBindingIsString => todo!(),
+      SyntaxError::ConstDeclarationsRequireInitialization => todo!(),
+      SyntaxError::DuplicatedRegExpFlags(_) => todo!(),
+      SyntaxError::UnknownRegExpFlags => todo!(),
+      SyntaxError::TS1003 => todo!(),
+      SyntaxError::TS1005 => todo!(),
+      SyntaxError::TS1009 => todo!(),
+      SyntaxError::TS1014 => todo!(),
+      SyntaxError::TS1015 => todo!(),
+      SyntaxError::TS1029(_, _) => todo!(),
+      SyntaxError::TS1030(_) => todo!(),
+      SyntaxError::TS1031 => todo!(),
+      SyntaxError::TS1038 => todo!(),
+      SyntaxError::TS1042 => todo!(),
+      SyntaxError::TS1047 => todo!(),
+      SyntaxError::TS1048 => todo!(),
+      SyntaxError::TS1056 => todo!(),
+      SyntaxError::TS1085 => todo!(),
+      SyntaxError::TS1089(_) => todo!(),
+      SyntaxError::TS1092 => todo!(),
+      SyntaxError::TS1096 => todo!(),
+      SyntaxError::TS1098 => todo!(),
+      SyntaxError::TS1100 => todo!(),
+      SyntaxError::TS1102 => todo!(),
+      SyntaxError::TS1105 => todo!(),
+      SyntaxError::TS1106 => todo!(),
+      SyntaxError::TS1107 => todo!(),
+      SyntaxError::TS1109 => todo!(),
+      SyntaxError::TS1110 => todo!(),
+      SyntaxError::TS1114 => todo!(),
+      SyntaxError::TS1115 => todo!(),
+      SyntaxError::TS1116 => todo!(),
+      SyntaxError::TS1123 => todo!(),
+      SyntaxError::TS1141 => todo!(),
+      SyntaxError::TS1162 => todo!(),
+      SyntaxError::TS1164 => todo!(),
+      SyntaxError::TS1171 => todo!(),
+      SyntaxError::TS1172 => todo!(),
+      SyntaxError::TS1173 => todo!(),
+      SyntaxError::TS1174 => todo!(),
+      SyntaxError::TS1175 => todo!(),
+      SyntaxError::TS1183 => todo!(),
+      SyntaxError::TS1184 => todo!(),
+      SyntaxError::TS1185 => todo!(),
+      SyntaxError::TS1093 => todo!(),
+      SyntaxError::TS1196 => todo!(),
+      SyntaxError::TS1242 => todo!(),
+      SyntaxError::TS1243(_, _) => todo!(),
+      SyntaxError::TS1244 => todo!(),
+      SyntaxError::TS1245 => todo!(),
+      SyntaxError::TS1267 => todo!(),
+      SyntaxError::TS1273(_) => todo!(),
+      SyntaxError::TS1274(_) => todo!(),
+      SyntaxError::TS1277(_) => todo!(),
+      SyntaxError::TS2206 => todo!(),
+      SyntaxError::TS2207 => todo!(),
+      SyntaxError::TS2369 => todo!(),
+      SyntaxError::TS2371 => todo!(),
+      SyntaxError::TS2406 => todo!(),
+      SyntaxError::TS2410 => todo!(),
+      SyntaxError::TS2414 => todo!(),
+      SyntaxError::TS2427 => todo!(),
+      SyntaxError::TS2452 => todo!(),
+      SyntaxError::TS2483 => todo!(),
+      SyntaxError::TS2491 => todo!(),
+      SyntaxError::TS2499 => todo!(),
+      SyntaxError::TS2703 => todo!(),
+      SyntaxError::TS4112 => todo!(),
+      SyntaxError::TS8038 => todo!(),
+      SyntaxError::TSTypeAnnotationAfterAssign => todo!(),
+      SyntaxError::TsNonNullAssertionNotAllowed(_) => todo!(),
+      SyntaxError::WithLabel { inner, span, note } => todo!(),
+      SyntaxError::ReservedTypeAssertion => todo!(),
+      SyntaxError::ReservedArrowTypeParam => todo!(),
+      _ => "unknown",
+    }
+  }
+
+  fn message(&self) -> impl fmt::Display + '_ {
+    self.kind.msg()
+  }
+
+  fn location(&self) -> DiagnosticLocation {
+    DiagnosticLocation::ModulePosition {
+      specifier: Cow::Borrowed(&self.specifier),
+      source_pos: DiagnosticSourcePos::SourceRange(self.range),
+      text_info: Cow::Borrowed(&self.source),
+    }
+  }
+
+  fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
+    todo!()
+  }
+
+  fn hint(&self) -> Option<impl fmt::Display + '_> {
+    Option::<&'static str>::None
+  }
+
+  fn snippet_fixed(&self) -> Option<crate::diagnostics::DiagnosticSnippet<'_>> {
+    None
+  }
+
+  fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
+    todo!()
+  }
+
+  fn docs_url(&self) -> Option<impl fmt::Display + '_> {
+    Option::<&'static str>::None
+  }
+}
+
+impl ParseDiagnostic {
   pub fn from_swc_error(
     err: crate::swc::parser::error::Error,
     specifier: &str,
     source: SourceTextInfo,
-  ) -> Diagnostic {
-    Diagnostic {
+  ) -> ParseDiagnostic {
+    ParseDiagnostic {
       range: err.range(),
       specifier: specifier.to_string(),
       kind: err.into_kind(),
@@ -57,9 +288,9 @@ impl Diagnostic {
   }
 }
 
-impl std::error::Error for Diagnostic {}
+impl std::error::Error for ParseDiagnostic {}
 
-impl fmt::Display for Diagnostic {
+impl fmt::Display for ParseDiagnostic {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let display_position = self.display_position();
     write!(
@@ -93,7 +324,7 @@ impl fmt::Display for Diagnostic {
 }
 
 #[derive(Debug)]
-pub struct DiagnosticsError(pub Vec<Diagnostic>);
+pub struct DiagnosticsError(pub Vec<ParseDiagnostic>);
 
 impl std::error::Error for DiagnosticsError {}
 

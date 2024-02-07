@@ -11,8 +11,8 @@ use crate::swc::ast::Script;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::SyntaxContext;
 use crate::swc::parser::token::TokenAndSpan;
-use crate::Diagnostic;
 use crate::MediaType;
+use crate::ParseDiagnostic;
 use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
 
@@ -30,7 +30,7 @@ struct ParsedSourceInner {
   program: Arc<Program>,
   tokens: Option<Arc<Vec<TokenAndSpan>>>,
   syntax_contexts: Option<SyntaxContexts>,
-  diagnostics: Vec<Diagnostic>,
+  diagnostics: Vec<ParseDiagnostic>,
 }
 
 /// A parsed source containing an AST, comments, and possibly tokens.
@@ -51,7 +51,7 @@ impl ParsedSource {
     program: Arc<Program>,
     tokens: Option<Arc<Vec<TokenAndSpan>>>,
     syntax_contexts: Option<SyntaxContexts>,
-    diagnostics: Vec<Diagnostic>,
+    diagnostics: Vec<ParseDiagnostic>,
   ) -> Self {
     ParsedSource {
       inner: Arc::new(ParsedSourceInner {
@@ -195,7 +195,7 @@ impl ParsedSource {
   }
 
   /// Gets extra non-fatal diagnostics found while parsing.
-  pub fn diagnostics(&self) -> &Vec<Diagnostic> {
+  pub fn diagnostics(&self) -> &Vec<ParseDiagnostic> {
     &self.inner.diagnostics
   }
 
