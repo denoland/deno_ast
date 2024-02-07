@@ -261,6 +261,8 @@ impl Visit for CjsVisitor {
       AssignTarget::Simple(SimpleAssignTarget::Ident(left_ident)) => {
         if is_exports_ident(&left_ident.id) {
           self.visit_exports_right_expr(&assign_expr.right);
+        } else if let Some(right_expr) = assign_expr.right.as_assign() {
+          self.visit_assign_expr(right_expr);
         }
       }
       AssignTarget::Simple(SimpleAssignTarget::Member(left_member)) => {
@@ -288,6 +290,8 @@ impl Visit for CjsVisitor {
               }
             }
           }
+        } else if let Some(right_expr) = assign_expr.right.as_assign() {
+          self.visit_assign_expr(right_expr);
         }
       }
       _ => {
@@ -1280,7 +1284,7 @@ mod test {
           const BigInteger = 1;
           const SecureRandom = 2;
           if (typeof exports !== 'undefined') {
-            a= exports = module.exports = {
+            a= window.something = exports = module.exports = {
                   default: BigInteger,
                   BigInteger: BigInteger,
                   SecureRandom: SecureRandom,
