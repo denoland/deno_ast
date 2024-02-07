@@ -570,6 +570,7 @@ mod test {
 
   use crate::parse_script;
   use crate::MediaType;
+  use crate::ModuleSpecifier;
   use crate::ParseParams;
   use crate::SourceTextInfo;
 
@@ -616,7 +617,7 @@ mod test {
 
   fn parse_cjs(source: &str) -> CjsAnalysisTester {
     let parsed_source = parse_script(ParseParams {
-      specifier: "".to_string(),
+      specifier: ModuleSpecifier::parse("file:///example.js").unwrap(),
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Cjs,
       capture_tokens: true,

@@ -8,6 +8,7 @@ mod cjs_parse;
 mod comments;
 #[cfg(feature = "dep_analysis")]
 pub mod dep;
+pub mod diagnostics;
 mod lexing;
 mod parsed_source;
 mod parsing;
@@ -37,7 +38,6 @@ pub use text_changes::*;
 pub use transpiling::*;
 pub use types::*;
 
-#[cfg(feature = "module_specifier")]
 pub type ModuleSpecifier = url::Url;
 
 pub mod swc {

@@ -470,6 +470,7 @@ fn parse_dynamic_import_attributes(
 mod tests {
   use crate::swc::atoms::JsWord;
   use crate::swc::common::comments::CommentKind;
+  use crate::ModuleSpecifier;
   use crate::SourcePos;
   use crate::SourceRange;
   use crate::SourceRangedForSpanned;
@@ -479,11 +480,11 @@ mod tests {
   use super::*;
 
   fn helper(
-    file_name: &str,
+    specifier: &str,
     source: &str,
   ) -> (SourcePos, Vec<DependencyDescriptor>) {
     let source = crate::parse_module(crate::ParseParams {
-      specifier: file_name.to_string(),
+      specifier: ModuleSpecifier::parse(specifier).unwrap(),
       text_info: crate::SourceTextInfo::from_string(source.to_string()),
       media_type: crate::MediaType::Tsx,
       capture_tokens: false,
@@ -529,7 +530,7 @@ try {
     // pass
 }
       "#;
-    let (start_pos, dependencies) = helper("test.ts", source);
+    let (start_pos, dependencies) = helper("file:///test.ts", source);
     assert_eq!(
       dependencies,
       vec![
@@ -654,7 +655,7 @@ const d8 = await import("./d8.json", { with: { type: bar } });
 const d9 = await import("./d9.json", { with: { type: "json", ...bar } });
 const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" } });
       "#;
-    let (start_pos, dependencies) = helper("test.ts", source);
+    let (start_pos, dependencies) = helper("file:///test.ts", source);
     let expected_attributes1 = ImportAttributes::Known({
       let mut map = HashMap::new();
       map.insert(
@@ -833,7 +834,7 @@ const d6 = await import(`${value}/test/${value2}`);
 const d7 = await import(`./${value}/test/${value2}/`);
 const d8 = await import(expr);
 "#;
-    let (start_pos, dependencies) = helper("test.ts", source);
+    let (start_pos, dependencies) = helper("file:///test.ts", source);
     assert_eq!(
       dependencies,
       vec![
@@ -931,7 +932,7 @@ export declare const SomeValue: typeof Core & import("./a.d.ts").Constructor<{
     paginate: import("./b.d.ts").PaginateInterface;
 } & import("./c.d.ts").RestEndpointMethods>;
 "#;
-    let (start_pos, dependencies) = helper("test.ts", source);
+    let (start_pos, dependencies) = helper("file:///test.ts", source);
     assert_eq!(
       dependencies,
       vec![

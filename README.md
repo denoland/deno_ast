@@ -15,7 +15,7 @@ use deno_ast::SourceTextInfo;
 let source_text = "class MyClass {}";
 let text_info = SourceTextInfo::new(source_text.into());
 let parsed_source = parse_module(ParseParams {
-  specifier: "file:///my_file.ts".to_string(),
+  specifier: deno_ast::ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
   media_type: MediaType::TypeScript,
   text_info,
   capture_tokens: true,

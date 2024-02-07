@@ -357,12 +357,13 @@ mod tests {
   use crate::parse_module;
   use crate::swc::ast::Id;
   use crate::MediaType;
+  use crate::ModuleSpecifier;
   use crate::ParseParams;
   use crate::SourceTextInfo;
 
   fn test_scope(source_code: &str, test: impl Fn(Scope)) {
     let parsed_source = parse_module(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string(source_code.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
