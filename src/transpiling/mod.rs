@@ -28,9 +28,8 @@ use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
-use crate::Diagnostic;
 use crate::DiagnosticsError;
-use crate::ModuleSpecifier;
+use crate::ParseDiagnostic;
 use crate::ParsedSource;
 
 use std::cell::RefCell;
@@ -199,10 +198,7 @@ impl ParsedSource {
     let source_map_config = SourceMapConfig {
       inline_sources: options.inline_sources,
     };
-    let file_name = match ModuleSpecifier::parse(self.specifier()) {
-      Ok(specifier) => FileName::Url(specifier),
-      Err(_) => FileName::Custom(self.specifier().to_string()),
-    };
+    let file_name = FileName::Url(self.specifier().clone());
     source_map
       .new_source_file(file_name, self.text_info().text_str().to_string());
     // needs to align with what's done internally in source map
@@ -295,7 +291,7 @@ pub fn fold_program(
   source_map: Rc<SourceMap>,
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
-  diagnostics: &[Diagnostic],
+  diagnostics: &[ParseDiagnostic],
 ) -> Result<Program> {
   ensure_no_fatal_diagnostics(diagnostics)?;
 
@@ -454,7 +450,7 @@ fn format_swc_diagnostic(
 }
 
 fn ensure_no_fatal_diagnostics(
-  diagnostics: &[Diagnostic],
+  diagnostics: &[ParseDiagnostic],
 ) -> Result<(), DiagnosticsError> {
   let fatal_diagnostics = diagnostics
     .iter()
@@ -512,6 +508,7 @@ mod tests {
 
   use crate::parse_module;
   use crate::MediaType;
+  use crate::ModuleSpecifier;
   use crate::ParseParams;
   use crate::SourceTextInfo;
 
@@ -553,7 +550,7 @@ export class A {
 }
     "#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
@@ -607,7 +604,7 @@ export class A {
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = "using data = create();\nconsole.log(data);";
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
@@ -704,7 +701,7 @@ try {
     }
     "#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Tsx,
       capture_tokens: false,
@@ -730,7 +727,7 @@ try {
     }
     "#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Tsx,
       capture_tokens: false,
@@ -760,7 +757,7 @@ function App() {
   );
 }"#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Jsx,
       capture_tokens: false,
@@ -789,7 +786,7 @@ function App() {
   );
 }"#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Jsx,
       capture_tokens: false,
@@ -818,7 +815,7 @@ function App() {
   );
 }"#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Jsx,
       capture_tokens: false,
@@ -852,7 +849,7 @@ function App() {
   );
 }"#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Jsx,
       capture_tokens: false,
@@ -895,7 +892,7 @@ function App() {
   );
 }"#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Jsx,
       capture_tokens: false,
@@ -941,7 +938,7 @@ function App() {
     }
     "#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
@@ -1002,7 +999,7 @@ _ts_decorate([
     }
     "#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
@@ -1027,7 +1024,7 @@ _ts_decorate([
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = "";
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
@@ -1068,7 +1065,7 @@ _ts_decorate([
     }
     "#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
@@ -1109,7 +1106,7 @@ export function g() {
 }
   "#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
@@ -1139,7 +1136,7 @@ export function g() {
 for (let i = 0; i < testVariable >> 1; i++) callCount++;
   "#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
@@ -1160,7 +1157,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   return <div>{...[]}</div>;
 };"#;
     let parsed_source = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Tsx,
       capture_tokens: false,
@@ -1234,7 +1231,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let parsed_source = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
@@ -1255,7 +1252,8 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     // Ref https://github.com/swc-project/swc/issues/3288#issuecomment-1117252904
 
     let p = parse_module(ParseParams {
-      specifier: "file:///Users/ib/dev/deno/foo.ts".to_string(),
+      specifier: ModuleSpecifier::parse("file:///Users/ib/dev/deno/foo.ts")
+        .unwrap(),
       text_info: SourceTextInfo::from_string(
         r#"export default function () {
     return "📣❓";
@@ -1284,7 +1282,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let source =
       r#"const a = <Foo><span>hello</span>foo<Bar><p>asdf</p></Bar></Foo>;"#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Tsx,
       capture_tokens: false,
@@ -1322,7 +1320,7 @@ const a = _jsx(Foo, {
       ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
     let source = r#"{ const foo = "bar"; };"#;
     let module = parse_module(ParseParams {
-      specifier: specifier.as_str().to_string(),
+      specifier,
       text_info: SourceTextInfo::from_string(source.to_string()),
       media_type: MediaType::Tsx,
       capture_tokens: false,

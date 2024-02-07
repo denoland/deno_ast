@@ -3,17 +3,26 @@
 use std::borrow::Cow;
 use std::fmt;
 
+use crate::diagnostics::Diagnostic;
+use crate::diagnostics::DiagnosticLevel;
+use crate::diagnostics::DiagnosticLocation;
+use crate::diagnostics::DiagnosticSnippet;
+use crate::diagnostics::DiagnosticSnippetHighlight;
+use crate::diagnostics::DiagnosticSnippetHighlightStyle;
+use crate::diagnostics::DiagnosticSourcePos;
+use crate::diagnostics::DiagnosticSourceRange;
 use crate::swc::parser::error::SyntaxError;
 use crate::LineAndColumnDisplay;
+use crate::ModuleSpecifier;
 use crate::SourceRange;
 use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
 
 /// Parsing diagnostic.
 #[derive(Debug, Clone)]
-pub struct Diagnostic {
+pub struct ParseDiagnostic {
   /// Specifier of the source the diagnostic occurred in.
-  pub specifier: String,
+  pub specifier: ModuleSpecifier,
   /// Range of the diagnostic.
   pub range: SourceRange,
   /// Swc syntax error
@@ -21,7 +30,9 @@ pub struct Diagnostic {
   source: SourceTextInfo,
 }
 
-impl PartialEq for Diagnostic {
+impl Eq for ParseDiagnostic {}
+
+impl PartialEq for ParseDiagnostic {
   fn eq(&self, other: &Self) -> bool {
     // excludes the source
     self.specifier == other.specifier
@@ -30,36 +41,301 @@ impl PartialEq for Diagnostic {
   }
 }
 
-impl Diagnostic {
-  /// Message text of the diagnostic.
-  pub fn message(&self) -> Cow<str> {
-    self.kind.msg()
-  }
-
+impl ParseDiagnostic {
   /// 1-indexed display position the diagnostic occurred at.
   pub fn display_position(&self) -> LineAndColumnDisplay {
     self.source.line_and_column_display(self.range.start)
   }
 }
 
-impl Diagnostic {
+impl Diagnostic for ParseDiagnostic {
+  fn level(&self) -> DiagnosticLevel {
+    DiagnosticLevel::Error
+  }
+
+  fn code(&self) -> impl fmt::Display + '_ {
+    match &self.kind {
+      SyntaxError::Eof => "eof",
+      SyntaxError::DeclNotAllowed => "decl-not-allowed",
+      SyntaxError::UsingDeclNotAllowed => "using-decl-not-allowed",
+      SyntaxError::UsingDeclNotAllowedForForInLoop => {
+        "using-decl-not-allowed-for-for-in-loop"
+      }
+      SyntaxError::UsingDeclNotEnabled => "using-decl-not-enabled",
+      SyntaxError::InvalidNameInUsingDecl => "invalid-name-in-using-decl",
+      SyntaxError::InitRequiredForUsingDecl => "init-required-for-using-decl",
+      SyntaxError::PrivateNameInInterface => "private-name-in-interface",
+      SyntaxError::InvalidSuperCall => "invalid-super-call",
+      SyntaxError::InvalidSuper => "invalid-super",
+      SyntaxError::InvalidSuperPrivateName => "invalid-super-private-name",
+      SyntaxError::InvalidNewTarget => "invalid-new-target",
+      SyntaxError::InvalidImport => "invalid-import",
+      SyntaxError::ArrowNotAllowed => "arrow-not-allowed",
+      SyntaxError::ExportNotAllowed => "export-not-allowed",
+      SyntaxError::GetterSetterCannotBeReadonly => {
+        "getter-setter-cannot-be-readonly"
+      }
+      SyntaxError::GetterParam => "getter-param",
+      SyntaxError::SetterParam => "setter-param",
+      SyntaxError::TopLevelAwaitInScript => "top-level-await-in-script",
+      SyntaxError::LegacyDecimal => "legacy-decimal",
+      SyntaxError::LegacyOctal => "legacy-octal",
+      SyntaxError::InvalidIdentChar => "invalid-ident-char",
+      SyntaxError::ExpectedDigit { .. } => "expected-digit",
+      SyntaxError::SetterParamRequired => "setter-param-required",
+      SyntaxError::RestPatInSetter => "rest-pat-in-setter",
+      SyntaxError::UnterminatedBlockComment => "unterminated-block-comment",
+      SyntaxError::UnterminatedStrLit => "unterminated-str-lit",
+      SyntaxError::ExpectedUnicodeEscape => "expected-unicode-escape",
+      SyntaxError::EscapeInReservedWord { .. } => "escape-in-reserved-word",
+      SyntaxError::UnterminatedRegExp => "unterminated-reg-exp",
+      SyntaxError::UnterminatedTpl => "unterminated-tpl",
+      SyntaxError::IdentAfterNum => "ident-after-num",
+      SyntaxError::UnexpectedChar { .. } => "unexpected-char",
+      SyntaxError::InvalidStrEscape => "invalid-str-escape",
+      SyntaxError::InvalidUnicodeEscape => "invalid-unicode-escape",
+      SyntaxError::BadCharacterEscapeSequence { .. } => {
+        "bad-character-escape-sequence"
+      }
+      SyntaxError::NumLitTerminatedWithExp => "num-lit-terminated-with-exp",
+      SyntaxError::LegacyCommentInModule => "legacy-comment-in-module",
+      SyntaxError::InvalidIdentInStrict(_) => "invalid-ident-in-strict",
+      SyntaxError::InvalidIdentInAsync => "invalid-ident-in-async",
+      SyntaxError::EvalAndArgumentsInStrict => "eval-and-arguments-in-strict",
+      SyntaxError::ArgumentsInClassField => "arguments-in-class-field",
+      SyntaxError::IllegalLanguageModeDirective => {
+        "illegal-language-mode-directive"
+      }
+      SyntaxError::UnaryInExp { .. } => "unary-in-exp",
+      SyntaxError::Hash => "hash",
+      SyntaxError::LineBreakInThrow => "line-break-in-throw",
+      SyntaxError::LineBreakBeforeArrow => "line-break-before-arrow",
+      SyntaxError::Unexpected { .. } => "unexpected",
+      SyntaxError::UnexpectedTokenWithSuggestions { .. } => {
+        "unexpected-token-with-suggestions"
+      }
+      SyntaxError::ReservedWordInImport => "reserved-word-in-import",
+      SyntaxError::AssignProperty => "assign-property",
+      SyntaxError::Expected(_, _) => "expected",
+      SyntaxError::ExpectedSemiForExprStmt { .. } => {
+        "expected-semi-for-expr-stmt"
+      }
+      SyntaxError::AwaitStar => "await-star",
+      SyntaxError::ReservedWordInObjShorthandOrPat => {
+        "reserved-word-in-obj-shorthand-or-pat"
+      }
+      SyntaxError::NullishCoalescingWithLogicalOp => {
+        "nullish-coalescing-with-logical-op"
+      }
+      SyntaxError::MultipleDefault { .. } => "multiple-default",
+      SyntaxError::CommaAfterRestElement => "comma-after-rest-element",
+      SyntaxError::NonLastRestParam => "non-last-rest-param",
+      SyntaxError::SpreadInParenExpr => "spread-in-paren-expr",
+      SyntaxError::EmptyParenExpr => "empty-paren-expr",
+      SyntaxError::InvalidPat => "invalid-pat",
+      SyntaxError::InvalidExpr => "invalid-expr",
+      SyntaxError::NotSimpleAssign => "not-simple-assign",
+      SyntaxError::ExpectedIdent => "expected-ident",
+      SyntaxError::ExpectedSemi => "expected-semi",
+      SyntaxError::DuplicateLabel(_) => "duplicate-label",
+      SyntaxError::AsyncGenerator => "async-generator",
+      SyntaxError::NonTopLevelImportExport => "non-top-level-import-export",
+      SyntaxError::ImportExportInScript => "import-export-in-script",
+      SyntaxError::ImportMetaInScript => "import-meta-in-script",
+      SyntaxError::PatVarWithoutInit => "pat-var-without-init",
+      SyntaxError::WithInStrict => "with-in-strict",
+      SyntaxError::ReturnNotAllowed => "return-not-allowed",
+      SyntaxError::TooManyVarInForInHead => "too-many-var-in-for-in-head",
+      SyntaxError::VarInitializerInForInHead => {
+        "var-initializer-in-for-in-head"
+      }
+      SyntaxError::LabelledGeneratorOrAsync => "labelled-generator-or-async",
+      SyntaxError::LabelledFunctionInStrict => "labelled-function-in-strict",
+      SyntaxError::YieldParamInGen => "yield-param-in-gen",
+      SyntaxError::AwaitParamInAsync => "await-param-in-async",
+      SyntaxError::AwaitForStmt => "await-for-stmt",
+      SyntaxError::AwaitInFunction => "await-in-function",
+      SyntaxError::UnterminatedJSXContents => "unterminated-jsx-contents",
+      SyntaxError::EmptyJSXAttr => "empty-jsx-attr",
+      SyntaxError::InvalidJSXValue => "invalid-jsx-value",
+      SyntaxError::JSXExpectedClosingTagForLtGt => {
+        "jsx-expected-closing-tag-for-lt-gt"
+      }
+      SyntaxError::JSXExpectedClosingTag { .. } => "jsx-expected-closing-tag",
+      SyntaxError::InvalidLeadingDecorator => "invalid-leading-decorator",
+      SyntaxError::DecoratorOnExport => "decorator-on-export",
+      SyntaxError::TsRequiredAfterOptional => "ts-required-after-optional",
+      SyntaxError::TsInvalidParamPropPat => "ts-invalid-param-prop-pat",
+      SyntaxError::SpaceBetweenHashAndIdent => "space-between-hash-and-ident",
+      SyntaxError::AsyncConstructor => "async-constructor",
+      SyntaxError::PropertyNamedConstructor => "property-named-constructor",
+      SyntaxError::PrivateConstructor => "private-constructor",
+      SyntaxError::PrivateNameModifier(_) => "private-name-modifier",
+      SyntaxError::ConstructorAccessor => "constructor-accessor",
+      SyntaxError::ReadOnlyMethod => "read-only-method",
+      SyntaxError::GeneratorConstructor => "generator-constructor",
+      SyntaxError::DuplicateConstructor => "duplicate-constructor",
+      SyntaxError::TsBindingPatCannotBeOptional => {
+        "ts-binding-pat-cannot-be-optional"
+      }
+      SyntaxError::SuperCallOptional => "super-call-optional",
+      SyntaxError::OptChainCannotFollowConstructorCall => {
+        "opt-chain-cannot-follow-constructor-call"
+      }
+      SyntaxError::TaggedTplInOptChain => "tagged-tpl-in-opt-chain",
+      SyntaxError::TrailingCommaInsideImport => "trailing-comma-inside-import",
+      SyntaxError::ExportDefaultWithOutFrom => "export-default-without-from",
+      SyntaxError::ExportExpectFrom(_) => "export-expect-from",
+      SyntaxError::DotsWithoutIdentifier => "dots-without-identifier",
+      SyntaxError::NumericSeparatorIsAllowedOnlyBetweenTwoDigits => {
+        "numeric-separator-allowed-only-between-two-digits"
+      }
+      SyntaxError::ImportBindingIsString(_) => "import-binding-is-string",
+      SyntaxError::ExportBindingIsString => "export-binding-is-string",
+      SyntaxError::ConstDeclarationsRequireInitialization => {
+        "const-declarations-require-initialization"
+      }
+      SyntaxError::DuplicatedRegExpFlags(_) => "duplicated-reg-exp-flags",
+      SyntaxError::UnknownRegExpFlags => "unknown-reg-exp-flags",
+      SyntaxError::TS1003 => "TS1003",
+      SyntaxError::TS1005 => "TS1005",
+      SyntaxError::TS1009 => "TS1009",
+      SyntaxError::TS1014 => "TS1014",
+      SyntaxError::TS1015 => "TS1015",
+      SyntaxError::TS1029(_, _) => "TS1029",
+      SyntaxError::TS1030(_) => "TS1030",
+      SyntaxError::TS1031 => "TS1031",
+      SyntaxError::TS1038 => "TS1038",
+      SyntaxError::TS1042 => "TS1042",
+      SyntaxError::TS1047 => "TS1047",
+      SyntaxError::TS1048 => "TS1048",
+      SyntaxError::TS1056 => "TS1056",
+      SyntaxError::TS1085 => "TS1085",
+      SyntaxError::TS1089(_) => "TS1089",
+      SyntaxError::TS1092 => "TS1092",
+      SyntaxError::TS1096 => "TS1096",
+      SyntaxError::TS1098 => "TS1098",
+      SyntaxError::TS1100 => "TS1100",
+      SyntaxError::TS1102 => "TS1102",
+      SyntaxError::TS1105 => "TS1105",
+      SyntaxError::TS1106 => "TS1106",
+      SyntaxError::TS1107 => "TS1107",
+      SyntaxError::TS1109 => "TS1109",
+      SyntaxError::TS1110 => "TS1110",
+      SyntaxError::TS1114 => "TS1114",
+      SyntaxError::TS1115 => "TS1115",
+      SyntaxError::TS1116 => "TS1116",
+      SyntaxError::TS1123 => "TS1123",
+      SyntaxError::TS1141 => "TS1141",
+      SyntaxError::TS1162 => "TS1162",
+      SyntaxError::TS1164 => "TS1164",
+      SyntaxError::TS1171 => "TS1171",
+      SyntaxError::TS1172 => "TS1172",
+      SyntaxError::TS1173 => "TS1173",
+      SyntaxError::TS1174 => "TS1174",
+      SyntaxError::TS1175 => "TS1175",
+      SyntaxError::TS1183 => "TS1183",
+      SyntaxError::TS1184 => "TS1184",
+      SyntaxError::TS1185 => "TS1185",
+      SyntaxError::TS1093 => "TS1093",
+      SyntaxError::TS1196 => "TS1196",
+      SyntaxError::TS1242 => "TS1242",
+      SyntaxError::TS1243(_, _) => "TS1243",
+      SyntaxError::TS1244 => "TS1244",
+      SyntaxError::TS1245 => "TS1245",
+      SyntaxError::TS1267 => "TS1267",
+      SyntaxError::TS1273(_) => "TS1273",
+      SyntaxError::TS1274(_) => "TS1274",
+      SyntaxError::TS1277(_) => "TS1277",
+      SyntaxError::TS2206 => "TS2206",
+      SyntaxError::TS2207 => "TS2207",
+      SyntaxError::TS2369 => "TS2369",
+      SyntaxError::TS2371 => "TS2371",
+      SyntaxError::TS2406 => "TS2406",
+      SyntaxError::TS2410 => "TS2410",
+      SyntaxError::TS2414 => "TS2414",
+      SyntaxError::TS2427 => "TS2427",
+      SyntaxError::TS2452 => "TS2452",
+      SyntaxError::TS2483 => "TS2483",
+      SyntaxError::TS2491 => "TS2491",
+      SyntaxError::TS2499 => "TS2499",
+      SyntaxError::TS2703 => "TS2703",
+      SyntaxError::TS4112 => "TS4112",
+      SyntaxError::TS8038 => "TS8038",
+      SyntaxError::TSTypeAnnotationAfterAssign => {
+        "ts-type-annotation-after-assign"
+      }
+      SyntaxError::TsNonNullAssertionNotAllowed(_) => {
+        "ts-non-null-assertion-not-allowed"
+      }
+      SyntaxError::WithLabel { .. } => "with-label",
+      SyntaxError::ReservedTypeAssertion => "reserved-type-assertion",
+      SyntaxError::ReservedArrowTypeParam => "reserved-arrow-type-param",
+      _ => "unknown",
+    }
+  }
+
+  fn message(&self) -> impl fmt::Display + '_ {
+    self.kind.msg()
+  }
+
+  fn location(&self) -> DiagnosticLocation {
+    DiagnosticLocation::ModulePosition {
+      specifier: Cow::Borrowed(&self.specifier),
+      source_pos: DiagnosticSourcePos::SourcePos(self.range.start),
+      text_info: Cow::Borrowed(&self.source),
+    }
+  }
+
+  fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
+    Some(DiagnosticSnippet {
+      source: Cow::Borrowed(&self.source),
+      highlight: DiagnosticSnippetHighlight {
+        style: DiagnosticSnippetHighlightStyle::Error,
+        range: DiagnosticSourceRange {
+          start: DiagnosticSourcePos::SourcePos(self.range.start),
+          end: DiagnosticSourcePos::SourcePos(self.range.end),
+        },
+        description: None,
+      },
+    })
+  }
+
+  fn hint(&self) -> Option<impl fmt::Display + '_> {
+    None::<&str>
+  }
+
+  fn snippet_fixed(&self) -> Option<crate::diagnostics::DiagnosticSnippet<'_>> {
+    None
+  }
+
+  fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
+    Cow::Borrowed(&[])
+  }
+
+  fn docs_url(&self) -> Option<impl fmt::Display + '_> {
+    None::<&str>
+  }
+}
+
+impl ParseDiagnostic {
   pub fn from_swc_error(
     err: crate::swc::parser::error::Error,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     source: SourceTextInfo,
-  ) -> Diagnostic {
-    Diagnostic {
+  ) -> ParseDiagnostic {
+    ParseDiagnostic {
       range: err.range(),
-      specifier: specifier.to_string(),
+      specifier: specifier.clone(),
       kind: err.into_kind(),
       source,
     }
   }
 }
 
-impl std::error::Error for Diagnostic {}
+impl std::error::Error for ParseDiagnostic {}
 
-impl fmt::Display for Diagnostic {
+impl fmt::Display for ParseDiagnostic {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let display_position = self.display_position();
     write!(
@@ -93,7 +369,7 @@ impl fmt::Display for Diagnostic {
 }
 
 #[derive(Debug)]
-pub struct DiagnosticsError(pub Vec<Diagnostic>);
+pub struct DiagnosticsError(pub Vec<ParseDiagnostic>);
 
 impl std::error::Error for DiagnosticsError {}
 
