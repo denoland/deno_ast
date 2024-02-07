@@ -199,6 +199,7 @@ mod test {
   use crate::parse_module;
   use crate::swc::common::comments::SingleThreadedComments;
   use crate::MediaType;
+  use crate::ModuleSpecifier;
   use crate::MultiThreadedComments;
   use crate::ParseParams;
   use crate::SourceTextInfo;
@@ -253,7 +254,7 @@ mod test {
     text: &str,
   ) -> (SingleThreadedComments, StartSourcePos) {
     let module = parse_module(ParseParams {
-      specifier: "file.ts".to_string(),
+      specifier: ModuleSpecifier::parse("file:///file.ts").unwrap(),
       text_info: SourceTextInfo::from_string(text.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,

@@ -16,6 +16,7 @@ use crate::swc::parser::EsConfig;
 use crate::swc::parser::Syntax;
 use crate::swc::parser::TsConfig;
 use crate::MediaType;
+use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::ParsedSource;
 use crate::SourceTextInfo;
@@ -26,7 +27,7 @@ pub const ES_VERSION: EsVersion = EsVersion::Es2021;
 /// Parameters for parsing.
 pub struct ParseParams {
   /// Specifier of the source text.
-  pub specifier: String,
+  pub specifier: ModuleSpecifier,
   /// Source text stored in a `SourceTextInfo`.
   pub text_info: SourceTextInfo,
   /// Media type of the source text.
@@ -58,7 +59,7 @@ pub fn parse_program(
 /// ```
 /// deno_ast::parse_program_with_post_process(
 ///  deno_ast::ParseParams {
-///    specifier: "file:///my_file.ts".to_string(),
+///    specifier: deno_ast::ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
 ///    media_type: deno_ast::MediaType::TypeScript,
 ///    text_info: deno_ast::SourceTextInfo::from_string("".to_string()),
 ///    capture_tokens: true,
@@ -303,7 +304,7 @@ mod test {
   #[test]
   fn should_parse_program() {
     let program = parse_program(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
@@ -311,7 +312,7 @@ mod test {
       scope_analysis: false,
     })
     .unwrap();
-    assert_eq!(program.specifier(), "my_file.js");
+    assert_eq!(program.specifier().as_str(), "file:///my_file.js");
     assert_eq!(program.text_info().text_str(), "// 1\n1 + 1\n// 2");
     assert_eq!(program.media_type(), MediaType::JavaScript);
     assert!(matches!(
@@ -327,7 +328,7 @@ mod test {
   #[test]
   fn should_parse_module() {
     let program = parse_module(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
@@ -349,7 +350,7 @@ mod test {
     use crate::view::NodeTrait;
 
     let program = parse_module(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string(
         "class T { method() { #test in this; } }".to_string(),
       ),
@@ -374,7 +375,7 @@ mod test {
   )]
   fn should_panic_when_getting_tokens_and_tokens_not_captured() {
     let program = parse_module(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: false,
@@ -388,7 +389,7 @@ mod test {
   #[test]
   fn should_handle_parse_error() {
     let diagnostic = parse_module(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string("t u".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
@@ -397,7 +398,7 @@ mod test {
     })
     .err()
     .unwrap();
-    assert_eq!(diagnostic.specifier, "my_file.js".to_string());
+    assert_eq!(diagnostic.specifier.as_str(), "file:///my_file.js");
     assert_eq!(
       diagnostic.display_position(),
       LineAndColumnDisplay {
@@ -429,7 +430,7 @@ mod test {
 
   fn get_scope_analysis_false_parsed_source() -> ParsedSource {
     parse_module(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: false,
@@ -443,7 +444,7 @@ mod test {
   #[test]
   fn should_do_scope_analysis() {
     let parsed_source = parse_module(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string(
         "export function test() { const test = 2; test; } test()".to_string(),
       ),
@@ -482,7 +483,7 @@ mod test {
   #[test]
   fn should_allow_scope_analysis_after_the_fact() {
     let parsed_source = parse_module(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string(
         "export function test() { const test = 2; test; } test()".to_string(),
       ),
@@ -529,7 +530,7 @@ mod test {
   #[test]
   fn should_scope_analyze_typescript() {
     let parsed_source = parse_module(ParseParams {
-      specifier: "my_file.ts".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
       text_info: SourceTextInfo::from_string(
         r#"import type { Foo } from "./foo.ts";
 function _bar(...Foo: Foo) {
@@ -640,7 +641,7 @@ function _bar(...Foo: Foo) {
 
   fn parse_ts_module(text: &str) -> Result<ParsedSource, ParseDiagnostic> {
     parse_module(ParseParams {
-      specifier: "my_file.ts".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
       text_info: SourceTextInfo::from_string(text.to_string()),
       media_type: MediaType::TypeScript,
       capture_tokens: false,

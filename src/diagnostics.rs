@@ -29,7 +29,6 @@ pub struct DiagnosticSourceRange {
 #[derive(Clone, Copy, Debug)]
 pub enum DiagnosticSourcePos {
   SourcePos(SourcePos),
-  SourceRange(SourceRange),
   ByteIndex(usize),
   LineAndCol {
     // 0-indexed line number in bytes
@@ -43,7 +42,6 @@ impl DiagnosticSourcePos {
   fn pos(&self, source: &SourceTextInfo) -> SourcePos {
     match self {
       DiagnosticSourcePos::SourcePos(pos) => *pos,
-      DiagnosticSourcePos::SourceRange(range) => range.start(),
       DiagnosticSourcePos::ByteIndex(index) => source.range().start() + *index,
       DiagnosticSourcePos::LineAndCol { line, column } => {
         source.line_start(*line) + *column

@@ -12,6 +12,7 @@ use crate::swc::common::comments::Comment;
 use crate::swc::common::SyntaxContext;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::MediaType;
+use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
@@ -23,7 +24,7 @@ pub(crate) struct SyntaxContexts {
 }
 
 struct ParsedSourceInner {
-  specifier: String,
+  specifier: ModuleSpecifier,
   media_type: MediaType,
   text_info: SourceTextInfo,
   comments: MultiThreadedComments,
@@ -44,7 +45,7 @@ pub struct ParsedSource {
 impl ParsedSource {
   #[allow(clippy::too_many_arguments)]
   pub(crate) fn new(
-    specifier: String,
+    specifier: ModuleSpecifier,
     media_type: MediaType,
     text_info: SourceTextInfo,
     comments: MultiThreadedComments,
@@ -68,7 +69,7 @@ impl ParsedSource {
   }
 
   /// Gets the module specifier of the module.
-  pub fn specifier(&self) -> &str {
+  pub fn specifier(&self) -> &ModuleSpecifier {
     &self.inner.specifier
   }
 
@@ -256,12 +257,13 @@ mod test {
   fn should_parse_program() {
     use crate::parse_program;
     use crate::view::NodeTrait;
+    use crate::ModuleSpecifier;
     use crate::ParseParams;
 
     use super::*;
 
     let program = parse_program(ParseParams {
-      specifier: "my_file.js".to_string(),
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
       text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
