@@ -5,7 +5,6 @@ use std::collections::HashSet;
 
 use serde::Deserialize;
 use serde::Serialize;
-use swc_ecma_utils::ident;
 
 use crate::swc::ast::*;
 use crate::swc::atoms::JsWord;
@@ -322,10 +321,7 @@ fn is_module_exports_member(member_expr: &MemberExpr) -> bool {
 }
 
 fn is_exports_expr(expr: &Expr) -> bool {
-  expr
-    .as_ident()
-    .map(|i| is_exports_ident(i))
-    .unwrap_or(false)
+  expr.as_ident().map(is_exports_ident).unwrap_or(false)
 }
 
 fn is_exports_ident(ident: &Ident) -> bool {
