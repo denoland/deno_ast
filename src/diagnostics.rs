@@ -216,10 +216,10 @@ pub trait Diagnostic {
   fn level(&self) -> DiagnosticLevel;
 
   /// The diagnostic code, like `no-explicit-any` or `ban-untagged-ignore`.
-  fn code(&self) -> Cow<str>;
+  fn code(&self) -> Cow<'_, str>;
 
   /// The human-readable diagnostic message.
-  fn message(&self) -> Cow<str>;
+  fn message(&self) -> Cow<'_, str>;
 
   /// The location this diagnostic is associated with.
   fn location(&self) -> DiagnosticLocation;
@@ -228,7 +228,7 @@ pub trait Diagnostic {
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>>;
 
   /// A hint for fixing the diagnostic.
-  fn hint(&self) -> Option<Cow<str>>;
+  fn hint(&self) -> Option<Cow<'_, str>>;
 
   /// A snippet showing how the diagnostic can be fixed.
   fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>>;
@@ -236,7 +236,7 @@ pub trait Diagnostic {
   fn info(&self) -> Cow<'_, [Cow<'_, str>]>;
 
   /// An optional URL to the documentation for the diagnostic.
-  fn docs_url(&self) -> Option<impl fmt::Display + '_>;
+  fn docs_url(&self) -> Option<Cow<'_, str>>;
 
   fn display(&self) -> DiagnosticDisplay<Self> {
     DiagnosticDisplay { diagnostic: self }
