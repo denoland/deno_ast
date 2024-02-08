@@ -28,8 +28,8 @@ use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
-use crate::DiagnosticsError;
 use crate::ParseDiagnostic;
+use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
 
 use std::cell::RefCell;
@@ -451,14 +451,14 @@ fn format_swc_diagnostic(
 
 fn ensure_no_fatal_diagnostics(
   diagnostics: &[ParseDiagnostic],
-) -> Result<(), DiagnosticsError> {
+) -> Result<(), ParseDiagnosticsError> {
   let fatal_diagnostics = diagnostics
     .iter()
     .filter(|d| is_fatal_syntax_error(&d.kind))
     .map(ToOwned::to_owned)
     .collect::<Vec<_>>();
   if !fatal_diagnostics.is_empty() {
-    Err(DiagnosticsError(fatal_diagnostics))
+    Err(ParseDiagnosticsError(fatal_diagnostics))
   } else {
     Ok(())
   }
