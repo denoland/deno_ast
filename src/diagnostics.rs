@@ -366,7 +366,7 @@ fn print_diagnostic(
     }
     DiagnosticLocation::Module { specifier }
     | DiagnosticLocation::ModulePosition { specifier, .. } => {
-      if let Ok(path) = specifier.to_file_path() {
+      if let Some(path) = to_file_path_if_not_wasm(specifier) {
         write!(io, " {}", colors::cyan(path.display()))?;
       } else {
         write!(io, " {}", colors::cyan(specifier.as_str()))?;
@@ -520,6 +520,22 @@ fn print_snippet(
   }
 
   Ok(())
+}
+
+fn to_file_path_if_not_wasm(specifier: &ModuleSpecifier) -> Option<PathBuf> {
+  #[cfg(target_arch = "wasm32")]
+  {
+    None
+  }
+  #[cfg(not(target_arch = "wasm32"))]
+  {
+    if specifier.scheme() == "file" {
+      // not available in Wasm
+      specifier.to_file_path().ok()
+    } else {
+      None
+    }
+  }
 }
 
 #[cfg(test)]
