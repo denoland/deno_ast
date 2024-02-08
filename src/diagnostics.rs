@@ -533,12 +533,8 @@ fn specifier_to_file_path(specifier: &ModuleSpecifier) -> Option<PathBuf> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-      if _specifier.scheme() == "file" {
-        // not available in Wasm
-        _specifier.to_file_path().ok()
-      } else {
-        None
-      }
+      // not available in Wasm
+      _specifier.to_file_path().ok()
     }
   }
 
