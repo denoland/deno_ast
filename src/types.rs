@@ -53,8 +53,8 @@ impl Diagnostic for ParseDiagnostic {
     DiagnosticLevel::Error
   }
 
-  fn code(&self) -> impl fmt::Display + '_ {
-    match &self.kind {
+  fn code(&self) -> Cow<'_, str> {
+    Cow::Borrowed(match &self.kind {
       SyntaxError::Eof => "eof",
       SyntaxError::DeclNotAllowed => "decl-not-allowed",
       SyntaxError::UsingDeclNotAllowed => "using-decl-not-allowed",
@@ -272,10 +272,10 @@ impl Diagnostic for ParseDiagnostic {
       SyntaxError::ReservedTypeAssertion => "reserved-type-assertion",
       SyntaxError::ReservedArrowTypeParam => "reserved-arrow-type-param",
       _ => "unknown",
-    }
+    })
   }
 
-  fn message(&self) -> impl fmt::Display + '_ {
+  fn message(&self) -> Cow<'_, str> {
     self.kind.msg()
   }
 
@@ -301,8 +301,8 @@ impl Diagnostic for ParseDiagnostic {
     })
   }
 
-  fn hint(&self) -> Option<impl fmt::Display + '_> {
-    None::<&str>
+  fn hint(&self) -> Option<Cow<'_, str>> {
+    None
   }
 
   fn snippet_fixed(&self) -> Option<crate::diagnostics::DiagnosticSnippet<'_>> {
@@ -313,8 +313,8 @@ impl Diagnostic for ParseDiagnostic {
     Cow::Borrowed(&[])
   }
 
-  fn docs_url(&self) -> Option<impl fmt::Display + '_> {
-    None::<&str>
+  fn docs_url(&self) -> Option<Cow<'_, str>> {
+    None
   }
 }
 
