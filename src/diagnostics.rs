@@ -525,7 +525,7 @@ fn print_snippet(
 /// Attempts to convert a specifier to a file path. By default, uses the Url
 /// crate's `to_file_path()` method, but falls back to try and resolve unix-style
 /// paths on Windows.
-pub fn specifier_to_file_path(specifier: &ModuleSpecifier) -> Option<PathBuf> {
+fn specifier_to_file_path(specifier: &ModuleSpecifier) -> Option<PathBuf> {
   fn to_file_path_if_not_wasm(_specifier: &ModuleSpecifier) -> Option<PathBuf> {
     #[cfg(target_arch = "wasm32")]
     {
