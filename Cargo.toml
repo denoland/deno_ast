@@ -36,7 +36,7 @@ base64 = { version = "0.21.6", optional = true }
 deno_media_type = "0.1.2"
 deno_terminal = "0.1.0"
 
-dprint-swc-ext = "0.14.0"
+dprint-swc-ext = "0.14.1"
 once_cell = "1.19.0"
 serde = { version = "1.0.144", features = ["derive"] }
 text_lines = { version = "0.6.0", features = ["serialization"] }
