@@ -366,7 +366,7 @@ fn print_diagnostic(
     }
     DiagnosticLocation::Module { specifier }
     | DiagnosticLocation::ModulePosition { specifier, .. } => {
-      if let Some(path) = to_file_path_if_not_wasm(specifier) {
+      if let Some(path) = specifier_to_file_path(specifier) {
         write!(io, " {}", colors::cyan(path.display()))?;
       } else {
         write!(io, " {}", colors::cyan(specifier.as_str()))?;
@@ -522,19 +522,50 @@ fn print_snippet(
   Ok(())
 }
 
-fn to_file_path_if_not_wasm(specifier: &ModuleSpecifier) -> Option<PathBuf> {
-  #[cfg(target_arch = "wasm32")]
-  {
-    None
-  }
-  #[cfg(not(target_arch = "wasm32"))]
-  {
-    if specifier.scheme() == "file" {
-      // not available in Wasm
-      specifier.to_file_path().ok()
-    } else {
+/// Attempts to convert a specifier to a file path. By default, uses the Url
+/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
+/// paths on Windows.
+fn specifier_to_file_path(specifier: &ModuleSpecifier) -> Option<PathBuf> {
+  fn to_file_path_if_not_wasm(_specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    #[cfg(target_arch = "wasm32")]
+    {
       None
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+      // not available in Wasm
+      _specifier.to_file_path().ok()
+    }
+  }
+
+  if specifier.scheme() != "file" {
+    None
+  } else if cfg!(windows) {
+    match to_file_path_if_not_wasm(specifier) {
+      Some(path) => Some(path),
+      None => {
+        // This might be a unix-style path which is used in the tests even on Windows.
+        // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
+        // once/if https://github.com/servo/rust-url/issues/730 is implemented.
+        if specifier.scheme() == "file"
+          && specifier.host().is_none()
+          && specifier.port().is_none()
+          && specifier.path_segments().is_some()
+        {
+          let path_str = specifier.path();
+          match String::from_utf8(
+            percent_encoding::percent_decode(path_str.as_bytes()).collect(),
+          ) {
+            Ok(path_str) => Some(PathBuf::from(path_str)),
+            Err(_) => None,
+          }
+        } else {
+          None
+        }
+      }
+    }
+  } else {
+    to_file_path_if_not_wasm(specifier)
   }
 }
 
@@ -542,17 +573,18 @@ fn to_file_path_if_not_wasm(specifier: &ModuleSpecifier) -> Option<PathBuf> {
 mod tests {
   use std::borrow::Cow;
 
+  use super::*;
   use crate::ModuleSpecifier;
   use crate::SourceTextInfo;
 
   #[test]
   fn test_display_width() {
-    assert_eq!(super::display_width("abc"), 3);
-    assert_eq!(super::display_width("\t"), 2);
-    assert_eq!(super::display_width("\t\t123"), 7);
-    assert_eq!(super::display_width("🎄"), 2);
-    assert_eq!(super::display_width("🎄🎄"), 4);
-    assert_eq!(super::display_width("🧑‍🦰"), 4);
+    assert_eq!(display_width("abc"), 3);
+    assert_eq!(display_width("\t"), 2);
+    assert_eq!(display_width("\t\t123"), 7);
+    assert_eq!(display_width("🎄"), 2);
+    assert_eq!(display_width("🎄🎄"), 4);
+    assert_eq!(display_width("🧑‍🦰"), 4);
   }
 
   #[test]
@@ -560,9 +592,9 @@ mod tests {
     let specifier: ModuleSpecifier = "file:///dev/test.ts".parse().unwrap();
     let text_info = SourceTextInfo::new("foo\nbar\nbaz".into());
     let pos = text_info.line_start(1);
-    let location = super::DiagnosticLocation::ModulePosition {
+    let location = DiagnosticLocation::ModulePosition {
       specifier: Cow::Borrowed(&specifier),
-      source_pos: super::DiagnosticSourcePos::SourcePos(pos),
+      source_pos: DiagnosticSourcePos::SourcePos(pos),
       text_info: Cow::Owned(text_info),
     };
     let position = location.position().unwrap();
@@ -574,12 +606,30 @@ mod tests {
     let specifier: ModuleSpecifier = "file:///dev/test.ts".parse().unwrap();
     let text_info = SourceTextInfo::new("🧑‍🦰text".into());
     let pos = text_info.line_start(0) + 11; // the end of the emoji
-    let location = super::DiagnosticLocation::ModulePosition {
+    let location = DiagnosticLocation::ModulePosition {
       specifier: Cow::Borrowed(&specifier),
-      source_pos: super::DiagnosticSourcePos::SourcePos(pos),
+      source_pos: DiagnosticSourcePos::SourcePos(pos),
       text_info: Cow::Owned(text_info),
     };
     let position = location.position().unwrap();
     assert_eq!(position, (1, 6))
+  }
+
+  #[test]
+  fn test_specifier_to_file_path() {
+    run_success_test("file:///", "/");
+    run_success_test("file:///test", "/test");
+    run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
+    run_success_test(
+      "file:///dir/test%20test/test.txt",
+      "/dir/test test/test.txt",
+    );
+
+    fn run_success_test(specifier: &str, expected_path: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
+          .unwrap();
+      assert_eq!(result, PathBuf::from(expected_path));
+    }
   }
 }
