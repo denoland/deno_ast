@@ -28,8 +28,8 @@ use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
-use crate::DiagnosticsError;
 use crate::ParseDiagnostic;
+use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
 
 use std::cell::RefCell;
@@ -451,14 +451,14 @@ fn format_swc_diagnostic(
 
 fn ensure_no_fatal_diagnostics(
   diagnostics: &[ParseDiagnostic],
-) -> Result<(), DiagnosticsError> {
+) -> Result<(), ParseDiagnosticsError> {
   let fatal_diagnostics = diagnostics
     .iter()
     .filter(|d| is_fatal_syntax_error(&d.kind))
     .map(ToOwned::to_owned)
     .collect::<Vec<_>>();
   if !fatal_diagnostics.is_empty() {
-    Err(DiagnosticsError(fatal_diagnostics))
+    Err(ParseDiagnosticsError(fatal_diagnostics))
   } else {
     Ok(())
   }
@@ -654,8 +654,8 @@ function _dispose(stack, error, hasError) {
 }
 function _using(stack, value, isAwait) {
   if (value === null || value === void 0) return value;
-  if (typeof value !== "object") {
-    throw new TypeError("using declarations can only be used with objects, null, or undefined.");
+  if (Object(value) !== value) {
+    throw new TypeError("using declarations can only be used with objects, functions, null, or undefined.");
   }
   if (isAwait) {
     var dispose = value[Symbol.asyncDispose || Symbol.for("Symbol.asyncDispose")];
@@ -1014,7 +1014,8 @@ _ts_decorate([
       })
       .unwrap()
       .text;
-    let expected = include_str!("./tc39_decorator_proposal_output.txt");
+    let expected =
+      include_str!("./testdata/tc39_decorator_proposal_output.txt");
     assert_eq!(&code[0..expected.len()], expected);
   }
 

@@ -369,11 +369,11 @@ impl fmt::Display for ParseDiagnostic {
 }
 
 #[derive(Debug)]
-pub struct DiagnosticsError(pub Vec<ParseDiagnostic>);
+pub struct ParseDiagnosticsError(pub Vec<ParseDiagnostic>);
 
-impl std::error::Error for DiagnosticsError {}
+impl std::error::Error for ParseDiagnosticsError {}
 
-impl fmt::Display for DiagnosticsError {
+impl fmt::Display for ParseDiagnosticsError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     for (i, diagnostic) in self.0.iter().enumerate() {
       if i > 0 {

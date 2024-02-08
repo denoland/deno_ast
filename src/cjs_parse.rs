@@ -256,42 +256,47 @@ impl Visit for CjsVisitor {
       return;
     }
 
-    let left_expr =
-      match assign_expr.left.as_pat().and_then(|pat| pat.as_expr()) {
-        Some(expr) => expr,
-        _ => {
-          if let Some(right_expr) = assign_expr.right.as_assign() {
-            self.visit_assign_expr(right_expr);
-          }
-          return;
-        }
-      };
-
     // check if left hand side is "module.exports = " or "exports ="
-    if is_module_exports_or_exports(left_expr) {
-      self.visit_exports_right_expr(&assign_expr.right);
-    } else if let Some(left_member) = left_expr.as_member() {
-      if is_module_exports_or_exports(&left_member.obj) {
-        // check for:
-        // * `exports["something"] = other`
-        // * `exports.something = other`
-        if let Some(prop_name) = get_member_prop_text(&left_member.prop) {
-          self.add_export(prop_name);
-          if let Some(right_expr) = assign_expr.right.as_assign() {
-            self.visit_assign_expr(right_expr);
-          }
-        } else if let Some(right_member) = assign_expr.right.as_member() {
+    match &assign_expr.left {
+      AssignTarget::Simple(SimpleAssignTarget::Ident(left_ident)) => {
+        if is_exports_ident(&left_ident.id) {
+          self.visit_exports_right_expr(&assign_expr.right);
+        } else if let Some(right_expr) = assign_expr.right.as_assign() {
+          self.visit_assign_expr(right_expr);
+        }
+      }
+      AssignTarget::Simple(SimpleAssignTarget::Member(left_member)) => {
+        if is_module_exports_member(left_member) {
+          self.visit_exports_right_expr(&assign_expr.right);
+        } else if is_module_exports_or_exports(&left_member.obj) {
           // check for:
-          // * `exports[key] = _something[key];
-          let computed = left_member.prop.as_computed();
-          let computed_ident = computed.and_then(|c| c.expr.as_ident());
-          if let Some(computed_ident) = computed_ident {
-            if let Some(require_value) =
-              self.get_member_require_value(right_member, &computed_ident.sym)
-            {
-              self.add_reexport(&require_value);
+          // * `exports["something"] = other`
+          // * `exports.something = other`
+          if let Some(prop_name) = get_member_prop_text(&left_member.prop) {
+            self.add_export(prop_name);
+            if let Some(right_expr) = assign_expr.right.as_assign() {
+              self.visit_assign_expr(right_expr);
+            }
+          } else if let Some(right_member) = assign_expr.right.as_member() {
+            // check for:
+            // * `exports[key] = _something[key];
+            let computed = left_member.prop.as_computed();
+            let computed_ident = computed.and_then(|c| c.expr.as_ident());
+            if let Some(computed_ident) = computed_ident {
+              if let Some(require_value) =
+                self.get_member_require_value(right_member, &computed_ident.sym)
+              {
+                self.add_reexport(&require_value);
+              }
             }
           }
+        } else if let Some(right_expr) = assign_expr.right.as_assign() {
+          self.visit_assign_expr(right_expr);
+        }
+      }
+      _ => {
+        if let Some(right_expr) = assign_expr.right.as_assign() {
+          self.visit_assign_expr(right_expr);
         }
       }
     }
@@ -304,20 +309,27 @@ fn is_module_exports_or_exports(expr: &Expr) -> bool {
 
 fn is_module_exports_expr(expr: &Expr) -> bool {
   if let Some(member_expr) = expr.as_member() {
-    if let Some(obj_ident) = member_expr.obj.as_ident() {
-      if obj_ident.sym == *"module" {
-        return get_member_prop_text(&member_expr.prop) == Some("exports");
-      }
+    is_module_exports_member(member_expr)
+  } else {
+    false
+  }
+}
+
+fn is_module_exports_member(member_expr: &MemberExpr) -> bool {
+  if let Some(obj_ident) = member_expr.obj.as_ident() {
+    if obj_ident.sym == *"module" {
+      return get_member_prop_text(&member_expr.prop) == Some("exports");
     }
   }
   false
 }
 
 fn is_exports_expr(expr: &Expr) -> bool {
-  expr
-    .as_ident()
-    .map(|i| &i.sym == "exports")
-    .unwrap_or(false)
+  expr.as_ident().map(is_exports_ident).unwrap_or(false)
+}
+
+fn is_exports_ident(ident: &Ident) -> bool {
+  &ident.sym == "exports"
 }
 
 fn get_expr_require_value(expr: &Expr) -> Option<&str> {
@@ -1272,7 +1284,7 @@ mod test {
           const BigInteger = 1;
           const SecureRandom = 2;
           if (typeof exports !== 'undefined') {
-            a= exports = module.exports = {
+            a= window.something = exports = module.exports = {
                   default: BigInteger,
                   BigInteger: BigInteger,
                   SecureRandom: SecureRandom,
