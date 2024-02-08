@@ -50,6 +50,8 @@ pub mod swc {
   pub use swc_ecma_codegen as codegen;
   #[cfg(feature = "dep_graph")]
   pub use swc_ecma_dep_graph as dep_graph;
+  #[cfg(feature = "transforms")]
+  pub use swc_ecma_loader as loader;
   pub use swc_ecma_parser as parser;
   #[cfg(feature = "transforms")]
   pub mod transforms {
