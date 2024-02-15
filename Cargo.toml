@@ -57,18 +57,18 @@ swc_ecma_codegen = { version = "=0.148.3", optional = true }
 swc_ecma_codegen_macros = { version = "=0.7.4", optional = true }
 swc_ecma_loader = { version = "=0.45.19", optional = true }
 swc_ecma_parser = "=0.143.3"
-swc_ecma_transforms_base = { version = "=0.137.3", optional = true }
-swc_ecma_transforms_classes = { version = "=0.126.3", optional = true }
-swc_ecma_transforms_compat = { version = "=0.163.3", optional = true }
+swc_ecma_transforms_base = { version = "=0.137.4", optional = true }
+swc_ecma_transforms_classes = { version = "=0.126.4", optional = true }
+swc_ecma_transforms_compat = { version = "=0.163.4", optional = true }
 swc_ecma_transforms_macros = { version = "=0.5.4", optional = true }
-swc_ecma_transforms_optimization = { version = "=0.198.3", optional = true }
-swc_ecma_transforms_proposal = { version = "=0.171.3", optional = true }
-swc_ecma_transforms_react = { version = "=0.183.3", optional = true }
-swc_ecma_transforms_typescript = { version = "=0.188.3", optional = true }
-swc_ecma_utils = { version = "=0.127.3", optional = true }
+swc_ecma_transforms_optimization = { version = "=0.198.4", optional = true }
+swc_ecma_transforms_proposal = { version = "=0.171.4", optional = true }
+swc_ecma_transforms_react = { version = "=0.183.4", optional = true }
+swc_ecma_transforms_typescript = { version = "=0.188.4", optional = true }
+swc_ecma_utils = { version = "=0.127.4", optional = true }
 swc_ecma_visit = { version = "=0.98.2", optional = true }
 swc_eq_ignore_macros = "=0.1.3"
-swc_bundler = { version = "=0.225.3", optional = true }
+swc_bundler = { version = "=0.225.4", optional = true }
 swc_graph_analyzer = { version = "=0.22.19", optional = true }
 swc_macros_common = { version = "=0.3.9", optional = true }
 swc_trace_macro = { version = "=0.1.3", optional = true }
