@@ -286,7 +286,7 @@ fn normalize_lit_str(lit: &Lit) -> Lit {
   }
 }
 
-fn jsx_text_to_str(jsx_text: &JSXText) -> String {
+fn jsx_text_to_str(jsx_text: &JSXText, escape: bool) -> String {
   let mut text = String::new();
 
   let mut lines = jsx_text.value.lines().enumerate().peekable();
@@ -310,7 +310,11 @@ fn jsx_text_to_str(jsx_text: &JSXText) -> String {
     text.push_str(line);
   }
 
-  escape_html(&text)
+  if escape {
+    escape_html(&text)
+  } else {
+    text
+  }
 }
 
 /// Convert a JSXMemberExpr to MemberExpr. We offload this to a
@@ -401,6 +405,7 @@ fn serialize_attr(attr_name: &str, value: &str) -> String {
 
 fn merge_serializable_children(
   children: &[JSXElementChild],
+  escape_text_children: bool,
 ) -> (Vec<JSXElementChild>, usize, usize) {
   // Do a first pass over children to merge sibling text nodes
   // and check if it contains any serializable nodes.
@@ -412,7 +417,7 @@ fn merge_serializable_children(
   for child in children.iter() {
     match child {
       JSXElementChild::JSXText(jsx_text) => {
-        let text = jsx_text_to_str(jsx_text);
+        let text = jsx_text_to_str(jsx_text, escape_text_children);
         if text.is_empty() {
           continue;
         }
@@ -615,7 +620,7 @@ impl JsxPrecompile {
         let child = &children[0];
         match child {
           JSXElementChild::JSXText(jsx_text) => {
-            let text = jsx_text_to_str(jsx_text);
+            let text = jsx_text_to_str(jsx_text, false);
             Some(string_lit_expr(text.into()))
           }
           JSXElementChild::JSXExprContainer(jsx_expr_container) => {
@@ -643,7 +648,7 @@ impl JsxPrecompile {
       }
       _ => {
         let (normalized_children, text_count, serializable_count) =
-          merge_serializable_children(children);
+          merge_serializable_children(children, false);
 
         // Merge sibling children when they can be serialized into one
         // serialized child. If all children are serializable, we'll
@@ -959,7 +964,7 @@ impl JsxPrecompile {
     dynamic_exprs: &mut Vec<Expr>,
   ) {
     let (normalized_children, _text_count, _serializable_count) =
-      merge_serializable_children(children);
+      merge_serializable_children(children, true);
 
     for child in normalized_children {
       match child {
@@ -1423,7 +1428,7 @@ impl VisitMut for JsxPrecompile {
           let child = &frag.children[0];
           match child {
             JSXElementChild::JSXText(jsx_text) => {
-              let text = jsx_text_to_str(jsx_text);
+              let text = jsx_text_to_str(jsx_text, true);
               *expr = string_lit_expr(text.into())
             }
             JSXElementChild::JSXExprContainer(jsx_expr_container) => {
@@ -2095,6 +2100,36 @@ const a = _jsx(Foo, {
   ]
 });"#,
     );
+  }
+
+  #[test]
+  fn fragment_escape_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const Component = (props: any) => <>{props.children}</>;
+const jsx1 = (
+  <Component>
+    "test"
+    <span>test</span>
+  </Component>
+);
+const jsx2 = (
+  <Component>
+    "test"
+  </Component>
+);"#,
+      r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate, jsxEscape as _jsxEscape } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "&quot;test&quot;<span>test</span>"
+];
+const Component = (props: any)=>_jsxEscape(props.children);
+const jsx1 = (_jsx(Component, {
+  children: _jsxTemplate($$_tpl_1)
+}));
+const jsx2 = (_jsx(Component, {
+  children: '"test"'
+}));"#,
+    )
   }
 
   #[test]
