@@ -121,6 +121,17 @@ pub struct DiagnosticSnippetHighlight<'a> {
   pub description: Option<Cow<'a, str>>,
 }
 
+pub struct DiagnosticQuickFix<'a> {
+  /// A unique identifier for this quick fix.
+  // pub fix_id: Cow<'a, str>,
+  /// A human-readable description of the quick fix.
+  // pub description: Cow<'a, str>,
+  /// New text to replace the range of the quick fix.
+  pub new_text: Cow<'a, str>,
+  /// The range that should be replaced.
+  pub range: DiagnosticSourceRange,
+}
+
 pub enum DiagnosticSnippetHighlightStyle {
   /// The highlight is an error. This will place red carets under the highlight.
   Error,
@@ -232,6 +243,11 @@ pub trait Diagnostic {
 
   /// A snippet showing how the diagnostic can be fixed.
   fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>>;
+
+  /// Quick fixes for the diagnostic.
+  fn quick_fixes(&self) -> Vec<DiagnosticQuickFix<'_>> {
+    Vec::new()
+  }
 
   fn info(&self) -> Cow<'_, [Cow<'_, str>]>;
 
