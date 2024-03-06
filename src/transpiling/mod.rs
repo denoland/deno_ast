@@ -238,7 +238,7 @@ impl ParsedSource {
       }
       let mut src = String::from_utf8(buf)?;
       let mut map: Option<String> = None;
-      {
+      if options.source_map || options.inline_source_map {
         let mut buf = Vec::new();
         source_map
           .build_source_map_with_config(&src_map_buf, None, source_map_config)
@@ -1333,11 +1333,75 @@ const a = _jsx(Foo, {
       inline_source_map: true,
       ..Default::default()
     };
-    let code = module.transpile(&options).unwrap().text;
+    let emit_result = module.transpile(&options).unwrap();
     let expected1 = r#"{
   const foo = "bar";
 }
 //# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
-    assert_eq!(&code[0..expected1.len()], expected1);
+    assert_eq!(&emit_result.text[0..expected1.len()], expected1);
+    assert_eq!(emit_result.source_map, None);
+  }
+
+  #[test]
+  fn test_source_map() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source = r#"{ const foo = "bar"; };"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let options = EmitOptions {
+      source_map: true,
+      inline_source_map: false,
+      ..Default::default()
+    };
+    let emit_result = module.transpile(&options).unwrap();
+    assert_eq!(
+      &emit_result.text,
+      r#"{
+  const foo = "bar";
+}"#
+    );
+    assert_eq!(
+      emit_result.source_map.as_deref(),
+      Some(
+        r#"{"version":3,"sources":["https://deno.land/x/mod.tsx"],"sourcesContent":["{ const foo = \"bar\"; };"],"names":[],"mappings":"AAAA;EAAE,MAAM,MAAM;AAAO"}"#
+      )
+    );
+  }
+
+  #[test]
+  fn test_no_source_map() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source = r#"{ const foo = "bar"; };"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let options = EmitOptions {
+      source_map: false,
+      inline_source_map: false,
+      ..Default::default()
+    };
+    let emit_result = module.transpile(&options).unwrap();
+    assert_eq!(
+      &emit_result.text,
+      r#"{
+  const foo = "bar";
+}"#
+    );
+    assert_eq!(emit_result.source_map, None);
   }
 }
