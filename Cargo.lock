@@ -212,7 +212,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "anyhow",
  "base64",
