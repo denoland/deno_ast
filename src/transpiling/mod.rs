@@ -58,6 +58,8 @@ pub struct EmitOptions {
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
+  /// Whether to keep comments in the output. Defaults to `false`.
+  pub keep_comments: bool,
   /// What to do with import statements that only import types i.e. whether to
   /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
   /// or error (`Error`). Defaults to `Remove`.
@@ -114,6 +116,7 @@ impl Default for EmitOptions {
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
       jsx_import_source: None,
+      keep_comments: false,
       transform_jsx: true,
       precompile_jsx: false,
       var_decl_imports: false,
@@ -230,7 +233,11 @@ impl ParsedSource {
 
         let mut emitter = crate::swc::codegen::Emitter {
           cfg: swc_codegen_config(),
-          comments: Some(&comments),
+          comments: if options.keep_comments {
+            Some(&comments)
+          } else {
+            None
+          },
           cm: source_map.clone(),
           wr: writer,
         };
@@ -766,9 +773,9 @@ function App() {
     })
     .unwrap();
     let code = module.transpile(&EmitOptions::default()).unwrap().text;
-    let expected = r#"/** @jsx h */ /** @jsxFrag Fragment */ import { h, Fragment } from "https://deno.land/x/mod.ts";
+    let expected = r#"import { h, Fragment } from "https://deno.land/x/mod.ts";
 function App() {
-  return /*#__PURE__*/ h("div", null, /*#__PURE__*/ h(Fragment, null));
+  return h("div", null, h(Fragment, null));
 }"#;
     assert_eq!(&code[..expected.len()], expected);
   }
@@ -794,7 +801,13 @@ function App() {
       scope_analysis: true,
     })
     .unwrap();
-    let code = module.transpile(&EmitOptions::default()).unwrap().text;
+    let code = module
+      .transpile(&EmitOptions {
+        keep_comments: true,
+        ..Default::default()
+      })
+      .unwrap()
+      .text;
     let expected = r#"/** @jsxImportSource jsx_lib */ import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
   return /*#__PURE__*/ _jsx("div", {
@@ -831,8 +844,8 @@ function App() {
     let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
-  return /*#__PURE__*/ _jsx("div", {
-    children: /*#__PURE__*/ _jsx(_Fragment, {})
+  return _jsx("div", {
+    children: _jsx(_Fragment, {})
   });
 }
 "#;
@@ -866,8 +879,8 @@ function App() {
     let code = module.transpile(&emit_options).unwrap().text;
     let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
 function App() {
-  return /*#__PURE__*/ _jsxDEV("div", {
-    children: /*#__PURE__*/ _jsxDEV(_Fragment, {}, void 0, false)
+  return _jsxDEV("div", {
+    children: _jsxDEV(_Fragment, {}, void 0, false)
   }, void 0, false, {
     fileName: "https://deno.land/x/mod.tsx",
     lineNumber: 3,
@@ -905,11 +918,11 @@ function App() {
       ..Default::default()
     };
     let code = module.transpile(&emit_options).unwrap().text;
-    let expected = r#"/** @jsxImportSource jsx_lib */ const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
+    let expected = r#"const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
 const example = await import("example");
 function App() {
-  return /*#__PURE__*/ _jsx("div", {
-    children: /*#__PURE__*/ _jsx(_Fragment, {})
+  return _jsx("div", {
+    children: _jsx(_Fragment, {})
   });
 "#;
     assert_eq!(&code[..expected.len()], expected);
