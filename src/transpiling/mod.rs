@@ -37,11 +37,22 @@ use std::cell::RefCell;
 mod jsx_precompile;
 mod transforms;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ImportsNotUsedAsValues {
   Remove,
   Preserve,
   Error,
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SourceMapOption {
+  /// Source map should be inlined into the source (default)
+  #[default]
+  Inline,
+  /// Source map should be provided as a separate file.
+  Separate,
+  /// Source map should not be included.
+  None,
 }
 
 /// Options which can be adjusted when transpiling a module.
@@ -64,11 +75,6 @@ pub struct EmitOptions {
   /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
   /// or error (`Error`). Defaults to `Remove`.
   pub imports_not_used_as_values: ImportsNotUsedAsValues,
-  /// Should the source map be inlined in the emitted code file, or provided
-  /// as a separate file.  Defaults to `true`.
-  pub inline_source_map: bool,
-  /// Should the sources be inlined in the source map.  Defaults to `true`.
-  pub inline_sources: bool,
   /// `true` if the program should use an implicit JSX import source/the "new"
   /// JSX transforms.
   pub jsx_automatic: bool,
@@ -86,9 +92,10 @@ pub struct EmitOptions {
   /// The string module specifier to implicitly import JSX factories from when
   /// transpiling JSX.
   pub jsx_import_source: Option<String>,
-  /// Should a corresponding .map file be created for the output. This should be
-  /// false if inline_source_map is true. Defaults to `false`.
-  pub source_map: bool,
+  /// How sourcemaps should be emitted.
+  pub source_map: SourceMapOption,
+  /// Should the sources be inlined in the source map.  Defaults to `true`.
+  pub inline_sources: bool,
   /// Should JSX be transformed. Defaults to `true`.
   pub transform_jsx: bool,
   /// Should JSX be precompiled into static strings that need to be concatenated
@@ -108,9 +115,8 @@ impl Default for EmitOptions {
       use_decorators_proposal: false,
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
-      inline_source_map: true,
+      source_map: Default::default(),
       inline_sources: true,
-      source_map: false,
       jsx_automatic: false,
       jsx_development: false,
       jsx_factory: "React.createElement".into(),
@@ -245,13 +251,13 @@ impl ParsedSource {
       }
       let mut src = String::from_utf8(buf)?;
       let mut map: Option<String> = None;
-      if options.source_map || options.inline_source_map {
+      if options.source_map != SourceMapOption::None {
         let mut buf = Vec::new();
         source_map
           .build_source_map_with_config(&src_map_buf, None, source_map_config)
           .to_writer(&mut buf)?;
 
-        if options.inline_source_map {
+        if options.source_map == SourceMapOption::Inline {
           if !src.ends_with('\n') {
             src.push('\n');
           }
@@ -1343,7 +1349,7 @@ const a = _jsx(Foo, {
     })
     .unwrap();
     let options = EmitOptions {
-      inline_source_map: true,
+      source_map: SourceMapOption::Inline,
       ..Default::default()
     };
     let emit_result = module.transpile(&options).unwrap();
@@ -1370,8 +1376,7 @@ const a = _jsx(Foo, {
     })
     .unwrap();
     let options = EmitOptions {
-      source_map: true,
-      inline_source_map: false,
+      source_map: SourceMapOption::Separate,
       ..Default::default()
     };
     let emit_result = module.transpile(&options).unwrap();
@@ -1404,8 +1409,7 @@ const a = _jsx(Foo, {
     })
     .unwrap();
     let options = EmitOptions {
-      source_map: false,
-      inline_source_map: false,
+      source_map: SourceMapOption::None,
       ..Default::default()
     };
     let emit_result = module.transpile(&options).unwrap();
