@@ -32,3 +32,47 @@ parsed_source.module();
 // returns the `SourceTextInfo`
 parsed_source.text_info();
 ```
+
+## swc upgrades
+
+We upgrade swc about once a month. Upgrading swc is a very involved process that
+often requires many changes in downstream Deno crates. We also test the new
+version of swc in all downstream crates before merging a PR into deno_ast that
+updates swc.
+
+**Please do not open a PR for upgrading swc** unless you have stated you are
+going to work on it in the issue tracker and have run the tests on all
+downstream crates.
+
+To upgrade swc:
+
+1. Checkout the following repositories in sibling directories to this repository
+   (ex. `/home/david/dev/deno_graph`, `/home/david/dev/deno_ast`):
+   - https://github.com/denoland/deno_graph
+   - https://github.com/denoland/deno_lint
+   - https://github.com/denoland/eszip
+   - https://github.com/denoland/deno_doc
+   - https://github.com/denoland/deno_emit
+   - https://github.com/dprint/dprint-plugin-typescript
+   - https://github.com/denoland/deno
+1. Ensure they all have `upstream` remotes set for the urls specified above. For
+   example, your `deno_graph` repo should have
+   `git remote add upstream https://github.com/denoland/deno_graph`.
+1. Run `./scripts/update_swc_deps.ts`
+1. Run `./scripts/01_setup.ts`
+1. Run `./scripts/02_build.ts` and fix any build errors.
+1. Run `./scripts/03_test.ts` and fix any failing tests.
+   - At this point, all the tests should be passing in all the repositories.
+1. Open a PR for upgrading deno_ast.
+1. Merge the PR and publish a new version of deno_ast using the
+   [release workflow](https://github.com/denoland/deno_ast/actions/workflows/release.yml).
+1. At this point, bump the version of deno_ast and open PRs for deno_graph,
+   deno_lint, and dprint-plugin-typescript (note: `./scripts/04_confirm.ts`
+   might be helpful to automate some of this. Read its source code to understand
+   it so that you can deal with any problems that may arise).
+1. Merge the PR deno_graph and publish using its release workflow.
+1. Open PRs to deno_emit, deno_doc, and eszip.
+1. Merge those PRs and do releases. Also merge and release deno_lint and
+   dprint-plugin-typescript (Bartek and David have access to publish
+   dprint-plugin-typescript).
+1. Open a PR to Deno with the versions bumped and merge the PR.
