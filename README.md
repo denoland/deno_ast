@@ -36,8 +36,9 @@ parsed_source.text_info();
 ## swc upgrades
 
 We upgrade swc about once a month. Upgrading swc is a very involved process that
-often requires main changes in downstream Deno crates and requires testing the
-new version of swc in all crates before merging.
+often requires many changes in downstream Deno crates. We also test the new
+version of swc in all downstream crates before merging a PR into deno_ast that
+updates swc.
 
 **Please do not open a PR for upgrading swc** unless you have stated you are
 going to work on it in the issue tracker and have run the tests on all
