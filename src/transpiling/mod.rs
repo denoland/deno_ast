@@ -1389,7 +1389,7 @@ const a = _jsx(Foo, {
     assert_eq!(
       emit_result.source_map.as_deref(),
       Some(
-        r#"{"version":3,"sources":["https://deno.land/x/mod.tsx"],"sourcesContent":["{ const foo = \"bar\"; };"],"names":[],"mappings":"AAAA;EAAE,MAAM,MAAM;AAAO"}"#
+        r#"{"version":3,"sources":["https://deno.land/x/mod.tsx"],"sourcesContent":["{ const foo = \"bar\"; };"],"names":[],"rangeMappings":";;","mappings":"AAAA;EAAE,MAAM,MAAM;AAAO"}"#
       )
     );
   }
