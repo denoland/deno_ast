@@ -6,8 +6,6 @@
 Source text parsing, lexing, and AST related functionality for
 [Deno](https://deno.land).
 
-## Example
-
 ```rust
 use deno_ast::parse_module;
 use deno_ast::MediaType;
