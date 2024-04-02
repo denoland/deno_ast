@@ -67,7 +67,9 @@ To upgrade swc:
 1. Merge the PR and publish a new version of deno_ast using the
    [release workflow](https://github.com/denoland/deno_ast/actions/workflows/release.yml).
 1. At this point, bump the version of deno_ast and open PRs for deno_graph,
-   deno_lint, and dprint-plugin-typescript.
+   deno_lint, and dprint-plugin-typescript (note: `./scripts/04_confirm.ts`
+   might be helpful to automate some of this. Read its source code to understand
+   it so that you can deal with any problems that may arise).
 1. Merge the PR deno_graph and publish using its release workflow.
 1. Open PRs to deno_emit, deno_doc, and eszip.
 1. Merge those PRs and do releases. Also merge and release deno_lint and
