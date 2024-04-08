@@ -30,6 +30,9 @@ pub struct JsxPrecompile {
   // Track if we need to import `jsxEscape` and which identifier
   // to use if we do.
   import_jsx_escape: Option<Ident>,
+  // Track if we need to import `Fragment` and which identifier
+  // to use if we do.
+  import_jsx_fragment: Option<Ident>,
 }
 
 impl Default for JsxPrecompile {
@@ -42,6 +45,7 @@ impl Default for JsxPrecompile {
       import_jsx_ssr: None,
       import_jsx_attr: None,
       import_jsx_escape: None,
+      import_jsx_fragment: None,
     }
   }
 }
@@ -534,6 +538,18 @@ impl JsxPrecompile {
     }
   }
 
+  /// Mark `Fragment` as being used and return the identifier.
+  fn get_jsx_fragment_identifier(&mut self) -> Ident {
+    match &self.import_jsx_fragment {
+      Some(ident) => ident.clone(),
+      None => {
+        let ident = Ident::new("_Fragment".into(), DUMMY_SP);
+        self.import_jsx_fragment = Some(ident.clone());
+        ident
+      }
+    }
+  }
+
   /// Mark `jsxTemplate` as being used and return the identifier.
   fn get_jsx_ssr_identifier(&mut self) -> Ident {
     match &self.import_jsx_ssr {
@@ -581,6 +597,35 @@ impl JsxPrecompile {
       callee: Callee::Expr(Box::new(Expr::Ident(
         self.get_jsx_escape_fn_identifier(),
       ))),
+      args,
+      type_args: None,
+    })
+  }
+
+  fn wrap_with_jsx_frag_call(&mut self, expr: Expr) -> Expr {
+    let mut args: Vec<ExprOrSpread> = vec![ExprOrSpread {
+      spread: None,
+      expr: Box::new(Expr::Ident(self.get_jsx_fragment_identifier())),
+    }];
+
+    let children_name = PropName::Ident(quote_ident!("children"));
+    args.push(ExprOrSpread {
+      spread: None,
+      // Add children as a "children" prop.
+      expr: Box::new(Expr::Object(ObjectLit {
+        span: DUMMY_SP,
+        props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
+          KeyValueProp {
+            key: children_name,
+            value: Box::new(expr),
+          },
+        )))],
+      })),
+    });
+
+    Expr::Call(CallExpr {
+      span: DUMMY_SP,
+      callee: Callee::Expr(Box::new(Expr::Ident(self.get_jsx_identifier()))),
       args,
       type_args: None,
     })
@@ -1296,6 +1341,13 @@ impl JsxPrecompile {
       imports.push((jsx_ident.clone(), Ident::new("jsx".into(), DUMMY_SP)))
     }
 
+    if let Some(jsx_fragment) = &self.import_jsx_fragment {
+      imports.push((
+        jsx_fragment.clone(),
+        Ident::new("Fragment".into(), DUMMY_SP),
+      ))
+    }
+
     if let Some(jsx_ssr_ident) = &self.import_jsx_ssr {
       imports.push((
         jsx_ssr_ident.clone(),
@@ -1438,8 +1490,8 @@ impl VisitMut for JsxPrecompile {
                 // Case: <>{/* some comment */}</>
                 JSXExpr::JSXEmptyExpr(_) => {}
                 JSXExpr::Expr(jsx_expr) => {
-                  *expr =
-                    self.maybe_wrap_with_jsx_escape_call(*jsx_expr.clone())
+                  let child = *jsx_expr.clone();
+                  *expr = self.wrap_with_jsx_frag_call(child)
                 }
               }
             }
@@ -2027,6 +2079,17 @@ const a = _jsxTemplate($$_tpl_1, _jsxEscape(2 + 2));"#,
       r#"const a = <>&'"</>;"#,
       r#"const a = "&amp;&#39;&quot;";"#,
     );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>&'"</>;
+      const b = <>{a}</>"#,
+      r#"import { jsx as _jsx, Fragment as _Fragment } from "react/jsx-runtime";
+const a = "&amp;&#39;&quot;";
+const b = _jsx(_Fragment, {
+  children: a
+});"#,
+    );
   }
 
   #[test]
@@ -2066,8 +2129,10 @@ const a = _jsxTemplate($$_tpl_1, _jsxEscape(foo), _jsx(Foo, null));"#,
     test_transform(
       JsxPrecompile::default(),
       r#"const a = <>{foo}</>;"#,
-      r#"import { jsxEscape as _jsxEscape } from "react/jsx-runtime";
-const a = _jsxEscape(foo);"#,
+      r#"import { jsx as _jsx, Fragment as _Fragment } from "react/jsx-runtime";
+const a = _jsx(_Fragment, {
+  children: foo
+});"#,
     );
 
     test_transform(
@@ -2118,11 +2183,13 @@ const jsx2 = (
     "test"
   </Component>
 );"#,
-      r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate, jsxEscape as _jsxEscape } from "react/jsx-runtime";
+      r#"import { jsx as _jsx, Fragment as _Fragment, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_1 = [
   "&quot;test&quot;<span>test</span>"
 ];
-const Component = (props: any)=>_jsxEscape(props.children);
+const Component = (props: any)=>_jsx(_Fragment, {
+    children: props.children
+  });
 const jsx1 = (_jsx(Component, {
   children: _jsxTemplate($$_tpl_1)
 }));
