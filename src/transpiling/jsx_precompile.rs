@@ -291,13 +291,11 @@ fn jsx_text_to_str(jsx_text: &JSXText, escape: bool) -> String {
 
   let mut lines = jsx_text.value.lines().enumerate().peekable();
   while let Some((i, line)) = lines.next() {
-    let line = if i != 0 {
-      line.trim_start_matches(' ')
-    } else if lines.peek().is_some() {
-      line.trim_end_matches(' ')
-    } else {
-      line
-    };
+    let mut line = if i != 0 { line.trim_start() } else { line };
+
+    if lines.peek().is_some() {
+      line = line.trim_end()
+    }
 
     if line.is_empty() {
       continue;
@@ -2035,6 +2033,37 @@ const a = _jsxTemplate($$_tpl_1, _jsxEscape(2 + 2));"#,
       JsxPrecompile::default(),
       r#"const a = <><>foo</></>;"#,
       r#"const a = "foo";"#,
+    );
+  }
+
+  #[test]
+  fn text_indent_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      // force tab indentation
+      r#"const result = <div>
+			foo		
+			bar		
+</div>;"#,
+      r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>foo bar</div>"
+];
+const result = _jsxTemplate($$_tpl_1);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      // force space indentation
+      r#"const result = <div>
+  foo    
+  bar    
+</div>;"#,
+      r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>foo bar</div>"
+];
+const result = _jsxTemplate($$_tpl_1);"#,
     );
   }
 
