@@ -2056,7 +2056,7 @@ const result = _jsxTemplate($$_tpl_1);"#,
 
     test_transform(
       JsxPrecompile::default(),
-      // force tab indentation
+      // force space indentation
       r#"const result = <div>
   foo    
   bar    
