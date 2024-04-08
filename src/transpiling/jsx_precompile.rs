@@ -297,8 +297,6 @@ fn jsx_text_to_str(jsx_text: &JSXText, escape: bool) -> String {
       line = line.trim_end()
     }
 
-    eprintln!("line '{:#?}'", &line);
-
     if line.is_empty() {
       continue;
     }
