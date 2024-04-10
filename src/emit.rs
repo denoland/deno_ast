@@ -76,7 +76,7 @@ impl Emitter {
 
   pub fn emit(
     &self,
-    program: Program,
+    program: &Program,
     comments: SingleThreadedComments,
   ) -> Result<EmittedSource> {
     let mut src_map_buf = vec![];

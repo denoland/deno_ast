@@ -180,7 +180,7 @@ impl ParsedSource {
       )
     })?;
 
-    emitter.emit(program, comments)
+    emitter.emit(&program, comments)
   }
 }
 
