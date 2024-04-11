@@ -7,7 +7,6 @@ use anyhow::bail;
 use anyhow::Result;
 use swc_ecma_visit::as_folder;
 
-use crate::create_single_file_source_map;
 use crate::emit;
 use crate::swc::ast::Program;
 use crate::swc::common::chain;
@@ -15,7 +14,6 @@ use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::errors::Diagnostic as SwcDiagnostic;
 use crate::swc::common::Globals;
 use crate::swc::common::Mark;
-use crate::swc::common::SourceMap;
 use crate::swc::parser::error::SyntaxError;
 use crate::swc::transforms::fixer;
 use crate::swc::transforms::helpers;
@@ -31,6 +29,7 @@ use crate::EmittedSource;
 use crate::ParseDiagnostic;
 use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
+use crate::SourceMap;
 
 use std::cell::RefCell;
 
@@ -160,8 +159,8 @@ impl ParsedSource {
 
     let program = (*self.program()).clone();
 
-    let source_map = create_single_file_source_map(
-      self.specifier().as_str(),
+    let source_map = SourceMap::single(
+      self.specifier().clone(),
       self.text_info().text_str().to_string(),
     );
 
@@ -210,7 +209,7 @@ impl crate::swc::common::errors::Emitter for DiagnosticCollector {
 pub fn fold_program(
   program: Program,
   options: &TranspileOptions,
-  source_map: &Rc<SourceMap>,
+  source_map: &SourceMap,
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
   diagnostics: &[ParseDiagnostic],
@@ -248,7 +247,7 @@ pub fn fold_program(
     ),
     Optional::new(
       typescript::tsx(
-        source_map.clone(),
+        source_map.inner().clone(),
         options.as_typescript_config(),
         options.as_tsx_config(),
         comments,
@@ -266,7 +265,7 @@ pub fn fold_program(
     ),
     Optional::new(
       react::react(
-        source_map.clone(),
+        source_map.inner().clone(),
         Some(comments),
         #[allow(deprecated)]
         react::Options {
@@ -357,6 +356,7 @@ fn format_swc_diagnostic(
   diagnostic: &SwcDiagnostic,
 ) -> String {
   if let Some(span) = &diagnostic.span.primary_span() {
+    let source_map = source_map.inner();
     let file_name = source_map.span_to_filename(*span);
     let loc = source_map.lookup_char_pos(span.lo);
     format!(
