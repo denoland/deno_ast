@@ -1424,7 +1424,7 @@ const a = _jsx(Foo, {
 
   #[test]
   fn test_which() {
-let text = r#"// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+    let text = r#"// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // https://github.com/dsherret/deno-which/blob/main/mod.ts
 
 /**
@@ -1647,4 +1647,4 @@ function getSystemInfo(
     let emit_result = module.transpile(&options).unwrap();
     assert_eq!(emit_result.source_map, None);
   }
-  
+}
