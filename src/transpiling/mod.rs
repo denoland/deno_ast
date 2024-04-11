@@ -2,10 +2,9 @@
 
 use std::rc::Rc;
 
-use anyhow::anyhow;
-use anyhow::bail;
 use anyhow::Result;
 use swc_ecma_visit::as_folder;
+use thiserror::Error;
 
 use crate::emit;
 use crate::swc::ast::Program;
@@ -24,8 +23,10 @@ use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
+use crate::EmitError;
 use crate::EmitOptions;
 use crate::EmittedSource;
+use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
@@ -35,6 +36,21 @@ use std::cell::RefCell;
 
 mod jsx_precompile;
 mod transforms;
+
+#[derive(Debug, Error)]
+pub enum TranspileError {
+  #[error("Can't use TranspileOptions::use_decorators_proposal and TranspileOptions::use_ts_decorators together.")]
+  DecoratorOptionsConflict,
+  /// Parse errors that prevent transpiling.
+  #[error(transparent)]
+  ParseErrors(#[from] ParseDiagnosticsError),
+  #[error(transparent)]
+  FoldProgram(#[from] FoldProgramError),
+  #[error("{0}")]
+  EmitDiagnostic(String),
+  #[error(transparent)]
+  Emit(#[from] EmitError),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ImportsNotUsedAsValues {
@@ -150,37 +166,52 @@ impl ParsedSource {
     &self,
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
-  ) -> Result<EmittedSource> {
-    if transpile_options.use_decorators_proposal
-      && transpile_options.use_ts_decorators
-    {
-      bail!("Can't use TranspileOptions::use_decorators_proposal and TranspileOptions::use_ts_decorators together.");
-    }
-
+  ) -> Result<EmittedSource, TranspileError> {
     let program = (*self.program()).clone();
-
-    let source_map = SourceMap::single(
+    transpile(
       self.specifier().clone(),
       self.text_info().text_str().to_string(),
-    );
-
-    // we need the comments to be mutable, so make it single threaded
-    let comments = self.comments().as_single_threaded();
-    let globals = Globals::new();
-    let program = crate::swc::common::GLOBALS.set(&globals, || {
-      let top_level_mark = Mark::fresh(Mark::root());
-      fold_program(
-        program,
-        transpile_options,
-        &source_map,
-        &comments,
-        top_level_mark,
-        self.diagnostics(),
-      )
-    })?;
-
-    emit(&program, &comments, &source_map, emit_options)
+      program,
+      // we need the comments to be mutable, so make it single threaded
+      self.comments().as_single_threaded(),
+      transpile_options,
+      emit_options,
+      self.diagnostics(),
+    )
   }
+}
+
+fn transpile(
+  specifier: ModuleSpecifier,
+  source: String,
+  program: Program,
+  comments: SingleThreadedComments,
+  transpile_options: &TranspileOptions,
+  emit_options: &EmitOptions,
+  diagnostics: &[ParseDiagnostic],
+) -> Result<EmittedSource, TranspileError> {
+  if transpile_options.use_decorators_proposal
+    && transpile_options.use_ts_decorators
+  {
+    return Err(TranspileError::DecoratorOptionsConflict);
+  }
+
+  let source_map = SourceMap::single(specifier, source);
+
+  let globals = Globals::new();
+  let program = crate::swc::common::GLOBALS.set(&globals, || {
+    let top_level_mark = Mark::fresh(Mark::root());
+    fold_program(
+      program,
+      transpile_options,
+      &source_map,
+      &comments,
+      top_level_mark,
+      diagnostics,
+    )
+  })?;
+
+  Ok(emit(&program, &comments, &source_map, emit_options)?)
 }
 
 #[derive(Default, Clone)]
@@ -205,6 +236,14 @@ impl crate::swc::common::errors::Emitter for DiagnosticCollector {
   }
 }
 
+#[derive(Debug, Error)]
+pub enum FoldProgramError {
+  #[error(transparent)]
+  ParseDiagnostics(#[from] ParseDiagnosticsError),
+  #[error(transparent)]
+  Swc(#[from] SwcFoldDiagnosticsError),
+}
+
 /// Low level function for transpiling a program.
 pub fn fold_program(
   program: Program,
@@ -213,7 +252,7 @@ pub fn fold_program(
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
   diagnostics: &[ParseDiagnostic],
-) -> Result<Program> {
+) -> Result<Program, FoldProgramError> {
   ensure_no_fatal_diagnostics(diagnostics)?;
 
   let unresolved_mark = Mark::new();
@@ -312,26 +351,44 @@ pub fn fold_program(
     })
   });
 
-  let diagnostics = diagnostics_cell.borrow();
-  ensure_no_fatal_swc_diagnostics(source_map, diagnostics.iter())?;
+  let mut diagnostics = diagnostics_cell.borrow_mut();
+  let diagnostics = std::mem::take(&mut *diagnostics);
+  ensure_no_fatal_swc_diagnostics(source_map, diagnostics.into_iter())?;
   Ok(result)
 }
 
-fn ensure_no_fatal_swc_diagnostics<'a>(
+#[derive(Debug)]
+pub struct SwcFoldDiagnosticsError(Vec<String>);
+
+impl std::error::Error for SwcFoldDiagnosticsError {}
+
+impl std::fmt::Display for SwcFoldDiagnosticsError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for (i, diagnostic) in self.0.iter().enumerate() {
+      if i > 0 {
+        write!(f, "\n\n")?;
+      }
+
+      write!(f, "{}", diagnostic)?
+    }
+
+    Ok(())
+  }
+}
+
+fn ensure_no_fatal_swc_diagnostics(
   source_map: &SourceMap,
-  diagnostics: impl Iterator<Item = &'a SwcDiagnostic>,
-) -> Result<()> {
+  diagnostics: impl Iterator<Item = SwcDiagnostic>,
+) -> Result<(), SwcFoldDiagnosticsError> {
   let fatal_diagnostics = diagnostics
-    .filter(|d| is_fatal_swc_diagnostic(d))
+    .filter(is_fatal_swc_diagnostic)
     .collect::<Vec<_>>();
   if !fatal_diagnostics.is_empty() {
-    Err(anyhow!(
-      "{}",
+    Err(SwcFoldDiagnosticsError(
       fatal_diagnostics
         .iter()
         .map(|d| format_swc_diagnostic(source_map, d))
-        .collect::<Vec<_>>()
-        .join("\n\n")
+        .collect::<Vec<_>>(),
     ))
   } else {
     Ok(())
