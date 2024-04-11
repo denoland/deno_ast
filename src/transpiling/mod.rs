@@ -26,7 +26,6 @@ use crate::swc::visit::FoldWith;
 use crate::EmitError;
 use crate::EmitOptions;
 use crate::EmittedSource;
-use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
@@ -167,51 +166,36 @@ impl ParsedSource {
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
   ) -> Result<EmittedSource, TranspileError> {
+    if transpile_options.use_decorators_proposal
+      && transpile_options.use_ts_decorators
+    {
+      return Err(TranspileError::DecoratorOptionsConflict);
+    }
+
     let program = (*self.program()).clone();
-    transpile(
+
+    let source_map = SourceMap::single(
       self.specifier().clone(),
       self.text_info().text_str().to_string(),
-      program,
-      // we need the comments to be mutable, so make it single threaded
-      self.comments().as_single_threaded(),
-      transpile_options,
-      emit_options,
-      self.diagnostics(),
-    )
+    );
+
+    // we need the comments to be mutable, so make it single threaded
+    let comments = self.comments().as_single_threaded();
+    let globals = Globals::new();
+    let program = crate::swc::common::GLOBALS.set(&globals, || {
+      let top_level_mark = Mark::fresh(Mark::root());
+      fold_program(
+        program,
+        transpile_options,
+        &source_map,
+        &comments,
+        top_level_mark,
+        self.diagnostics(),
+      )
+    })?;
+
+    Ok(emit(&program, &comments, &source_map, emit_options)?)
   }
-}
-
-fn transpile(
-  specifier: ModuleSpecifier,
-  source: String,
-  program: Program,
-  comments: SingleThreadedComments,
-  transpile_options: &TranspileOptions,
-  emit_options: &EmitOptions,
-  diagnostics: &[ParseDiagnostic],
-) -> Result<EmittedSource, TranspileError> {
-  if transpile_options.use_decorators_proposal
-    && transpile_options.use_ts_decorators
-  {
-    return Err(TranspileError::DecoratorOptionsConflict);
-  }
-
-  let source_map = SourceMap::single(specifier, source);
-
-  let globals = Globals::new();
-  let program = crate::swc::common::GLOBALS.set(&globals, || {
-    let top_level_mark = Mark::fresh(Mark::root());
-    fold_program(
-      program,
-      transpile_options,
-      &source_map,
-      &comments,
-      top_level_mark,
-      diagnostics,
-    )
-  })?;
-
-  Ok(emit(&program, &comments, &source_map, emit_options)?)
 }
 
 #[derive(Default, Clone)]
