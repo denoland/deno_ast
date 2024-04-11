@@ -150,12 +150,12 @@ impl ParsedSource {
   pub fn transpile(
     &self,
     transpile_options: &TranspileOptions,
-    emit_options: EmitOptions,
+    emit_options: &EmitOptions,
   ) -> Result<EmittedSource> {
     if transpile_options.use_decorators_proposal
       && transpile_options.use_ts_decorators
     {
-      bail!("Can't use EmitOptions::use_decorators_proposal and EmitOptions::use_ts_decorators together.");
+      bail!("Can't use TranspileOptions::use_decorators_proposal and TranspileOptions::use_ts_decorators together.");
     }
 
     let program = (*self.program()).clone();
@@ -173,14 +173,14 @@ impl ParsedSource {
       fold_program(
         program,
         transpile_options,
-        source_map.clone(),
+        &source_map,
         &comments,
         top_level_mark,
         self.diagnostics(),
       )
     })?;
 
-    emit(&program, comments, source_map, emit_options)
+    emit(&program, &comments, &source_map, emit_options)
   }
 }
 
@@ -210,7 +210,7 @@ impl crate::swc::common::errors::Emitter for DiagnosticCollector {
 pub fn fold_program(
   program: Program,
   options: &TranspileOptions,
-  source_map: Rc<SourceMap>,
+  source_map: &Rc<SourceMap>,
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
   diagnostics: &[ParseDiagnostic],
@@ -314,7 +314,7 @@ pub fn fold_program(
   });
 
   let diagnostics = diagnostics_cell.borrow();
-  ensure_no_fatal_swc_diagnostics(&source_map, diagnostics.iter())?;
+  ensure_no_fatal_swc_diagnostics(source_map, diagnostics.iter())?;
   Ok(result)
 }
 
@@ -469,7 +469,7 @@ export class A {
     })
     .unwrap();
     let transpiled_source = module
-      .transpile(&TranspileOptions::default(), EmitOptions::default())
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap();
     let expected_text = r#"var D;
 (function(D) {
@@ -525,7 +525,7 @@ export class A {
     })
     .unwrap();
     let transpiled_source = module
-      .transpile(&TranspileOptions::default(), EmitOptions::default())
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap();
     let expected_text = r#"function dispose_SuppressedError(suppressed, error) {
   if (typeof SuppressedError !== "undefined") {
@@ -624,7 +624,7 @@ try {
     })
     .unwrap();
     let transpiled_source = module
-      .transpile(&TranspileOptions::default(), EmitOptions::default())
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap();
     assert!(transpiled_source
       .text
@@ -652,7 +652,7 @@ try {
     })
     .unwrap();
     let transpiled_source = module
-      .transpile(&TranspileOptions::default(), EmitOptions::default())
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap();
     assert!(transpiled_source
       .text
@@ -684,7 +684,7 @@ function App() {
     })
     .unwrap();
     let code = module
-      .transpile(&TranspileOptions::default(), EmitOptions::default())
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .text;
     let expected = r#"import { h, Fragment } from "https://deno.land/x/mod.ts";
@@ -718,7 +718,7 @@ function App() {
     let code = module
       .transpile(
         &TranspileOptions::default(),
-        EmitOptions {
+        &EmitOptions {
           keep_comments: true,
           ..Default::default()
         },
@@ -759,7 +759,7 @@ function App() {
       ..Default::default()
     };
     let code = module
-      .transpile(&transpile_options, EmitOptions::default())
+      .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
@@ -797,7 +797,7 @@ function App() {
       ..Default::default()
     };
     let code = module
-      .transpile(&transpile_options, EmitOptions::default())
+      .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .text;
     let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
@@ -841,7 +841,7 @@ function App() {
       ..Default::default()
     };
     let code = module
-      .transpile(&transpile_options, EmitOptions::default())
+      .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .text;
     let expected = r#"const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
@@ -891,7 +891,7 @@ function App() {
           use_ts_decorators: true,
           ..Default::default()
         },
-        EmitOptions::default(),
+        &EmitOptions::default(),
       )
       .unwrap()
       .text;
@@ -955,7 +955,7 @@ _ts_decorate([
           use_decorators_proposal: true,
           ..Default::default()
         },
-        EmitOptions::default(),
+        &EmitOptions::default(),
       )
       .unwrap()
       .text;
@@ -985,7 +985,7 @@ _ts_decorate([
           use_ts_decorators: true,
           ..Default::default()
         },
-        EmitOptions::default(),
+        &EmitOptions::default(),
       )
       .unwrap_err();
   }
@@ -1023,7 +1023,7 @@ _ts_decorate([
     })
     .unwrap();
     let code = module
-      .transpile(&TranspileOptions::default(), EmitOptions::default())
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .text;
     let expected = r#"function enumerable(value) {
@@ -1071,7 +1071,7 @@ export function g() {
       ..Default::default()
     };
     let code = module
-      .transpile(&transpile_options, EmitOptions::default())
+      .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .text;
     let expected = r#"export function g() {
@@ -1100,7 +1100,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     })
     .unwrap();
     let code = module
-      .transpile(&Default::default(), EmitOptions::default())
+      .transpile(&Default::default(), &EmitOptions::default())
       .unwrap()
       .text;
     let expected = r#"for(let i = 0; i < testVariable >> 1; i++)callCount++;"#;
@@ -1124,7 +1124,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     })
     .unwrap();
     assert!(parsed_source
-      .transpile(&Default::default(), EmitOptions::default())
+      .transpile(&Default::default(), &EmitOptions::default())
       .is_ok());
   }
 
@@ -1200,7 +1200,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     })
     .unwrap();
     parsed_source
-      .transpile(&Default::default(), EmitOptions::default())
+      .transpile(&Default::default(), &EmitOptions::default())
       .err()
       .unwrap()
       .to_string()
@@ -1228,7 +1228,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     .unwrap();
 
     let transpiled = p
-      .transpile(&Default::default(), EmitOptions::default())
+      .transpile(&Default::default(), &EmitOptions::default())
       .unwrap();
     let lines: Vec<&str> = transpiled.text.split('\n').collect();
     let last_line = lines.last().unwrap();
@@ -1259,7 +1259,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       ..Default::default()
     };
     let code = module
-      .transpile(&transpile_options, EmitOptions::default())
+      .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .text;
     let expected1 = r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
@@ -1298,7 +1298,7 @@ const a = _jsx(Foo, {
       ..Default::default()
     };
     let emit_result = module
-      .transpile(&TranspileOptions::default(), emit_options)
+      .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap();
     let expected1 = r#"{
   const foo = "bar";
@@ -1327,7 +1327,7 @@ const a = _jsx(Foo, {
       ..Default::default()
     };
     let emit_result = module
-      .transpile(&TranspileOptions::default(), emit_options)
+      .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap();
     assert_eq!(
       &emit_result.text,
@@ -1362,7 +1362,7 @@ const a = _jsx(Foo, {
       ..Default::default()
     };
     let emit_result = module
-      .transpile(&TranspileOptions::default(), emit_options)
+      .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap();
     assert_eq!(
       &emit_result.text,

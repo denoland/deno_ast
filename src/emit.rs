@@ -70,9 +70,9 @@ pub struct EmittedSource {
 /// comments, and optionally also a source map.
 pub fn emit(
   program: &Program,
-  comments: SingleThreadedComments,
-  source_map: Rc<SourceMap>,
-  emit_options: EmitOptions,
+  comments: &SingleThreadedComments,
+  source_map: &Rc<SourceMap>,
+  emit_options: &EmitOptions,
 ) -> Result<EmittedSource> {
   let mut src_map_buf = vec![];
   let mut buf = vec![];
