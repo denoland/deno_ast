@@ -609,7 +609,7 @@ impl JsxPrecompile {
 
   fn serialize_jsx_children_to_expr(
     &mut self,
-    children: &Vec<JSXElementChild>,
+    children: &[JSXElementChild],
   ) -> Option<Expr> {
     // Add children as a "children" prop.
     match children.len() {
@@ -2601,7 +2601,7 @@ const a = _jsxTemplate($$_tpl_1);"#,
     crate::emit::emit(
       &Program::Module(module),
       &SingleThreadedComments::default(),
-      &source_map,
+      source_map,
       &EmitOptions {
         source_map: crate::SourceMapOption::None,
         ..Default::default()
