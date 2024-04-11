@@ -2,8 +2,8 @@
 
 use std::rc::Rc;
 
-use swc_common::FileName;
-use swc_common::SourceFile;
+use crate::swc::common::FileName;
+use crate::swc::common::SourceFile;
 
 use crate::ModuleSpecifier;
 
@@ -43,7 +43,7 @@ impl SourceMap {
     map
   }
 
-  pub fn inner(&self) -> &Rc<swc_common::SourceMap> {
+  pub fn inner(&self) -> &Rc<crate::swc::common::SourceMap> {
     &self.inner
   }
 
