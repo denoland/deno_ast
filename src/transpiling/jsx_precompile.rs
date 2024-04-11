@@ -1484,18 +1484,15 @@ impl VisitMut for JsxPrecompile {
 #[cfg(test)]
 mod tests {
   use crate::swc::ast::Module;
-  use crate::swc::codegen::text_writer::JsWriter;
-  use crate::swc::codegen::Node;
-  use crate::swc::common::FileName;
-  use crate::swc::common::SourceMap;
   use crate::swc::parser::Parser;
   use crate::swc::parser::StringInput;
   use crate::swc::parser::Syntax;
   use crate::swc::parser::TsConfig;
   use crate::swc::visit::FoldWith;
-  use crate::ModuleSpecifier;
+  use crate::EmitOptions;
+  use crate::SourceMap;
   use pretty_assertions::assert_eq;
-  use std::rc::Rc;
+  use swc_common::comments::SingleThreadedComments;
   use swc_ecma_visit::as_folder;
 
   use super::*;
@@ -2583,16 +2580,14 @@ const a = _jsxTemplate($$_tpl_1);"#,
   ) {
     let (source_map, module) = parse(src);
     let mut transform_folder = as_folder(transform);
-    let output = print(source_map, module.fold_with(&mut transform_folder));
+    let output = print(&source_map, module.fold_with(&mut transform_folder));
     assert_eq!(output, format!("{}\n", expected_output));
   }
 
-  fn parse(src: &str) -> (Rc<SourceMap>, Module) {
-    let source_map = Rc::new(SourceMap::default());
-    let source_file = source_map.new_source_file(
-      FileName::Url(ModuleSpecifier::parse("file:///test.ts").unwrap()),
-      src.to_string(),
-    );
+  fn parse(src: &str) -> (SourceMap, Module) {
+    let source_map = SourceMap::default();
+    let source_file =
+      source_map.new_source_file("file:///test.ts", src.to_string());
     let input = StringInput::from(&*source_file);
     let syntax = Syntax::Typescript(TsConfig {
       tsx: true,
@@ -2602,20 +2597,17 @@ const a = _jsxTemplate($$_tpl_1);"#,
     (source_map, parser.parse_module().unwrap())
   }
 
-  fn print(source_map: Rc<SourceMap>, module: Module) -> String {
-    let mut buf = vec![];
-    {
-      let mut writer =
-        Box::new(JsWriter::new(source_map.clone(), "\n", &mut buf, None));
-      writer.set_indent_str("  "); // two spaces
-      let mut emitter = crate::swc::codegen::Emitter {
-        cfg: crate::swc_codegen_config(),
-        comments: None,
-        cm: source_map,
-        wr: writer,
-      };
-      module.emit_with(&mut emitter).unwrap();
-    }
-    String::from_utf8(buf).unwrap()
+  fn print(source_map: &SourceMap, module: Module) -> String {
+    crate::emit::emit(
+      &Program::Module(module),
+      &SingleThreadedComments::default(),
+      &source_map,
+      &EmitOptions {
+        source_map: crate::SourceMapOption::None,
+        ..Default::default()
+      },
+    )
+    .unwrap()
+    .text
   }
 }

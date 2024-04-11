@@ -1,30 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::rc::Rc;
-
 use anyhow::Result;
 use base64::Engine;
 use swc_common::comments::SingleThreadedComments;
-use swc_common::SourceMap;
 
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
 use crate::swc::codegen::Node;
 use crate::swc::common::FileName;
-use crate::ModuleSpecifier;
-
-pub fn create_single_file_source_map(
-  specifier: &str,
-  source: String,
-) -> Rc<SourceMap> {
-  let source_map = Rc::new(SourceMap::default());
-  let file_name = match ModuleSpecifier::parse(specifier) {
-    Ok(specifier) => FileName::Url(specifier),
-    Err(_) => FileName::Custom(specifier.to_owned()),
-  };
-  source_map.new_source_file(file_name, source);
-  source_map
-}
+use crate::SourceMap;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SourceMapOption {
@@ -71,9 +55,10 @@ pub struct EmittedSource {
 pub fn emit(
   program: &Program,
   comments: &SingleThreadedComments,
-  source_map: &Rc<SourceMap>,
+  source_map: &SourceMap,
   emit_options: &EmitOptions,
 ) -> Result<EmittedSource> {
+  let source_map = source_map.inner();
   let mut src_map_buf = vec![];
   let mut buf = vec![];
   {
