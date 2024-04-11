@@ -609,7 +609,7 @@ impl JsxPrecompile {
 
   fn serialize_jsx_children_to_expr(
     &mut self,
-    children: &Vec<JSXElementChild>,
+    children: &[JSXElementChild],
   ) -> Option<Expr> {
     // Add children as a "children" prop.
     match children.len() {
