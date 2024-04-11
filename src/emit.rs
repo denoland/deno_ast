@@ -13,6 +13,19 @@ use crate::swc::codegen::Node;
 use crate::swc::common::FileName;
 use crate::ModuleSpecifier;
 
+pub fn create_single_file_source_map(
+  specifier: &str,
+  source: String,
+) -> Rc<SourceMap> {
+  let source_map = Rc::new(SourceMap::default());
+  let file_name = match ModuleSpecifier::parse(specifier) {
+    Ok(specifier) => FileName::Url(specifier),
+    Err(_) => FileName::Custom(specifier.to_owned()),
+  };
+  source_map.new_source_file(file_name, source);
+  source_map
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SourceMapOption {
   /// Source map should be inlined into the source (default)
@@ -44,12 +57,6 @@ impl Default for EmitOptions {
   }
 }
 
-/// An Emitter is used to emit a source file based on the emit options.
-pub struct Emitter {
-  emit_options: EmitOptions,
-  pub source_map: Rc<SourceMap>,
-}
-
 /// Source emitted based on the emit options.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
 pub struct EmittedSource {
@@ -59,79 +66,65 @@ pub struct EmittedSource {
   pub source_map: Option<String>,
 }
 
-impl Emitter {
-  pub fn new(specifier: &str, source: String, options: EmitOptions) -> Self {
-    let source_map = Rc::new(SourceMap::default());
-    let file_name = match ModuleSpecifier::parse(specifier) {
-      Ok(specifier) => FileName::Url(specifier),
-      Err(_) => FileName::Custom(specifier.to_owned()),
-    };
-    source_map.new_source_file(file_name, source);
+/// Emits the program as a string of JavaScript code, possibly with the passed
+/// comments, and optionally also a source map.
+pub fn emit(
+  program: &Program,
+  comments: SingleThreadedComments,
+  source_map: Rc<SourceMap>,
+  emit_options: EmitOptions,
+) -> Result<EmittedSource> {
+  let mut src_map_buf = vec![];
+  let mut buf = vec![];
+  {
+    let mut writer = Box::new(JsWriter::new(
+      source_map.clone(),
+      "\n",
+      &mut buf,
+      Some(&mut src_map_buf),
+    ));
+    writer.set_indent_str("  "); // two spaces
 
-    Self {
-      emit_options: options,
-      source_map,
-    }
-  }
-
-  pub fn emit(
-    &self,
-    program: &Program,
-    comments: SingleThreadedComments,
-  ) -> Result<EmittedSource> {
-    let mut src_map_buf = vec![];
-    let mut buf = vec![];
-    {
-      let mut writer = Box::new(JsWriter::new(
-        self.source_map.clone(),
-        "\n",
-        &mut buf,
-        Some(&mut src_map_buf),
-      ));
-      writer.set_indent_str("  "); // two spaces
-
-      let mut emitter = crate::swc::codegen::Emitter {
-        cfg: swc_codegen_config(),
-        comments: if self.emit_options.keep_comments {
-          Some(&comments)
-        } else {
-          None
-        },
-        cm: self.source_map.clone(),
-        wr: writer,
-      };
-      program.emit_with(&mut emitter)?;
-    }
-
-    let mut src = String::from_utf8(buf)?;
-    let mut map: Option<String> = None;
-
-    if self.emit_options.source_map != SourceMapOption::None {
-      let mut buf = Vec::new();
-      let source_map_config = SourceMapConfig {
-        inline_sources: self.emit_options.inline_sources,
-      };
-      self
-        .source_map
-        .build_source_map_with_config(&src_map_buf, None, source_map_config)
-        .to_writer(&mut buf)?;
-
-      if self.emit_options.source_map == SourceMapOption::Inline {
-        if !src.ends_with('\n') {
-          src.push('\n');
-        }
-        src.push_str("//# sourceMappingURL=data:application/json;base64,");
-        base64::prelude::BASE64_STANDARD.encode_string(buf, &mut src);
+    let mut emitter = crate::swc::codegen::Emitter {
+      cfg: swc_codegen_config(),
+      comments: if emit_options.keep_comments {
+        Some(&comments)
       } else {
-        map = Some(String::from_utf8(buf)?);
-      }
-    }
-
-    Ok(EmittedSource {
-      text: src,
-      source_map: map,
-    })
+        None
+      },
+      cm: source_map.clone(),
+      wr: writer,
+    };
+    program.emit_with(&mut emitter)?;
   }
+
+  let mut src = String::from_utf8(buf)?;
+  let mut map: Option<String> = None;
+
+  if emit_options.source_map != SourceMapOption::None {
+    let mut buf = Vec::new();
+    let source_map_config = SourceMapConfig {
+      inline_sources: emit_options.inline_sources,
+    };
+    source_map
+      .build_source_map_with_config(&src_map_buf, None, source_map_config)
+      .to_writer(&mut buf)?;
+
+    if emit_options.source_map == SourceMapOption::Inline {
+      if !src.ends_with('\n') {
+        src.push('\n');
+      }
+      src.push_str("//# sourceMappingURL=data:application/json;base64,");
+      base64::prelude::BASE64_STANDARD.encode_string(buf, &mut src);
+    } else {
+      map = Some(String::from_utf8(buf)?);
+    }
+  }
+
+  Ok(EmittedSource {
+    text: src,
+    source_map: map,
+  })
 }
 
 /// Implements a configuration trait for source maps that reflects the logic

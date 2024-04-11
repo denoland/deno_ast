@@ -7,6 +7,8 @@ use anyhow::bail;
 use anyhow::Result;
 use swc_ecma_visit::as_folder;
 
+use crate::create_single_file_source_map;
+use crate::emit;
 use crate::swc::ast::Program;
 use crate::swc::common::chain;
 use crate::swc::common::comments::SingleThreadedComments;
@@ -26,7 +28,6 @@ use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
 use crate::EmitOptions;
 use crate::EmittedSource;
-use crate::Emitter;
 use crate::ParseDiagnostic;
 use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
@@ -159,10 +160,9 @@ impl ParsedSource {
 
     let program = (*self.program()).clone();
 
-    let emitter = Emitter::new(
+    let source_map = create_single_file_source_map(
       self.specifier().as_str(),
       self.text_info().text_str().to_string(),
-      emit_options,
     );
 
     // we need the comments to be mutable, so make it single threaded
@@ -173,14 +173,14 @@ impl ParsedSource {
       fold_program(
         program,
         transpile_options,
-        emitter.source_map.clone(),
+        source_map.clone(),
         &comments,
         top_level_mark,
         self.diagnostics(),
       )
     })?;
 
-    emitter.emit(&program, comments)
+    emit(&program, comments, source_map, emit_options)
   }
 }
 
