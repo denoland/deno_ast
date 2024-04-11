@@ -5,16 +5,14 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
-use base64::Engine;
 use swc_ecma_visit::as_folder;
 
+use crate::create_single_file_source_map;
+use crate::emit;
 use crate::swc::ast::Program;
-use crate::swc::codegen::text_writer::JsWriter;
-use crate::swc::codegen::Node;
 use crate::swc::common::chain;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::errors::Diagnostic as SwcDiagnostic;
-use crate::swc::common::FileName;
 use crate::swc::common::Globals;
 use crate::swc::common::Mark;
 use crate::swc::common::SourceMap;
@@ -28,6 +26,8 @@ use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
+use crate::EmitOptions;
+use crate::EmittedSource;
 use crate::ParseDiagnostic;
 use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
@@ -44,22 +44,11 @@ pub enum ImportsNotUsedAsValues {
   Error,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SourceMapOption {
-  /// Source map should be inlined into the source (default)
-  #[default]
-  Inline,
-  /// Source map should be provided as a separate file.
-  Separate,
-  /// Source map should not be included.
-  None,
-}
-
 /// Options which can be adjusted when transpiling a module.
 ///
 /// This implements `Hash` so the CLI can use it to bust the emit cache.
 #[derive(Debug, Clone, Hash)]
-pub struct EmitOptions {
+pub struct TranspileOptions {
   /// TypeScript experimental decorators.
   pub use_ts_decorators: bool,
 
@@ -69,8 +58,6 @@ pub struct EmitOptions {
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
-  /// Whether to keep comments in the output. Defaults to `false`.
-  pub keep_comments: bool,
   /// What to do with import statements that only import types i.e. whether to
   /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
   /// or error (`Error`). Defaults to `Remove`.
@@ -92,10 +79,6 @@ pub struct EmitOptions {
   /// The string module specifier to implicitly import JSX factories from when
   /// transpiling JSX.
   pub jsx_import_source: Option<String>,
-  /// How sourcemaps should be emitted.
-  pub source_map: SourceMapOption,
-  /// Should the sources be inlined in the source map.  Defaults to `true`.
-  pub inline_sources: bool,
   /// Should JSX be transformed. Defaults to `true`.
   pub transform_jsx: bool,
   /// Should JSX be precompiled into static strings that need to be concatenated
@@ -108,21 +91,18 @@ pub struct EmitOptions {
   pub var_decl_imports: bool,
 }
 
-impl Default for EmitOptions {
+impl Default for TranspileOptions {
   fn default() -> Self {
-    EmitOptions {
+    TranspileOptions {
       use_ts_decorators: false,
       use_decorators_proposal: false,
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
-      source_map: Default::default(),
-      inline_sources: true,
       jsx_automatic: false,
       jsx_development: false,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
       jsx_import_source: None,
-      keep_comments: false,
       transform_jsx: true,
       precompile_jsx: false,
       var_decl_imports: false,
@@ -130,7 +110,7 @@ impl Default for EmitOptions {
   }
 }
 
-impl EmitOptions {
+impl TranspileOptions {
   fn as_tsx_config(&self) -> typescript::TsxConfig {
     typescript::TsxConfig {
       pragma: Some(self.jsx_factory.clone()),
@@ -165,113 +145,42 @@ impl EmitOptions {
   }
 }
 
-/// Implements a configuration trait for source maps that reflects the logic
-/// to embed sources in the source map or not.
-#[derive(Debug)]
-pub struct SourceMapConfig {
-  pub inline_sources: bool,
-}
-
-impl crate::swc::common::source_map::SourceMapGenConfig for SourceMapConfig {
-  fn file_name_to_source(&self, f: &FileName) -> String {
-    f.to_string()
-  }
-
-  fn inline_sources_content(&self, f: &FileName) -> bool {
-    match f {
-      FileName::Real(..) | FileName::Custom(..) => false,
-      FileName::Url(..) => self.inline_sources,
-      _ => true,
-    }
-  }
-}
-
-/// Source transpiled based on the emit options.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
-pub struct TranspiledSource {
-  /// Transpiled text.
-  pub text: String,
-  /// Source map back to the original file.
-  pub source_map: Option<String>,
-}
-
 impl ParsedSource {
   /// Transform a TypeScript file into a JavaScript file.
-  pub fn transpile(&self, options: &EmitOptions) -> Result<TranspiledSource> {
-    if options.use_decorators_proposal && options.use_ts_decorators {
-      bail!("Can't use EmitOptions::use_decorators_proposal and EmitOptions::use_ts_decorators together.");
+  pub fn transpile(
+    &self,
+    transpile_options: &TranspileOptions,
+    emit_options: &EmitOptions,
+  ) -> Result<EmittedSource> {
+    if transpile_options.use_decorators_proposal
+      && transpile_options.use_ts_decorators
+    {
+      bail!("Can't use TranspileOptions::use_decorators_proposal and TranspileOptions::use_ts_decorators together.");
     }
 
     let program = (*self.program()).clone();
-    let source_map = Rc::new(SourceMap::default());
-    let source_map_config = SourceMapConfig {
-      inline_sources: options.inline_sources,
-    };
-    let file_name = FileName::Url(self.specifier().clone());
-    source_map
-      .new_source_file(file_name, self.text_info().text_str().to_string());
-    // needs to align with what's done internally in source map
-    assert_eq!(1, self.text_info().range().start.as_byte_pos().0);
+
+    let source_map = create_single_file_source_map(
+      self.specifier().as_str(),
+      self.text_info().text_str().to_string(),
+    );
+
     // we need the comments to be mutable, so make it single threaded
     let comments = self.comments().as_single_threaded();
     let globals = Globals::new();
-    crate::swc::common::GLOBALS.set(&globals, || {
+    let program = crate::swc::common::GLOBALS.set(&globals, || {
       let top_level_mark = Mark::fresh(Mark::root());
-      let program = fold_program(
+      fold_program(
         program,
-        options,
-        source_map.clone(),
+        transpile_options,
+        &source_map,
         &comments,
         top_level_mark,
         self.diagnostics(),
-      )?;
+      )
+    })?;
 
-      let mut src_map_buf = vec![];
-      let mut buf = vec![];
-      {
-        let mut writer = Box::new(JsWriter::new(
-          source_map.clone(),
-          "\n",
-          &mut buf,
-          Some(&mut src_map_buf),
-        ));
-        writer.set_indent_str("  "); // two spaces
-
-        let mut emitter = crate::swc::codegen::Emitter {
-          cfg: swc_codegen_config(),
-          comments: if options.keep_comments {
-            Some(&comments)
-          } else {
-            None
-          },
-          cm: source_map.clone(),
-          wr: writer,
-        };
-        program.emit_with(&mut emitter)?;
-      }
-      let mut src = String::from_utf8(buf)?;
-      let mut map: Option<String> = None;
-      if options.source_map != SourceMapOption::None {
-        let mut buf = Vec::new();
-        source_map
-          .build_source_map_with_config(&src_map_buf, None, source_map_config)
-          .to_writer(&mut buf)?;
-
-        if options.source_map == SourceMapOption::Inline {
-          if !src.ends_with('\n') {
-            src.push('\n');
-          }
-          src.push_str("//# sourceMappingURL=data:application/json;base64,");
-          base64::prelude::BASE64_STANDARD.encode_string(buf, &mut src);
-        } else {
-          map = Some(String::from_utf8(buf)?);
-        }
-      }
-      Ok(TranspiledSource {
-        text: src,
-        source_map: map,
-      })
-    })
+    emit(&program, &comments, &source_map, emit_options)
   }
 }
 
@@ -300,8 +209,8 @@ impl crate::swc::common::errors::Emitter for DiagnosticCollector {
 /// Low level function for transpiling a program.
 pub fn fold_program(
   program: Program,
-  options: &EmitOptions,
-  source_map: Rc<SourceMap>,
+  options: &TranspileOptions,
+  source_map: &Rc<SourceMap>,
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
   diagnostics: &[ParseDiagnostic],
@@ -405,7 +314,7 @@ pub fn fold_program(
   });
 
   let diagnostics = diagnostics_cell.borrow();
-  ensure_no_fatal_swc_diagnostics(&source_map, diagnostics.iter())?;
+  ensure_no_fatal_swc_diagnostics(source_map, diagnostics.iter())?;
   Ok(result)
 }
 
@@ -501,20 +410,6 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
   )
 }
 
-pub fn swc_codegen_config() -> crate::swc::codegen::Config {
-  // NOTICE ON UPGRADE: This struct has #[non_exhaustive] on it,
-  // which prevents creating a struct expr here. For that reason,
-  // inspect the struct on swc upgrade and explicitly specify any
-  // new options here in order to ensure we maintain these settings.
-  let mut config = crate::swc::codegen::Config::default();
-  config.minify = false;
-  config.ascii_only = false;
-  config.omit_last_semi = false;
-  config.target = crate::ES_VERSION;
-  config.emit_assert_for_import_attributes = false;
-  config
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -523,8 +418,10 @@ mod tests {
   use crate::MediaType;
   use crate::ModuleSpecifier;
   use crate::ParseParams;
+  use crate::SourceMapOption;
   use crate::SourceTextInfo;
 
+  use base64::Engine;
   use pretty_assertions::assert_eq;
 
   #[test]
@@ -571,7 +468,9 @@ export class A {
       scope_analysis: false,
     })
     .unwrap();
-    let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
+    let transpiled_source = module
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .unwrap();
     let expected_text = r#"var D;
 (function(D) {
   D[D["A"] = 0] = "A";
@@ -625,7 +524,9 @@ export class A {
       scope_analysis: false,
     })
     .unwrap();
-    let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
+    let transpiled_source = module
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .unwrap();
     let expected_text = r#"function dispose_SuppressedError(suppressed, error) {
   if (typeof SuppressedError !== "undefined") {
     dispose_SuppressedError = SuppressedError;
@@ -722,7 +623,9 @@ try {
       scope_analysis: true, // ensure scope analysis doesn't conflict with a second resolver pass
     })
     .unwrap();
-    let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
+    let transpiled_source = module
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .unwrap();
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"div\", null"));
@@ -748,7 +651,9 @@ try {
       scope_analysis: true, // ensure scope analysis doesn't conflict with a second resolver pass
     })
     .unwrap();
-    let transpiled_source = module.transpile(&EmitOptions::default()).unwrap();
+    let transpiled_source = module
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .unwrap();
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"my:tag\", null"));
@@ -778,7 +683,10 @@ function App() {
       scope_analysis: true,
     })
     .unwrap();
-    let code = module.transpile(&EmitOptions::default()).unwrap().text;
+    let code = module
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .unwrap()
+      .text;
     let expected = r#"import { h, Fragment } from "https://deno.land/x/mod.ts";
 function App() {
   return h("div", null, h(Fragment, null));
@@ -808,10 +716,13 @@ function App() {
     })
     .unwrap();
     let code = module
-      .transpile(&EmitOptions {
-        keep_comments: true,
-        ..Default::default()
-      })
+      .transpile(
+        &TranspileOptions::default(),
+        &EmitOptions {
+          keep_comments: true,
+          ..Default::default()
+        },
+      )
       .unwrap()
       .text;
     let expected = r#"/** @jsxImportSource jsx_lib */ import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
@@ -842,12 +753,15 @@ function App() {
       scope_analysis: true,
     })
     .unwrap();
-    let emit_options = EmitOptions {
+    let transpile_options = TranspileOptions {
       jsx_automatic: true,
       jsx_import_source: Some("jsx_lib".to_string()),
       ..Default::default()
     };
-    let code = module.transpile(&emit_options).unwrap().text;
+    let code = module
+      .transpile(&transpile_options, &EmitOptions::default())
+      .unwrap()
+      .text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
   return _jsx("div", {
@@ -876,13 +790,16 @@ function App() {
       scope_analysis: true,
     })
     .unwrap();
-    let emit_options = EmitOptions {
+    let transpile_options = TranspileOptions {
       jsx_automatic: true,
       jsx_import_source: Some("jsx_lib".to_string()),
       jsx_development: true,
       ..Default::default()
     };
-    let code = module.transpile(&emit_options).unwrap().text;
+    let code = module
+      .transpile(&transpile_options, &EmitOptions::default())
+      .unwrap()
+      .text;
     let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
 function App() {
   return _jsxDEV("div", {
@@ -919,11 +836,14 @@ function App() {
       scope_analysis: true,
     })
     .unwrap();
-    let emit_options = EmitOptions {
+    let transpile_options = TranspileOptions {
       var_decl_imports: true,
       ..Default::default()
     };
-    let code = module.transpile(&emit_options).unwrap().text;
+    let code = module
+      .transpile(&transpile_options, &EmitOptions::default())
+      .unwrap()
+      .text;
     let expected = r#"const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
 const example = await import("example");
 function App() {
@@ -966,10 +886,13 @@ function App() {
     })
     .unwrap();
     let code = module
-      .transpile(&EmitOptions {
-        use_ts_decorators: true,
-        ..Default::default()
-      })
+      .transpile(
+        &TranspileOptions {
+          use_ts_decorators: true,
+          ..Default::default()
+        },
+        &EmitOptions::default(),
+      )
       .unwrap()
       .text;
     let expected = r#"function _ts_decorate(decorators, target, key, desc) {
@@ -1027,10 +950,13 @@ _ts_decorate([
     })
     .unwrap();
     let code = module
-      .transpile(&EmitOptions {
-        use_decorators_proposal: true,
-        ..Default::default()
-      })
+      .transpile(
+        &TranspileOptions {
+          use_decorators_proposal: true,
+          ..Default::default()
+        },
+        &EmitOptions::default(),
+      )
       .unwrap()
       .text;
     let expected =
@@ -1053,11 +979,14 @@ _ts_decorate([
     })
     .unwrap();
     module
-      .transpile(&EmitOptions {
-        use_decorators_proposal: true,
-        use_ts_decorators: true,
-        ..Default::default()
-      })
+      .transpile(
+        &TranspileOptions {
+          use_decorators_proposal: true,
+          use_ts_decorators: true,
+          ..Default::default()
+        },
+        &EmitOptions::default(),
+      )
       .unwrap_err();
   }
 
@@ -1093,7 +1022,10 @@ _ts_decorate([
       scope_analysis: false,
     })
     .unwrap();
-    let code = module.transpile(&EmitOptions::default()).unwrap().text;
+    let code = module
+      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .unwrap()
+      .text;
     let expected = r#"function enumerable(value) {
   return function(_target, _propertyKey, descriptor) {
     descriptor.enumerable = value;
@@ -1134,11 +1066,14 @@ export function g() {
       scope_analysis: false,
     })
     .unwrap();
-    let emit_options = EmitOptions {
+    let transpile_options = TranspileOptions {
       transform_jsx: true,
       ..Default::default()
     };
-    let code = module.transpile(&emit_options).unwrap().text;
+    let code = module
+      .transpile(&transpile_options, &EmitOptions::default())
+      .unwrap()
+      .text;
     let expected = r#"export function g() {
   let algorithm;
   algorithm = {};
@@ -1164,7 +1099,10 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       scope_analysis: false,
     })
     .unwrap();
-    let code = module.transpile(&Default::default()).unwrap().text;
+    let code = module
+      .transpile(&Default::default(), &EmitOptions::default())
+      .unwrap()
+      .text;
     let expected = r#"for(let i = 0; i < testVariable >> 1; i++)callCount++;"#;
     assert_eq!(&code[..expected.len()], expected);
   }
@@ -1185,7 +1123,9 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       scope_analysis: false,
     })
     .unwrap();
-    assert!(parsed_source.transpile(&Default::default()).is_ok());
+    assert!(parsed_source
+      .transpile(&Default::default(), &EmitOptions::default())
+      .is_ok());
   }
 
   #[test]
@@ -1260,7 +1200,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     })
     .unwrap();
     parsed_source
-      .transpile(&Default::default())
+      .transpile(&Default::default(), &EmitOptions::default())
       .err()
       .unwrap()
       .to_string()
@@ -1287,7 +1227,9 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     })
     .unwrap();
 
-    let transpiled = p.transpile(&Default::default()).unwrap();
+    let transpiled = p
+      .transpile(&Default::default(), &EmitOptions::default())
+      .unwrap();
     let lines: Vec<&str> = transpiled.text.split('\n').collect();
     let last_line = lines.last().unwrap();
     let input = last_line
@@ -1310,13 +1252,16 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       scope_analysis: false,
     })
     .unwrap();
-    let options = EmitOptions {
+    let transpile_options = TranspileOptions {
       transform_jsx: false,
       precompile_jsx: true,
       jsx_import_source: Some("react".to_string()),
       ..Default::default()
     };
-    let code = module.transpile(&options).unwrap().text;
+    let code = module
+      .transpile(&transpile_options, &EmitOptions::default())
+      .unwrap()
+      .text;
     let expected1 = r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_2 = [
   "<p>asdf</p>"
@@ -1348,11 +1293,13 @@ const a = _jsx(Foo, {
       scope_analysis: false,
     })
     .unwrap();
-    let options = EmitOptions {
+    let emit_options = EmitOptions {
       source_map: SourceMapOption::Inline,
       ..Default::default()
     };
-    let emit_result = module.transpile(&options).unwrap();
+    let emit_result = module
+      .transpile(&TranspileOptions::default(), &emit_options)
+      .unwrap();
     let expected1 = r#"{
   const foo = "bar";
 }
@@ -1375,11 +1322,13 @@ const a = _jsx(Foo, {
       scope_analysis: false,
     })
     .unwrap();
-    let options = EmitOptions {
+    let emit_options = EmitOptions {
       source_map: SourceMapOption::Separate,
       ..Default::default()
     };
-    let emit_result = module.transpile(&options).unwrap();
+    let emit_result = module
+      .transpile(&TranspileOptions::default(), &emit_options)
+      .unwrap();
     assert_eq!(
       &emit_result.text,
       r#"{
@@ -1408,11 +1357,13 @@ const a = _jsx(Foo, {
       scope_analysis: false,
     })
     .unwrap();
-    let options = EmitOptions {
+    let emit_options = EmitOptions {
       source_map: SourceMapOption::None,
       ..Default::default()
     };
-    let emit_result = module.transpile(&options).unwrap();
+    let emit_result = module
+      .transpile(&TranspileOptions::default(), &emit_options)
+      .unwrap();
     assert_eq!(
       &emit_result.text,
       r#"{

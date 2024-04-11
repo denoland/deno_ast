@@ -9,6 +9,8 @@ mod comments;
 #[cfg(feature = "dep_analysis")]
 pub mod dep;
 pub mod diagnostics;
+#[cfg(feature = "emit")]
+mod emit;
 mod lexing;
 mod parsed_source;
 mod parsing;
@@ -28,6 +30,8 @@ pub use dprint_swc_ext::common::*;
 pub use cjs_parse::*;
 pub use comments::*;
 pub use deno_media_type::*;
+#[cfg(feature = "emit")]
+pub use emit::*;
 pub use lexing::*;
 pub use parsed_source::*;
 pub use parsing::*;
