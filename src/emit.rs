@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 use base64::Engine;
-use swc_common::comments::SingleThreadedComments;
 
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
@@ -54,7 +53,7 @@ pub struct EmittedSource {
 /// comments, and optionally also a source map.
 pub fn emit(
   program: &Program,
-  comments: &SingleThreadedComments,
+  comments: &dyn crate::swc::common::comments::Comments,
   source_map: &SourceMap,
   emit_options: &EmitOptions,
 ) -> Result<EmittedSource> {
