@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use base64::Engine;
+use thiserror::Error;
 
 use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
@@ -49,6 +50,16 @@ pub struct EmittedSource {
   pub source_map: Option<String>,
 }
 
+#[derive(Debug, Error)]
+pub enum EmitError {
+  #[error(transparent)]
+  Utf8(#[from] std::string::FromUtf8Error),
+  #[error(transparent)]
+  SwcEmit(anyhow::Error),
+  #[error(transparent)]
+  SourceMap(anyhow::Error),
+}
+
 /// Emits the program as a string of JavaScript code, possibly with the passed
 /// comments, and optionally also a source map.
 pub fn emit(
@@ -56,7 +67,7 @@ pub fn emit(
   comments: &dyn crate::swc::common::comments::Comments,
   source_map: &SourceMap,
   emit_options: &EmitOptions,
-) -> Result<EmittedSource> {
+) -> Result<EmittedSource, EmitError> {
   let source_map = source_map.inner();
   let mut src_map_buf = vec![];
   let mut buf = vec![];
@@ -79,7 +90,9 @@ pub fn emit(
       cm: source_map.clone(),
       wr: writer,
     };
-    program.emit_with(&mut emitter)?;
+    program
+      .emit_with(&mut emitter)
+      .map_err(|e| EmitError::SwcEmit(e.into()))?;
   }
 
   let mut src = String::from_utf8(buf)?;
@@ -92,7 +105,8 @@ pub fn emit(
     };
     source_map
       .build_source_map_with_config(&src_map_buf, None, source_map_config)
-      .to_writer(&mut buf)?;
+      .to_writer(&mut buf)
+      .map_err(|e| EmitError::SourceMap(e.into()))?;
 
     if emit_options.source_map == SourceMapOption::Inline {
       if !src.ends_with('\n') {
