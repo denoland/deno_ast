@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::Result;
 use swc_ecma_visit::as_folder;
@@ -26,6 +27,7 @@ use crate::swc::visit::FoldWith;
 use crate::EmitError;
 use crate::EmitOptions;
 use crate::EmittedSource;
+use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
@@ -161,41 +163,115 @@ impl TranspileOptions {
 
 impl ParsedSource {
   /// Transform a TypeScript file into a JavaScript file.
+  ///
+  /// Note: This will clone the program if it's shared, which
+  /// might be expensive.
   pub fn transpile(
     &self,
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
   ) -> Result<EmittedSource, TranspileError> {
-    if transpile_options.use_decorators_proposal
-      && transpile_options.use_ts_decorators
-    {
-      return Err(TranspileError::DecoratorOptionsConflict);
-    }
-
     let program = (*self.program()).clone();
-
-    let source_map = SourceMap::single(
+    transpile(
       self.specifier().clone(),
       self.text_info().text_str().to_string(),
-    );
-
-    // we need the comments to be mutable, so make it single threaded
-    let comments = self.comments().as_single_threaded();
-    let globals = Globals::new();
-    let program = crate::swc::common::GLOBALS.set(&globals, || {
-      let top_level_mark = Mark::fresh(Mark::root());
-      fold_program(
-        program,
-        transpile_options,
-        &source_map,
-        &comments,
-        top_level_mark,
-        self.diagnostics(),
-      )
-    })?;
-
-    Ok(emit(&program, &comments, &source_map, emit_options)?)
+      program,
+      // we need the comments to be mutable, so make it single threaded
+      self.comments().as_single_threaded(),
+      transpile_options,
+      emit_options,
+      self.diagnostics(),
+    )
   }
+
+  /// Transform a TypeScript file into a JavaScript file consuming
+  /// the internals of the `ParsedSource`. Returns an `Err(ParsedSource)`
+  /// when the `ParsedSource` is shared.
+  pub fn transpile_owned(
+    self,
+    transpile_options: &TranspileOptions,
+    emit_options: &EmitOptions,
+  ) -> Result<Result<EmittedSource, TranspileError>, ParsedSource> {
+    let inner = match Arc::try_unwrap(self.inner) {
+      Ok(inner) => inner,
+      Err(inner) => return Err(ParsedSource { inner }),
+    };
+    let program = match Arc::try_unwrap(inner.program) {
+      Ok(program) => program,
+      Err(program) => {
+        return Err(ParsedSource {
+          inner: Arc::new(crate::ParsedSourceInner {
+            specifier: inner.specifier,
+            media_type: inner.media_type,
+            text_info: inner.text_info,
+            comments: inner.comments,
+            program,
+            tokens: inner.tokens,
+            syntax_contexts: inner.syntax_contexts,
+            diagnostics: inner.diagnostics,
+          }),
+        })
+      }
+    };
+    Ok(transpile(
+      inner.specifier,
+      inner.text_info.text_str().to_string(),
+      program,
+      // we need the comments to be mutable, so make it single threaded
+      inner.comments.into_single_threaded(),
+      transpile_options,
+      emit_options,
+      &inner.diagnostics,
+    ))
+  }
+
+  /// Attempts to transpile owned, then falls back to cloning the program.
+  pub fn transpile_owned_with_fallback(
+    self,
+    transpile_options: &TranspileOptions,
+    emit_options: &EmitOptions,
+  ) -> Result<EmittedSource, TranspileError> {
+    match self.transpile_owned(transpile_options, emit_options) {
+      Ok(result) => result,
+      Err(parsed_source) => {
+        // fallback
+        parsed_source.transpile(transpile_options, emit_options)
+      }
+    }
+  }
+}
+
+fn transpile(
+  specifier: ModuleSpecifier,
+  source: String,
+  program: Program,
+  comments: SingleThreadedComments,
+  transpile_options: &TranspileOptions,
+  emit_options: &EmitOptions,
+  diagnostics: &[ParseDiagnostic],
+) -> Result<EmittedSource, TranspileError> {
+  if transpile_options.use_decorators_proposal
+    && transpile_options.use_ts_decorators
+  {
+    return Err(TranspileError::DecoratorOptionsConflict);
+  }
+
+  let source_map = SourceMap::single(specifier, source);
+
+  let globals = Globals::new();
+  let program = crate::swc::common::GLOBALS.set(&globals, || {
+    let top_level_mark = Mark::fresh(Mark::root());
+    fold_program(
+      program,
+      transpile_options,
+      &source_map,
+      &comments,
+      top_level_mark,
+      diagnostics,
+    )
+  })?;
+
+  Ok(emit(&program, &comments, &source_map, emit_options)?)
 }
 
 #[derive(Default, Clone)]
@@ -1412,5 +1488,116 @@ const a = _jsx(Foo, {
 }"#
     );
     assert_eq!(emit_result.source_map, None);
+  }
+
+  #[test]
+  fn test_transpile_owned_when_owned() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"const foo: string = "bar";"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let emit_result = module
+      .transpile_owned(
+        &TranspileOptions::default(),
+        &EmitOptions {
+          source_map: SourceMapOption::None,
+          ..Default::default()
+        },
+      )
+      .unwrap()
+      .unwrap();
+    assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
+  }
+
+  #[test]
+  fn test_transpile_owned_when_cloned() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"const foo: string = "bar";"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+
+    // won't transpile since the module is cloned
+    let borrowed_module = module.clone();
+    let result =
+      module.transpile_owned(&Default::default(), &Default::default());
+    let module = result.err().unwrap();
+    drop(borrowed_module);
+
+    // won't transpile since the program is cloned
+    let borrowed_program = module.program().clone();
+    let result =
+      module.transpile_owned(&Default::default(), &Default::default());
+    let module = result.err().unwrap();
+    drop(borrowed_program);
+
+    // now it will work
+    let emit_result = module
+      .transpile_owned(
+        &TranspileOptions::default(),
+        &EmitOptions {
+          source_map: SourceMapOption::None,
+          ..Default::default()
+        },
+      )
+      .unwrap()
+      .unwrap();
+    assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
+  }
+
+  #[test]
+  fn test_transpile_owned_with_fallback() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"const foo: string = "bar";"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+
+    // even though it's borrowed, it will transpile
+    let borrowed_module = module.clone();
+    let emit_result = module
+      .transpile_owned_with_fallback(
+        &TranspileOptions::default(),
+        &EmitOptions {
+          source_map: SourceMapOption::None,
+          ..Default::default()
+        },
+      )
+      .unwrap();
+    assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
+
+    // now it's owned, should still work
+    let emit_result = borrowed_module
+      .transpile_owned_with_fallback(
+        &TranspileOptions::default(),
+        &EmitOptions {
+          source_map: SourceMapOption::None,
+          ..Default::default()
+        },
+      )
+      .unwrap();
+    assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
   }
 }

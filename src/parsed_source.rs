@@ -23,15 +23,15 @@ pub(crate) struct SyntaxContexts {
   pub top_level: SyntaxContext,
 }
 
-struct ParsedSourceInner {
-  specifier: ModuleSpecifier,
-  media_type: MediaType,
-  text_info: SourceTextInfo,
-  comments: MultiThreadedComments,
-  program: Arc<Program>,
-  tokens: Option<Arc<Vec<TokenAndSpan>>>,
-  syntax_contexts: Option<SyntaxContexts>,
-  diagnostics: Vec<ParseDiagnostic>,
+pub(crate) struct ParsedSourceInner {
+  pub specifier: ModuleSpecifier,
+  pub media_type: MediaType,
+  pub text_info: SourceTextInfo,
+  pub comments: MultiThreadedComments,
+  pub program: Arc<Program>,
+  pub tokens: Option<Arc<Vec<TokenAndSpan>>>,
+  pub syntax_contexts: Option<SyntaxContexts>,
+  pub diagnostics: Vec<ParseDiagnostic>,
 }
 
 /// A parsed source containing an AST, comments, and possibly tokens.
@@ -39,7 +39,7 @@ struct ParsedSourceInner {
 /// Note: This struct is cheap to clone.
 #[derive(Clone)]
 pub struct ParsedSource {
-  inner: Arc<ParsedSourceInner>,
+  pub(crate) inner: Arc<ParsedSourceInner>,
 }
 
 impl ParsedSource {
