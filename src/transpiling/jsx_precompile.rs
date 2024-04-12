@@ -1425,21 +1425,23 @@ impl VisitMut for JsxPrecompile {
           // Flatten the fragment if it only has one child
           let child = &frag.children[0];
           match child {
-            JSXElementChild::JSXText(jsx_text) => {
-              let text = jsx_text_to_str(jsx_text, true);
-              *expr = string_lit_expr(text.into())
-            }
-            JSXElementChild::JSXExprContainer(jsx_expr_container) => {
-              match &jsx_expr_container.expr {
-                // Empty JSX expressions can be ignored as they have no content
-                // Case: <>{}</>
-                // Case: <>{/* some comment */}</>
-                JSXExpr::JSXEmptyExpr(_) => {}
-                JSXExpr::Expr(jsx_expr) => {
-                  *expr =
-                    self.maybe_wrap_with_jsx_escape_call(*jsx_expr.clone())
-                }
-              }
+            JSXElementChild::JSXText(_)
+            | JSXElementChild::JSXExprContainer(_) => {
+              // We always need to materialize a Fragment with a single
+              // text child to avoid double escaping.
+              self.next_index += 1;
+              let index = self.next_index;
+              let mut strings: Vec<String> = vec![];
+              let mut dynamic_exprs: Vec<Expr> = vec![];
+
+              strings.push("".to_string());
+
+              self.serialize_jsx_children_to_string(
+                &frag.children,
+                &mut strings,
+                &mut dynamic_exprs,
+              );
+              *expr = self.gen_template(index, strings, dynamic_exprs)
             }
             // Case: <><span /></>
             JSXElementChild::JSXElement(jsx_element) => {
@@ -2010,17 +2012,48 @@ const a = _jsxTemplate($$_tpl_1, _jsxEscape(2 + 2));"#,
   }
 
   #[test]
-  fn fragment_test() {
+  fn fragment_expr_test() {
     test_transform(
       JsxPrecompile::default(),
-      r#"const a = <>foo</>;"#,
-      r#"const a = "foo";"#,
+      r#"const a = <>{"foo"}</>;"#,
+      r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "foo"
+];
+const a = _jsxTemplate($$_tpl_1);"#,
     );
 
     test_transform(
       JsxPrecompile::default(),
       r#"const a = <>&'"</>;"#,
-      r#"const a = "&amp;&#39;&quot;";"#,
+      r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "&amp;&#39;&quot;"
+];
+const a = _jsxTemplate($$_tpl_1);"#,
+    );
+  }
+
+  #[test]
+  fn fragment_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>foo</>;"#,
+      r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "foo"
+];
+const a = _jsxTemplate($$_tpl_1);"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <>&'"</>;"#,
+      r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "&amp;&#39;&quot;"
+];
+const a = _jsxTemplate($$_tpl_1);"#,
     );
   }
 
@@ -2092,8 +2125,12 @@ const a = _jsxTemplate($$_tpl_1, _jsxEscape(foo), _jsx(Foo, null));"#,
     test_transform(
       JsxPrecompile::default(),
       r#"const a = <>{foo}</>;"#,
-      r#"import { jsxEscape as _jsxEscape } from "react/jsx-runtime";
-const a = _jsxEscape(foo);"#,
+      r#"import { jsxTemplate as _jsxTemplate, jsxEscape as _jsxEscape } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "",
+  ""
+];
+const a = _jsxTemplate($$_tpl_1, _jsxEscape(foo));"#,
     );
 
     test_transform(
@@ -2146,11 +2183,15 @@ const jsx2 = (
 );"#,
       r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate, jsxEscape as _jsxEscape } from "react/jsx-runtime";
 const $$_tpl_1 = [
+  "",
+  ""
+];
+const $$_tpl_2 = [
   "&quot;test&quot;<span>test</span>"
 ];
-const Component = (props: any)=>_jsxEscape(props.children);
+const Component = (props: any)=>_jsxTemplate($$_tpl_1, _jsxEscape(props.children));
 const jsx1 = (_jsx(Component, {
-  children: _jsxTemplate($$_tpl_1)
+  children: _jsxTemplate($$_tpl_2)
 }));
 const jsx2 = (_jsx(Component, {
   children: '"test"'
@@ -2369,9 +2410,12 @@ const a = _jsx(Foo, {
     test_transform(
       JsxPrecompile::default(),
       r#"const a = <Foo bar={<>foo</>} />;"#,
-      r#"import { jsx as _jsx } from "react/jsx-runtime";
+      r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "foo"
+];
 const a = _jsx(Foo, {
-  bar: "foo"
+  bar: _jsxTemplate($$_tpl_1)
 });"#,
     );
 
