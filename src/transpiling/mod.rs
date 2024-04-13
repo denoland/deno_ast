@@ -44,6 +44,8 @@ mod transforms;
 #[derive(Debug, Clone)]
 pub enum TranspileResult {
   /// The `ParsedSource` needed to be cloned in order to transpile.
+  ///
+  /// This is a performance issue and you should strive to get an `Owned` result.
   Cloned(EmittedSource),
   /// The emit occured consuming the `ParsedSource` without cloning.
   Owned(EmittedSource),
