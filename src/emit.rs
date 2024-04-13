@@ -21,7 +21,7 @@ pub enum SourceMapOption {
   None,
 }
 
-#[derive(Debug, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct EmitOptions {
   /// How and if source maps should be generated.
   pub source_map: SourceMapOption,
