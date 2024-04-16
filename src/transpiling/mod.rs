@@ -38,6 +38,28 @@ use std::cell::RefCell;
 mod jsx_precompile;
 mod transforms;
 
+/// Holds whether the `ParsedSource` was cloned or consumed (owned) during
+/// transpilation. This is useful for logging in the CLI when transpilation
+/// occurs when a `ParsedSource` is cloned, as it's a performance issue.
+#[derive(Debug, Clone)]
+pub enum TranspileResult {
+  /// The `ParsedSource` needed to be cloned in order to transpile.
+  ///
+  /// This is a performance issue and you should strive to get an `Owned` result.
+  Cloned(EmittedSource),
+  /// The emit occured consuming the `ParsedSource` without cloning.
+  Owned(EmittedSource),
+}
+
+impl TranspileResult {
+  pub fn into_source(self) -> EmittedSource {
+    match self {
+      TranspileResult::Owned(source) => source,
+      TranspileResult::Cloned(source) => source,
+    }
+  }
+}
+
 #[derive(Debug, Error)]
 pub enum TranspileError {
   #[error("Can't use TranspileOptions::use_decorators_proposal and TranspileOptions::use_ts_decorators together.")]
@@ -162,11 +184,28 @@ impl TranspileOptions {
 }
 
 impl ParsedSource {
-  /// Transform a TypeScript file into a JavaScript file.
+  /// Transform a TypeScript file into a JavaScript file attempting to transpile
+  /// owned, then falls back to cloning the program.
   ///
-  /// Note: This will clone the program if it's shared, which
-  /// might be expensive.
+  /// When calling this, you should stirve to only have one reference
+  /// to `ParsedSource` in order to prevent cloning.
   pub fn transpile(
+    self,
+    transpile_options: &TranspileOptions,
+    emit_options: &EmitOptions,
+  ) -> Result<TranspileResult, TranspileError> {
+    match self.transpile_owned(transpile_options, emit_options) {
+      Ok(result) => Ok(TranspileResult::Owned(result?)),
+      Err(parsed_source) => {
+        // fallback
+        parsed_source
+          .transpile_cloned(transpile_options, emit_options)
+          .map(TranspileResult::Cloned)
+      }
+    }
+  }
+
+  fn transpile_cloned(
     &self,
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
@@ -184,10 +223,7 @@ impl ParsedSource {
     )
   }
 
-  /// Transform a TypeScript file into a JavaScript file consuming
-  /// the internals of the `ParsedSource`. Returns an `Err(ParsedSource)`
-  /// when the `ParsedSource` is shared.
-  pub fn transpile_owned(
+  fn transpile_owned(
     self,
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
@@ -223,21 +259,6 @@ impl ParsedSource {
       emit_options,
       &inner.diagnostics,
     ))
-  }
-
-  /// Attempts to transpile owned, then falls back to cloning the program.
-  pub fn transpile_owned_with_fallback(
-    self,
-    transpile_options: &TranspileOptions,
-    emit_options: &EmitOptions,
-  ) -> Result<EmittedSource, TranspileError> {
-    match self.transpile_owned(transpile_options, emit_options) {
-      Ok(result) => result,
-      Err(parsed_source) => {
-        // fallback
-        parsed_source.transpile(transpile_options, emit_options)
-      }
-    }
   }
 }
 
@@ -587,7 +608,8 @@ export class A {
     .unwrap();
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
-      .unwrap();
+      .unwrap()
+      .into_source();
     let expected_text = r#"var D;
 (function(D) {
   D[D["A"] = 0] = "A";
@@ -643,7 +665,8 @@ export class A {
     .unwrap();
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
-      .unwrap();
+      .unwrap()
+      .into_source();
     let expected_text = r#"function dispose_SuppressedError(suppressed, error) {
   if (typeof SuppressedError !== "undefined") {
     dispose_SuppressedError = SuppressedError;
@@ -742,7 +765,8 @@ try {
     .unwrap();
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
-      .unwrap();
+      .unwrap()
+      .into_source();
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"div\", null"));
@@ -770,7 +794,8 @@ try {
     .unwrap();
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
-      .unwrap();
+      .unwrap()
+      .into_source();
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"my:tag\", null"));
@@ -803,6 +828,7 @@ function App() {
     let code = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
+      .into_source()
       .text;
     let expected = r#"import { h, Fragment } from "https://deno.land/x/mod.ts";
 function App() {
@@ -841,6 +867,7 @@ function App() {
         },
       )
       .unwrap()
+      .into_source()
       .text;
     let expected = r#"/** @jsxImportSource jsx_lib */ import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
@@ -878,6 +905,7 @@ function App() {
     let code = module
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
+      .into_source()
       .text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
@@ -916,6 +944,7 @@ function App() {
     let code = module
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
+      .into_source()
       .text;
     let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
 function App() {
@@ -960,6 +989,7 @@ function App() {
     let code = module
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
+      .into_source()
       .text;
     let expected = r#"const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
 const example = await import("example");
@@ -1011,6 +1041,7 @@ function App() {
         &EmitOptions::default(),
       )
       .unwrap()
+      .into_source()
       .text;
     let expected = r#"function _ts_decorate(decorators, target, key, desc) {
   var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
@@ -1075,6 +1106,7 @@ _ts_decorate([
         &EmitOptions::default(),
       )
       .unwrap()
+      .into_source()
       .text;
     let expected =
       include_str!("./testdata/tc39_decorator_proposal_output.txt");
@@ -1142,6 +1174,7 @@ _ts_decorate([
     let code = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
+      .into_source()
       .text;
     let expected = r#"function enumerable(value) {
   return function(_target, _propertyKey, descriptor) {
@@ -1190,6 +1223,7 @@ export function g() {
     let code = module
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
+      .into_source()
       .text;
     let expected = r#"export function g() {
   let algorithm;
@@ -1219,6 +1253,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let code = module
       .transpile(&Default::default(), &EmitOptions::default())
       .unwrap()
+      .into_source()
       .text;
     let expected = r#"for(let i = 0; i < testVariable >> 1; i++)callCount++;"#;
     assert_eq!(&code[..expected.len()], expected);
@@ -1346,7 +1381,8 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
 
     let transpiled = p
       .transpile(&Default::default(), &EmitOptions::default())
-      .unwrap();
+      .unwrap()
+      .into_source();
     let lines: Vec<&str> = transpiled.text.split('\n').collect();
     let last_line = lines.last().unwrap();
     let input = last_line
@@ -1378,6 +1414,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let code = module
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
+      .into_source()
       .text;
     let expected1 = r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_2 = [
@@ -1416,7 +1453,8 @@ const a = _jsx(Foo, {
     };
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
-      .unwrap();
+      .unwrap()
+      .into_source();
     let expected1 = r#"{
   const foo = "bar";
 }
@@ -1445,7 +1483,8 @@ const a = _jsx(Foo, {
     };
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
-      .unwrap();
+      .unwrap()
+      .into_source();
     assert_eq!(
       &emit_result.text,
       r#"{
@@ -1480,7 +1519,8 @@ const a = _jsx(Foo, {
     };
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
-      .unwrap();
+      .unwrap()
+      .into_source();
     assert_eq!(
       &emit_result.text,
       r#"{
@@ -1578,7 +1618,7 @@ const a = _jsx(Foo, {
     // even though it's borrowed, it will transpile
     let borrowed_module = module.clone();
     let emit_result = module
-      .transpile_owned_with_fallback(
+      .transpile(
         &TranspileOptions::default(),
         &EmitOptions {
           source_map: SourceMapOption::None,
@@ -1586,11 +1626,15 @@ const a = _jsx(Foo, {
         },
       )
       .unwrap();
+    let emit_result = match emit_result {
+      TranspileResult::Owned(_) => unreachable!(),
+      TranspileResult::Cloned(emit_result) => emit_result,
+    };
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
 
     // now it's owned, should still work
     let emit_result = borrowed_module
-      .transpile_owned_with_fallback(
+      .transpile(
         &TranspileOptions::default(),
         &EmitOptions {
           source_map: SourceMapOption::None,
@@ -1598,6 +1642,10 @@ const a = _jsx(Foo, {
         },
       )
       .unwrap();
+    let emit_result = match emit_result {
+      TranspileResult::Cloned(_) => unreachable!(),
+      TranspileResult::Owned(emit_result) => emit_result,
+    };
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
   }
   
