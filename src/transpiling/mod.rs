@@ -1600,4 +1600,38 @@ const a = _jsx(Foo, {
       .unwrap();
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
   }
+  
+  #[test]
+  fn should_not_panic_with_scope_analysis() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"
+const inspect: () => void = eval();
+
+export function defaultFormatter(record: Record): string {
+  for (let i = 0; i < 10; i++) {
+    inspect(record);
+  }
+}
+
+export function formatter(record: Record) {
+}
+"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+
+    let emit_result = module
+      .transpile(
+        &TranspileOptions::default(),
+        &EmitOptions::default(),
+      );
+    assert!(emit_result.is_ok());
+  }
 }

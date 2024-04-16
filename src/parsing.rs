@@ -188,7 +188,7 @@ fn scope_analysis_transform_inner(
   let globals = Globals::new();
   crate::swc::common::GLOBALS.set(&globals, || {
     let unresolved_mark = Mark::new();
-    let top_level_mark = Mark::new();
+    let top_level_mark = Mark::fresh(Mark::root());
     let program =
       program.fold_with(&mut resolver(unresolved_mark, top_level_mark, true));
 
