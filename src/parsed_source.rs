@@ -3,6 +3,8 @@
 use std::fmt;
 use std::sync::Arc;
 
+use swc_common::Mark;
+
 use crate::comments::MultiThreadedComments;
 use crate::scope_analysis_transform;
 use crate::swc::ast::Module;
@@ -17,6 +19,42 @@ use crate::ParseDiagnostic;
 use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
 
+#[derive(Debug, Clone)]
+pub struct Marks {
+  pub unresolved: Mark,
+  pub top_level: Mark,
+}
+
+#[derive(Clone)]
+pub struct Globals {
+  marks: Marks,
+  globals: Arc<crate::swc::common::Globals>,
+}
+
+impl Default for Globals {
+  fn default() -> Self {
+    let globals = crate::swc::common::Globals::new();
+    let marks = crate::swc::common::GLOBALS.set(&globals, || Marks {
+      unresolved: Mark::new(),
+      top_level: Mark::fresh(Mark::root()),
+    });
+    Self {
+      marks,
+      globals: Arc::new(globals),
+    }
+  }
+}
+
+impl Globals {
+  pub fn with<T>(&self, action: impl FnOnce(&Marks) -> T) -> T {
+    crate::swc::common::GLOBALS.set(&self.globals, || action(&self.marks))
+  }
+
+  pub fn marks(&self) -> &Marks {
+    &self.marks
+  }
+}
+
 #[derive(Clone)]
 pub(crate) struct SyntaxContexts {
   pub unresolved: SyntaxContext,
@@ -30,6 +68,7 @@ pub(crate) struct ParsedSourceInner {
   pub comments: MultiThreadedComments,
   pub program: Arc<Program>,
   pub tokens: Option<Arc<Vec<TokenAndSpan>>>,
+  pub globals: Globals,
   pub syntax_contexts: Option<SyntaxContexts>,
   pub diagnostics: Vec<ParseDiagnostic>,
 }
@@ -51,6 +90,7 @@ impl ParsedSource {
     comments: MultiThreadedComments,
     program: Arc<Program>,
     tokens: Option<Arc<Vec<TokenAndSpan>>>,
+    globals: Globals,
     syntax_contexts: Option<SyntaxContexts>,
     diagnostics: Vec<ParseDiagnostic>,
   ) -> Self {
@@ -62,6 +102,7 @@ impl ParsedSource {
         comments,
         program,
         tokens,
+        globals,
         syntax_contexts,
         diagnostics,
       }),
@@ -118,6 +159,11 @@ impl ParsedSource {
     &self.inner.comments
   }
 
+  /// Wrapper around globals that swc uses for transpiling.
+  pub fn globals(&self) -> &Globals {
+    &self.inner.globals
+  }
+
   /// Get the source's leading comments, where triple slash directives might
   /// be located.
   pub fn get_leading_comments(&self) -> Option<&Vec<Comment>> {
@@ -156,13 +202,15 @@ impl ParsedSource {
           tokens: arc_inner.tokens.clone(),
           syntax_contexts: arc_inner.syntax_contexts.clone(),
           diagnostics: arc_inner.diagnostics.clone(),
+          globals: arc_inner.globals.clone(),
         },
       };
       let program = match Arc::try_unwrap(inner.program) {
         Ok(program) => program,
         Err(program) => (*program).clone(),
       };
-      let (program, context) = scope_analysis_transform(program);
+      let (program, context) =
+        scope_analysis_transform(program, &inner.globals);
       inner.program = Arc::new(program);
       inner.syntax_contexts = context;
       ParsedSource {

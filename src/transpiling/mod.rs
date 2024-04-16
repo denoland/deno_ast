@@ -12,8 +12,6 @@ use crate::swc::ast::Program;
 use crate::swc::common::chain;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::errors::Diagnostic as SwcDiagnostic;
-use crate::swc::common::Globals;
-use crate::swc::common::Mark;
 use crate::swc::parser::error::SyntaxError;
 use crate::swc::transforms::fixer;
 use crate::swc::transforms::helpers;
@@ -27,6 +25,8 @@ use crate::swc::visit::FoldWith;
 use crate::EmitError;
 use crate::EmitOptions;
 use crate::EmittedSource;
+use crate::Globals;
+use crate::Marks;
 use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::ParseDiagnosticsError;
@@ -217,6 +217,11 @@ impl ParsedSource {
       program,
       // we need the comments to be mutable, so make it single threaded
       self.comments().as_single_threaded(),
+      // todo(dsherret): this might be a bug where multiple transpiles could
+      // end up with globals from a different transpile, so this should probably
+      // do a deep clone of the globals, but that requires changes in swc and this
+      // is unlikely to be a problem in practice
+      self.globals(),
       transpile_options,
       emit_options,
       self.diagnostics(),
@@ -245,6 +250,7 @@ impl ParsedSource {
             tokens: inner.tokens,
             syntax_contexts: inner.syntax_contexts,
             diagnostics: inner.diagnostics,
+            globals: inner.globals,
           }),
         })
       }
@@ -255,6 +261,7 @@ impl ParsedSource {
       program,
       // we need the comments to be mutable, so make it single threaded
       inner.comments.into_single_threaded(),
+      &inner.globals,
       transpile_options,
       emit_options,
       &inner.diagnostics,
@@ -262,11 +269,13 @@ impl ParsedSource {
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn transpile(
   specifier: ModuleSpecifier,
   source: String,
   program: Program,
   comments: SingleThreadedComments,
+  globals: &Globals,
   transpile_options: &TranspileOptions,
   emit_options: &EmitOptions,
   diagnostics: &[ParseDiagnostic],
@@ -279,15 +288,13 @@ fn transpile(
 
   let source_map = SourceMap::single(specifier, source);
 
-  let globals = Globals::new();
-  let program = crate::swc::common::GLOBALS.set(&globals, || {
-    let top_level_mark = Mark::fresh(Mark::root());
+  let program = globals.with(|marks| {
     fold_program(
       program,
       transpile_options,
       &source_map,
       &comments,
-      top_level_mark,
+      marks,
       diagnostics,
     )
   })?;
@@ -331,15 +338,14 @@ pub fn fold_program(
   options: &TranspileOptions,
   source_map: &SourceMap,
   comments: &SingleThreadedComments,
-  top_level_mark: Mark,
+  marks: &Marks,
   diagnostics: &[ParseDiagnostic],
 ) -> Result<Program, FoldProgramError> {
   ensure_no_fatal_diagnostics(diagnostics)?;
 
-  let unresolved_mark = Mark::new();
   let mut passes = chain!(
     Optional::new(transforms::StripExportsFolder, options.var_decl_imports),
-    resolver(unresolved_mark, top_level_mark, true),
+    resolver(marks.unresolved, marks.top_level, true),
     Optional::new(
       proposal::decorators::decorators(proposal::decorators::Config {
         legacy: true,
@@ -354,7 +360,7 @@ pub fn fold_program(
       options.use_decorators_proposal,
     ),
     proposal::explicit_resource_management::explicit_resource_management(),
-    helpers::inject_helpers(top_level_mark),
+    helpers::inject_helpers(marks.top_level),
     // transform imports to var decls before doing the typescript pass
     // so that swc doesn't do any optimizations on the import declarations
     Optional::new(
@@ -362,7 +368,7 @@ pub fn fold_program(
       options.var_decl_imports
     ),
     Optional::new(
-      typescript::typescript(options.as_typescript_config(), top_level_mark),
+      typescript::typescript(options.as_typescript_config(), marks.top_level),
       !options.transform_jsx
     ),
     Optional::new(
@@ -371,7 +377,7 @@ pub fn fold_program(
         options.as_typescript_config(),
         options.as_tsx_config(),
         comments,
-        top_level_mark
+        marks.top_level,
       ),
       options.transform_jsx
     ),
@@ -408,8 +414,8 @@ pub fn fold_program(
           throw_if_namespace: Some(false),
           use_spread: None,
         },
-        top_level_mark,
-        unresolved_mark,
+        marks.top_level,
+        marks.unresolved,
       ),
       options.transform_jsx
     ),
@@ -1647,5 +1653,36 @@ const a = _jsx(Foo, {
       TranspileResult::Owned(emit_result) => emit_result,
     };
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
+  }
+
+  #[test]
+  fn should_not_panic_with_scope_analysis() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"
+const inspect: () => void = eval();
+
+export function defaultFormatter(record: Record): string {
+  for (let i = 0; i < 10; i++) {
+    inspect(record);
+  }
+}
+
+export function formatter(record: Record) {
+}
+"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+
+    let emit_result =
+      module.transpile(&TranspileOptions::default(), &EmitOptions::default());
+    assert!(emit_result.is_ok());
   }
 }
