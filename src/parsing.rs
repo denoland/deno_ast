@@ -15,6 +15,7 @@ use crate::swc::parser::token::TokenAndSpan;
 use crate::swc::parser::EsConfig;
 use crate::swc::parser::Syntax;
 use crate::swc::parser::TsConfig;
+use crate::Globals;
 use crate::MediaType;
 use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
@@ -48,7 +49,7 @@ pub struct ParseParams {
 pub fn parse_program(
   params: ParseParams,
 ) -> Result<ParsedSource, ParseDiagnostic> {
-  parse(params, ParseMode::Program, |p| p)
+  parse(params, ParseMode::Program, |p, _| p)
 }
 
 /// Parses the provided information as a program with the option of providing some
@@ -66,7 +67,7 @@ pub fn parse_program(
 ///    maybe_syntax: None,
 ///    scope_analysis: false,
 ///  },
-///  |program| {
+///  |program, _globals| {
 ///    // do something with the program here before it gets stored
 ///    program
 ///  },
@@ -74,7 +75,7 @@ pub fn parse_program(
 /// ```
 pub fn parse_program_with_post_process(
   params: ParseParams,
-  post_process: impl FnOnce(Program) -> Program,
+  post_process: impl FnOnce(Program, &Globals) -> Program,
 ) -> Result<ParsedSource, ParseDiagnostic> {
   parse(params, ParseMode::Program, post_process)
 }
@@ -83,36 +84,44 @@ pub fn parse_program_with_post_process(
 pub fn parse_module(
   params: ParseParams,
 ) -> Result<ParsedSource, ParseDiagnostic> {
-  parse(params, ParseMode::Module, |p| p)
+  parse(params, ParseMode::Module, |p, _| p)
 }
 
 /// Parses a module with post processing (see docs on `parse_program_with_post_process`).
 pub fn parse_module_with_post_process(
   params: ParseParams,
-  post_process: impl FnOnce(Module) -> Module,
+  post_process: impl FnOnce(Module, &Globals) -> Module,
 ) -> Result<ParsedSource, ParseDiagnostic> {
-  parse(params, ParseMode::Module, |program| match program {
-    Program::Module(module) => Program::Module(post_process(module)),
-    Program::Script(_) => unreachable!(),
-  })
+  parse(
+    params,
+    ParseMode::Module,
+    |program, globals| match program {
+      Program::Module(module) => Program::Module(post_process(module, globals)),
+      Program::Script(_) => unreachable!(),
+    },
+  )
 }
 
 /// Parses the provided information to a script.
 pub fn parse_script(
   params: ParseParams,
 ) -> Result<ParsedSource, ParseDiagnostic> {
-  parse(params, ParseMode::Script, |p| p)
+  parse(params, ParseMode::Script, |p, _| p)
 }
 
 /// Parses a script with post processing (see docs on `parse_program_with_post_process`).
 pub fn parse_script_with_post_process(
   params: ParseParams,
-  post_process: impl FnOnce(Script) -> Script,
+  post_process: impl FnOnce(Script, &Globals) -> Script,
 ) -> Result<ParsedSource, ParseDiagnostic> {
-  parse(params, ParseMode::Script, |program| match program {
-    Program::Module(_) => unreachable!(),
-    Program::Script(script) => Program::Script(post_process(script)),
-  })
+  parse(
+    params,
+    ParseMode::Script,
+    |program, globals| match program {
+      Program::Module(_) => unreachable!(),
+      Program::Script(script) => Program::Script(post_process(script, globals)),
+    },
+  )
 }
 
 enum ParseMode {
@@ -124,7 +133,7 @@ enum ParseMode {
 fn parse(
   params: ParseParams,
   parse_mode: ParseMode,
-  post_process: impl FnOnce(Program) -> Program,
+  post_process: impl FnOnce(Program, &Globals) -> Program,
 ) -> Result<ParsedSource, ParseDiagnostic> {
   let source = params.text_info;
   let specifier = params.specifier;
@@ -142,10 +151,11 @@ fn parse(
     .into_iter()
     .map(|err| ParseDiagnostic::from_swc_error(err, &specifier, source.clone()))
     .collect();
-  let program = post_process(program);
+  let globals = Globals::default();
+  let program = post_process(program, &globals);
 
   let (program, syntax_contexts) = if params.scope_analysis {
-    scope_analysis_transform(program)
+    scope_analysis_transform(program, &globals)
   } else {
     (program, None)
   };
@@ -157,6 +167,7 @@ fn parse(
     MultiThreadedComments::from_single_threaded(comments),
     Arc::new(program),
     tokens.map(Arc::new),
+    globals,
     syntax_contexts,
     diagnostics,
   ))
@@ -164,10 +175,11 @@ fn parse(
 
 pub(crate) fn scope_analysis_transform(
   _program: Program,
+  _globals: &crate::Globals,
 ) -> (Program, Option<crate::SyntaxContexts>) {
   #[cfg(feature = "transforms")]
   {
-    scope_analysis_transform_inner(_program)
+    scope_analysis_transform_inner(_program, _globals)
   }
   #[cfg(not(feature = "transforms"))]
   panic!(
@@ -178,25 +190,21 @@ pub(crate) fn scope_analysis_transform(
 #[cfg(feature = "transforms")]
 fn scope_analysis_transform_inner(
   program: Program,
+  globals: &crate::Globals,
 ) -> (Program, Option<crate::SyntaxContexts>) {
-  use crate::swc::common::Globals;
-  use crate::swc::common::Mark;
   use crate::swc::common::SyntaxContext;
   use crate::swc::transforms::resolver;
   use crate::swc::visit::FoldWith;
 
-  let globals = Globals::new();
-  crate::swc::common::GLOBALS.set(&globals, || {
-    let unresolved_mark = Mark::new();
-    let top_level_mark = Mark::fresh(Mark::root());
+  globals.with(|marks| {
     let program =
-      program.fold_with(&mut resolver(unresolved_mark, top_level_mark, true));
+      program.fold_with(&mut resolver(marks.unresolved, marks.top_level, true));
 
     (
       program,
       Some(crate::SyntaxContexts {
-        unresolved: SyntaxContext::empty().apply_mark(unresolved_mark),
-        top_level: SyntaxContext::empty().apply_mark(top_level_mark),
+        unresolved: SyntaxContext::empty().apply_mark(marks.unresolved),
+        top_level: SyntaxContext::empty().apply_mark(marks.top_level),
       }),
     )
   })
