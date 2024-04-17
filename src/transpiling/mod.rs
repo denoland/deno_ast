@@ -84,7 +84,8 @@ pub struct TranspileOptions {
   /// with dynamic content. Defaults to `false`, mutually exclusive with
   /// `transform_jsx`.
   pub precompile_jsx: bool,
-  /// Only enabled when
+  /// List of elements that should not be precompiled when the JSX precompile
+  /// transform is used.
   pub precompile_jsx_skip_elements: Option<Vec<String>>,
   /// Should import declarations be transformed to variable declarations using
   /// a dynamic import. This is useful for import & export declaration support
