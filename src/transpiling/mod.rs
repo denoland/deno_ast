@@ -84,6 +84,8 @@ pub struct TranspileOptions {
   /// with dynamic content. Defaults to `false`, mutually exclusive with
   /// `transform_jsx`.
   pub precompile_jsx: bool,
+  /// Only enabled when
+  pub precompile_jsx_skip_elements: Option<Vec<String>>,
   /// Should import declarations be transformed to variable declarations using
   /// a dynamic import. This is useful for import & export declaration support
   /// in script contexts such as the Deno REPL.  Defaults to `false`.
@@ -104,6 +106,7 @@ impl Default for TranspileOptions {
       jsx_import_source: None,
       transform_jsx: true,
       precompile_jsx: false,
+      precompile_jsx_skip_elements: None,
       var_decl_imports: false,
     }
   }
@@ -258,6 +261,7 @@ pub fn fold_program(
     Optional::new(
       as_folder(jsx_precompile::JsxPrecompile::new(
         options.jsx_import_source.clone().unwrap_or_default(),
+        options.precompile_jsx_skip_elements.clone(),
       )),
       options.jsx_import_source.is_some()
         && !options.transform_jsx
@@ -1255,6 +1259,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let transpile_options = TranspileOptions {
       transform_jsx: false,
       precompile_jsx: true,
+      precompile_jsx_skip_elements: Some(vec!["p".to_string()]),
       jsx_import_source: Some("react".to_string()),
       ..Default::default()
     };
@@ -1263,19 +1268,18 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       .unwrap()
       .text;
     let expected1 = r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
-const $$_tpl_2 = [
-  "<p>asdf</p>"
-];
 const $$_tpl_1 = [
   "<span>hello</span>foo",
   ""
 ];
 const a = _jsx(Foo, {
   children: _jsxTemplate($$_tpl_1, _jsx(Bar, {
-    children: _jsxTemplate($$_tpl_2)
+    children: _jsx("p", {
+      children: "asdf"
+    })
   }))
 });
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2Vz"#;
     assert_eq!(&code[0..expected1.len()], expected1);
   }
 

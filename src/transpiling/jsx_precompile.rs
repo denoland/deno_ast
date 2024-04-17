@@ -14,6 +14,8 @@ pub struct JsxPrecompile {
   // The import path to import the jsx runtime from. Will be
   // `<import_source>/jsx-runtime`.
   import_source: String,
+  // List of HTML elements which should not be serialized
+  skip_serialize: Option<Vec<String>>,
 
   // Internal state
   next_index: usize,
@@ -38,6 +40,7 @@ impl Default for JsxPrecompile {
       next_index: 0,
       templates: vec![],
       import_source: "react".to_string(),
+      skip_serialize: None,
       import_jsx: None,
       import_jsx_ssr: None,
       import_jsx_attr: None,
@@ -47,9 +50,13 @@ impl Default for JsxPrecompile {
 }
 
 impl JsxPrecompile {
-  pub fn new(import_source: String) -> Self {
+  pub fn new(
+    import_source: String,
+    skip_serialize: Option<Vec<String>>,
+  ) -> Self {
     Self {
       import_source,
+      skip_serialize,
       ..JsxPrecompile::default()
     }
   }
@@ -339,7 +346,10 @@ fn jsx_member_expr_to_normal(jsx_member_expr: &JSXMemberExpr) -> MemberExpr {
 /// we would miss.
 /// Moreover, components cannot be safely serialized because there
 /// is no specified output format.
-fn is_serializable(opening: &JSXOpeningElement) -> bool {
+fn is_serializable(
+  opening: &JSXOpeningElement,
+  skip_serialize: &Option<Vec<String>>,
+) -> bool {
   match opening.name.clone() {
     // Case: <div />
     JSXElementName::Ident(ident) => {
@@ -350,6 +360,12 @@ fn is_serializable(opening: &JSXOpeningElement) -> bool {
       // Case: <Foo bar="123" />
       if name.chars().next().unwrap().is_ascii_uppercase() {
         return false;
+      }
+
+      if let Some(skip_elements) = skip_serialize {
+        if skip_elements.contains(&name) {
+          return false;
+        }
       }
 
       if opening.attrs.is_empty() {
@@ -403,6 +419,7 @@ fn serialize_attr(attr_name: &str, value: &str) -> String {
 
 fn merge_serializable_children(
   children: &[JSXElementChild],
+  skip_serialize: &Option<Vec<String>>,
   escape_text_children: bool,
 ) -> (Vec<JSXElementChild>, usize, usize) {
   // Do a first pass over children to merge sibling text nodes
@@ -480,7 +497,7 @@ fn merge_serializable_children(
           buf = String::new()
         }
 
-        if is_serializable(&jsx_el.opening) {
+        if is_serializable(&jsx_el.opening, &skip_serialize) {
           serializable_count += 1;
         }
 
@@ -646,7 +663,7 @@ impl JsxPrecompile {
       }
       _ => {
         let (normalized_children, text_count, serializable_count) =
-          merge_serializable_children(children, false);
+          merge_serializable_children(children, &self.skip_serialize, false);
 
         // Merge sibling children when they can be serialized into one
         // serialized child. If all children are serializable, we'll
@@ -962,7 +979,7 @@ impl JsxPrecompile {
     dynamic_exprs: &mut Vec<Expr>,
   ) {
     let (normalized_children, _text_count, _serializable_count) =
-      merge_serializable_children(children, true);
+      merge_serializable_children(children, &self.skip_serialize, true);
 
     for child in normalized_children {
       match child {
@@ -1022,7 +1039,7 @@ impl JsxPrecompile {
     // Case: <div class="foo" {...{ class: "bar"}} />
     // Case: <div {...{ class: "foo"}} class="bar"}>foo</div>
     // Case: <Foo />
-    if !is_serializable(&el.opening) {
+    if !is_serializable(&el.opening, &self.skip_serialize) {
       let expr = Expr::Call(self.serialize_jsx_to_call_expr(el));
       strings.push("".to_string());
       dynamic_exprs.push(expr);
@@ -1267,7 +1284,7 @@ impl JsxPrecompile {
   }
 
   fn serialize_jsx(&mut self, el: &JSXElement) -> Expr {
-    if is_serializable(&el.opening) {
+    if is_serializable(&el.opening, &self.skip_serialize) {
       // These are now safe to be serialized
       // Case: <div foo="1" />
       self.next_index += 1;
@@ -2428,7 +2445,7 @@ const a = _jsx(a.b.c.d, {
   #[test]
   fn import_source_option_test() {
     test_transform(
-      JsxPrecompile::new("foobar".to_string()),
+      JsxPrecompile::new("foobar".to_string(), None),
       r#"const a = <div>foo</div>;"#,
       r#"import { jsxTemplate as _jsxTemplate } from "foobar/jsx-runtime";
 const $$_tpl_1 = [
@@ -2569,6 +2586,29 @@ const $$_tpl_1 = [
   "<div>foo bar </div>"
 ];
 const a = _jsxTemplate($$_tpl_1);"#,
+    );
+  }
+
+  #[test]
+  fn skip_serialization_test() {
+    test_transform(
+      JsxPrecompile::new(
+        "react".to_string(),
+        Some(vec!["a".to_string(), "img".to_string()]),
+      ),
+      r#"const a = <div><img src="foo.jpg"/><a href="\#">foo</a></div>"#,
+      r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>",
+  "",
+  "</div>"
+];
+const a = _jsxTemplate($$_tpl_1, _jsx("img", {
+  src: "foo.jpg"
+}), _jsx("a", {
+  href: "\\#",
+  children: "foo"
+}));"#,
     );
   }
 
