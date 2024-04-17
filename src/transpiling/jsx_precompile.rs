@@ -497,7 +497,7 @@ fn merge_serializable_children(
           buf = String::new()
         }
 
-        if is_serializable(&jsx_el.opening, &skip_serialize) {
+        if is_serializable(&jsx_el.opening, skip_serialize) {
           serializable_count += 1;
         }
 
