@@ -678,75 +678,76 @@ export class A {
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .into_source();
-    let expected_text = r#"function dispose_SuppressedError(suppressed, error) {
-  if (typeof SuppressedError !== "undefined") {
-    dispose_SuppressedError = SuppressedError;
-  } else {
-    dispose_SuppressedError = function SuppressedError(suppressed, error) {
-      this.suppressed = suppressed;
-      this.error = error;
-      this.stack = new Error().stack;
-    };
-    dispose_SuppressedError.prototype = Object.create(Error.prototype, {
-      constructor: {
-        value: dispose_SuppressedError,
-        writable: true,
-        configurable: true
+    let expected_text = r#"function _using_ctx() {
+  var _disposeSuppressedError = typeof SuppressedError === "function" ? SuppressedError : function(error, suppressed) {
+    var err = new Error();
+    err.name = "SuppressedError";
+    err.suppressed = suppressed;
+    err.error = error;
+    return err;
+  }, empty = {}, stack = [];
+  function using(isAwait, value) {
+    if (value != null) {
+      if (Object(value) !== value) {
+        throw new TypeError("using declarations can only be used with objects, functions, null, or undefined.");
       }
-    });
-  }
-  return new dispose_SuppressedError(suppressed, error);
-}
-function _dispose(stack, error, hasError) {
-  function next() {
-    while(stack.length > 0){
-      try {
-        var r = stack.pop();
-        var p = r.d.call(r.v);
-        if (r.a) return Promise.resolve(p).then(next, err);
-      } catch (e) {
-        return err(e);
+      if (isAwait) {
+        var dispose = value[Symbol.asyncDispose || Symbol.for("Symbol.asyncDispose")];
       }
+      if (dispose == null) {
+        dispose = value[Symbol.dispose || Symbol.for("Symbol.dispose")];
+      }
+      if (typeof dispose !== "function") {
+        throw new TypeError(`Property [Symbol.dispose] is not a function.`);
+      }
+      stack.push({
+        v: value,
+        d: dispose,
+        a: isAwait
+      });
+    } else if (isAwait) {
+      stack.push({
+        d: value,
+        a: isAwait
+      });
     }
-    if (hasError) throw error;
+    return value;
   }
-  function err(e) {
-    error = hasError ? new dispose_SuppressedError(e, error) : e;
-    hasError = true;
-    return next();
-  }
-  return next();
-}
-function _using(stack, value, isAwait) {
-  if (value === null || value === void 0) return value;
-  if (Object(value) !== value) {
-    throw new TypeError("using declarations can only be used with objects, functions, null, or undefined.");
-  }
-  if (isAwait) {
-    var dispose = value[Symbol.asyncDispose || Symbol.for("Symbol.asyncDispose")];
-  }
-  if (dispose === null || dispose === void 0) {
-    dispose = value[Symbol.dispose || Symbol.for("Symbol.dispose")];
-  }
-  if (typeof dispose !== "function") {
-    throw new TypeError(`Property [Symbol.dispose] is not a function.`);
-  }
-  stack.push({
-    v: value,
-    d: dispose,
-    a: isAwait
-  });
-  return value;
+  return {
+    e: empty,
+    u: using.bind(null, false),
+    a: using.bind(null, true),
+    d: function() {
+      var error = this.e;
+      function next() {
+        while(resource = stack.pop()){
+          try {
+            var resource, disposalResult = resource.d && resource.d.call(resource.v);
+            if (resource.a) {
+              return Promise.resolve(disposalResult).then(next, err);
+            }
+          } catch (e) {
+            return err(e);
+          }
+        }
+        if (error !== empty) throw error;
+      }
+      function err(e) {
+        error = error !== empty ? new _disposeSuppressedError(error, e) : e;
+        return next();
+      }
+      return next();
+    }
+  };
 }
 try {
-  var _stack = [];
-  var data = _using(_stack, create());
+  var _usingCtx = _using_ctx();
+  var data = _usingCtx.u(create());
   console.log(data);
 } catch (_) {
-  var _error = _;
-  var _hasError = true;
+  _usingCtx.e = _;
 } finally{
-  _dispose(_stack, _error, _hasError);
+  _usingCtx.d();
 }"#;
     assert_eq!(
       &transpiled_source.text[..expected_text.len()],

@@ -464,7 +464,7 @@ mod test {
     test_transform(
       StripExportsFolder,
       "export namespace Test {}",
-      "module Test {\n}",
+      "namespace Test {\n}",
     );
   }
 
@@ -473,7 +473,7 @@ mod test {
     test_transform(
       StripExportsFolder,
       "namespace Test { export class Test {} }",
-      "module Test {\n  export class Test {\n  }\n}",
+      "namespace Test {\n  export class Test {\n  }\n}",
     );
   }
 
