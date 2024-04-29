@@ -1512,6 +1512,43 @@ const a = _jsx(Foo, {
   }
 
   #[test]
+  fn test_source_map_with_file() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source = r#"{ const foo = "bar"; };"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let emit_options = EmitOptions {
+      source_map: SourceMapOption::Separate,
+      source_map_file: Some("mod.tsx".to_owned()),
+      ..Default::default()
+    };
+    let emit_result = module
+      .transpile(&TranspileOptions::default(), &emit_options)
+      .unwrap()
+      .into_source();
+    assert_eq!(
+      &emit_result.text,
+      r#"{
+  const foo = "bar";
+}"#
+    );
+    assert_eq!(
+      emit_result.source_map.as_deref(),
+      Some(
+        r#"{"version":3,"file":"mod.tsx","sources":["https://deno.land/x/mod.tsx"],"sourcesContent":["{ const foo = \"bar\"; };"],"names":[],"mappings":"AAAA;EAAE,MAAM,MAAM;AAAO"}"#
+      )
+    );
+  }
+
+  #[test]
   fn test_no_source_map() {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
