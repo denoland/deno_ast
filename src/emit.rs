@@ -25,6 +25,8 @@ pub enum SourceMapOption {
 pub struct EmitOptions {
   /// How and if source maps should be generated.
   pub source_map: SourceMapOption,
+  /// The `"file"` field of the generated source map.
+  pub source_map_file: Option<String>,
   /// Whether to inline the source contents in the source map. Defaults to `true`.
   pub inline_sources: bool,
   /// Whether to keep comments in the output. Defaults to `false`.
@@ -35,6 +37,7 @@ impl Default for EmitOptions {
   fn default() -> Self {
     EmitOptions {
       source_map: SourceMapOption::default(),
+      source_map_file: None,
       inline_sources: true,
       keep_comments: false,
     }
@@ -103,8 +106,15 @@ pub fn emit(
     let source_map_config = SourceMapConfig {
       inline_sources: emit_options.inline_sources,
     };
+    let mut source_map = source_map.build_source_map_with_config(
+      &src_map_buf,
+      None,
+      source_map_config,
+    );
+    if let Some(file) = &emit_options.source_map_file {
+      source_map.set_file(Some(file.to_string()));
+    }
     source_map
-      .build_source_map_with_config(&src_map_buf, None, source_map_config)
       .to_writer(&mut buf)
       .map_err(|e| EmitError::SourceMap(e.into()))?;
 
