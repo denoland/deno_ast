@@ -832,7 +832,13 @@ function App() {
     })
     .unwrap();
     let code = module
-      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .transpile(
+        &TranspileOptions::default(),
+        &EmitOptions {
+          remove_comments: true,
+          ..Default::default()
+        },
+      )
       .unwrap()
       .into_source()
       .text;
@@ -868,7 +874,7 @@ function App() {
       .transpile(
         &TranspileOptions::default(),
         &EmitOptions {
-          keep_comments: true,
+          remove_comments: false,
           ..Default::default()
         },
       )
@@ -909,7 +915,13 @@ function App() {
       ..Default::default()
     };
     let code = module
-      .transpile(&transpile_options, &EmitOptions::default())
+      .transpile(
+        &transpile_options,
+        &EmitOptions {
+          remove_comments: true,
+          ..Default::default()
+        },
+      )
       .unwrap()
       .into_source()
       .text;
@@ -948,7 +960,13 @@ function App() {
       ..Default::default()
     };
     let code = module
-      .transpile(&transpile_options, &EmitOptions::default())
+      .transpile(
+        &transpile_options,
+        &EmitOptions {
+          remove_comments: true,
+          ..Default::default()
+        },
+      )
       .unwrap()
       .into_source()
       .text;
@@ -997,11 +1015,11 @@ function App() {
       .unwrap()
       .into_source()
       .text;
-    let expected = r#"const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
+    let expected = r#"/** @jsxImportSource jsx_lib */ const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
 const example = await import("example");
 function App() {
-  return _jsx("div", {
-    children: _jsx(_Fragment, {})
+  return /*#__PURE__*/ _jsx("div", {
+    children: /*#__PURE__*/ _jsx(_Fragment, {})
   });
 "#;
     assert_eq!(&code[..expected.len()], expected);

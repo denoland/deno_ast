@@ -27,8 +27,8 @@ pub struct EmitOptions {
   pub source_map: SourceMapOption,
   /// Whether to inline the source contents in the source map. Defaults to `true`.
   pub inline_sources: bool,
-  /// Whether to keep comments in the output. Defaults to `false`.
-  pub keep_comments: bool,
+  /// Whether to remove comments in the output. Defaults to `false`.
+  pub remove_comments: bool,
 }
 
 impl Default for EmitOptions {
@@ -36,7 +36,7 @@ impl Default for EmitOptions {
     EmitOptions {
       source_map: SourceMapOption::default(),
       inline_sources: true,
-      keep_comments: false,
+      remove_comments: false,
     }
   }
 }
@@ -82,10 +82,10 @@ pub fn emit(
 
     let mut emitter = crate::swc::codegen::Emitter {
       cfg: swc_codegen_config(),
-      comments: if emit_options.keep_comments {
-        Some(&comments)
-      } else {
+      comments: if emit_options.remove_comments {
         None
+      } else {
+        Some(&comments)
       },
       cm: source_map.clone(),
       wr: writer,
