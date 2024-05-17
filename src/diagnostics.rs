@@ -380,7 +380,13 @@ fn print_diagnostic(
       colors::yellow(format_args!(":{}:{}", line, column))
     )?;
   }
-  writeln!(io)?;
+
+  if diagnostic.snippet().is_some()
+    || diagnostic.hint().is_some()
+    || diagnostic.snippet_fixed().is_some()
+  {
+    writeln!(io)?;
+  }
 
   if let Some(snippet) = diagnostic.snippet() {
     print_snippet(io, &snippet, max_line_number_digits)?;
@@ -400,20 +406,15 @@ fn print_diagnostic(
     print_snippet(io, &snippet, max_line_number_digits)?;
   }
 
-  writeln!(io)?;
+  if !diagnostic.info().is_empty() || diagnostic.docs_url().is_some() {
+    writeln!(io)?;
+  }
 
-  let mut needs_final_newline = false;
   for info in diagnostic.info().iter() {
-    needs_final_newline = true;
     writeln!(io, "  {}: {}", colors::intense_blue("info"), info)?;
   }
   if let Some(docs_url) = diagnostic.docs_url() {
-    needs_final_newline = true;
     writeln!(io, "  {}: {}", colors::intense_blue("docs"), docs_url)?;
-  }
-
-  if needs_final_newline {
-    writeln!(io)?;
   }
 
   Ok(())
