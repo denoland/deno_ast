@@ -384,6 +384,8 @@ fn print_diagnostic(
   if diagnostic.snippet().is_some()
     || diagnostic.hint().is_some()
     || diagnostic.snippet_fixed().is_some()
+    || !diagnostic.info().is_empty()
+    || diagnostic.docs_url().is_some()
   {
     writeln!(io)?;
   }
