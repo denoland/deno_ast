@@ -29,6 +29,7 @@ typescript = ["transforms", "swc_ecma_transforms_typescript"]
 utils = ["swc_ecma_utils"]
 view = ["dprint-swc-ext/view"]
 visit = ["swc_ecma_visit", "swc_visit", "swc_visit_macros", "swc_macros_common"]
+concurrent = ["swc_common/concurrent"]
 
 [dependencies]
 anyhow = { version = "1.0.64", optional = true }
