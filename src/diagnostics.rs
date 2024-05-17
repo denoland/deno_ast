@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Write as _;
@@ -108,10 +109,12 @@ impl<'a> DiagnosticLocation<'a> {
 pub struct DiagnosticSnippet<'a> {
   /// The source text for this snippet. The
   pub source: Cow<'a, crate::SourceTextInfo>,
-  /// The piece of the snippet that should be highlighted.
-  pub highlight: DiagnosticSnippetHighlight<'a>,
+  /// The piece of the snippet that should be highlighted. For best results, the
+  /// highlights should not overlap and be ordered by their start position.
+  pub highlights: Vec<DiagnosticSnippetHighlight<'a>>,
 }
 
+#[derive(Clone)]
 pub struct DiagnosticSnippetHighlight<'a> {
   /// The range of the snippet that should be highlighted.
   pub range: DiagnosticSourceRange,
@@ -121,6 +124,7 @@ pub struct DiagnosticSnippetHighlight<'a> {
   pub description: Option<Cow<'a, str>>,
 }
 
+#[derive(Clone, Copy)]
 pub enum DiagnosticSnippetHighlightStyle {
   /// The highlight is an error. This will place red carets under the highlight.
   Error,
@@ -129,9 +133,6 @@ pub enum DiagnosticSnippetHighlightStyle {
   /// highlight.
   Warning,
   #[allow(dead_code)]
-  /// The highlight shows code additions. This will place green + signs under
-  /// the highlight and will highlight the code in green.
-  Addition,
   /// The highlight shows a hint. This will place blue dashes under the
   /// highlight.
   Hint,
@@ -145,7 +146,6 @@ impl DiagnosticSnippetHighlightStyle {
     match self {
       DiagnosticSnippetHighlightStyle::Error => colors::red_bold(s),
       DiagnosticSnippetHighlightStyle::Warning => colors::yellow_bold(s),
-      DiagnosticSnippetHighlightStyle::Addition => colors::green_bold(s),
       DiagnosticSnippetHighlightStyle::Hint => colors::intense_blue(s),
     }
   }
@@ -154,7 +154,6 @@ impl DiagnosticSnippetHighlightStyle {
     match self {
       DiagnosticSnippetHighlightStyle::Error => '^',
       DiagnosticSnippetHighlightStyle::Warning => '^',
-      DiagnosticSnippetHighlightStyle::Addition => '+',
       DiagnosticSnippetHighlightStyle::Hint => '-',
     }
   }
@@ -163,46 +162,6 @@ impl DiagnosticSnippetHighlightStyle {
 /// Returns the text of the line with the given number.
 fn line_text(source: &SourceTextInfo, line_number: usize) -> &str {
   source.line_text(line_number - 1)
-}
-
-/// Returns the text of the line that contains the given position, split at the
-/// given position.
-fn line_text_split(
-  source: &SourceTextInfo,
-  pos: DiagnosticSourcePos,
-) -> (&str, &str) {
-  let pos = pos.pos(source);
-  let line_index = source.line_index(pos);
-  let line_start_pos = source.line_start(line_index);
-  let line_end_pos = source.line_end(line_index);
-  let before = source.range_text(&SourceRange::new(line_start_pos, pos));
-  let after = source.range_text(&SourceRange::new(pos, line_end_pos));
-  (before, after)
-}
-
-/// Returns the text of the line that contains the given positions, split at the
-/// given positions.
-///
-/// If the positions are on different lines, this will panic.
-fn line_text_split3(
-  source: &SourceTextInfo,
-  start_pos: DiagnosticSourcePos,
-  end_pos: DiagnosticSourcePos,
-) -> (&str, &str, &str) {
-  let start_pos = start_pos.pos(source);
-  let end_pos = end_pos.pos(source);
-  let line_index = source.line_index(start_pos);
-  assert_eq!(
-    line_index,
-    source.line_index(end_pos),
-    "start and end must be on the same line"
-  );
-  let line_start_pos = source.line_start(line_index);
-  let line_end_pos = source.line_end(line_index);
-  let before = source.range_text(&SourceRange::new(line_start_pos, start_pos));
-  let between = source.range_text(&SourceRange::new(start_pos, end_pos));
-  let after = source.range_text(&SourceRange::new(end_pos, line_end_pos));
-  (before, between, after)
 }
 
 /// Returns the line number (1 indexed) of the line that contains the given
@@ -345,12 +304,19 @@ fn print_diagnostic(
 
   let mut max_line_number_digits = 1;
   if let Some(snippet) = diagnostic.snippet() {
-    let last_line = line_number(&snippet.source, snippet.highlight.range.end);
-    max_line_number_digits = max_line_number_digits.max(last_line.ilog10() + 1);
+    for highlight in snippet.highlights.iter() {
+      let last_line = line_number(&snippet.source, highlight.range.end);
+      max_line_number_digits =
+        max_line_number_digits.max(last_line.ilog10() + 1);
+    }
   }
+
   if let Some(snippet) = diagnostic.snippet_fixed() {
-    let last_line = line_number(&snippet.source, snippet.highlight.range.end);
-    max_line_number_digits = max_line_number_digits.max(last_line.ilog10() + 1);
+    for highlight in snippet.highlights.iter() {
+      let last_line = line_number(&snippet.source, highlight.range.end);
+      max_line_number_digits =
+        max_line_number_digits.max(last_line.ilog10() + 1);
+    }
   }
 
   let location = diagnostic.location();
@@ -425,7 +391,7 @@ fn print_snippet(
   snippet: &DiagnosticSnippet<'_>,
   max_line_number_digits: u32,
 ) -> Result<(), std::fmt::Error> {
-  let DiagnosticSnippet { source, highlight } = snippet;
+  let DiagnosticSnippet { source, highlights } = snippet;
 
   fn print_padded(
     io: &mut dyn std::fmt::Write,
@@ -439,84 +405,105 @@ fn print_snippet(
     Ok(())
   }
 
-  let start_line_number = line_number(&snippet.source, highlight.range.start);
-  let end_line_number = line_number(&snippet.source, highlight.range.end);
+  let mut lines_to_show = HashMap::<usize, Vec<usize>>::new();
+  let mut highlights_info = Vec::new();
+  for (i, highlight) in highlights.iter().enumerate() {
+    let start_line_number = line_number(&source, highlight.range.start);
+    let end_line_number = line_number(&source, highlight.range.end);
+    highlights_info.push((start_line_number, end_line_number));
+    for line_number in start_line_number..=end_line_number {
+      lines_to_show.entry(line_number).or_default().push(i);
+    }
+  }
+
+  let mut lines_to_show = lines_to_show.into_iter().collect::<Vec<_>>();
+  lines_to_show.sort();
 
   print_padded(io, colors::intense_blue(" | "), max_line_number_digits)?;
   writeln!(io)?;
-  for line_number in start_line_number..=end_line_number {
+  let mut previous_line_number = None;
+  let mut previous_line_empty = false;
+  for (line_number, highlight_indexes) in lines_to_show {
+    if previous_line_number.is_some()
+      && previous_line_number == Some(line_number - 1)
+      && !previous_line_empty
+    {
+      print_padded(io, colors::intense_blue(" | "), max_line_number_digits)?;
+      writeln!(io)?;
+    }
+
     print_padded(
       io,
       colors::intense_blue(format_args!("{} | ", line_number)),
       max_line_number_digits - line_number.ilog10() - 1,
     )?;
 
-    let padding_width;
-    let highlight_width;
-    if line_number == start_line_number && start_line_number == end_line_number
-    {
-      let (before, between, after) =
-        line_text_split3(source, highlight.range.start, highlight.range.end);
-      write!(io, "{}", ReplaceTab(before))?;
-      match highlight.style {
-        DiagnosticSnippetHighlightStyle::Addition => {
-          write!(io, "{}", colors::green(ReplaceTab(between)))?;
-        }
-        _ => {
-          write!(io, "{}", ReplaceTab(between))?;
+    let line_start_pos = source.line_start(line_number - 1);
+    let line_end_pos = source.line_end(line_number - 1);
+    let line_text = line_text(source, line_number);
+    writeln!(io, "{}", ReplaceTab(line_text))?;
+    previous_line_empty = false;
+
+    let mut wrote_description = false;
+    for highlight_index in highlight_indexes {
+      let highlight = &highlights[highlight_index];
+      let (start_line_number, end_line_number) =
+        highlights_info[highlight_index];
+
+      let padding_width;
+      let highlight_width;
+      if start_line_number == end_line_number {
+        padding_width = display_width(source.range_text(&SourceRange::new(
+          line_start_pos,
+          highlight.range.start.pos(source),
+        )));
+        highlight_width = display_width(source.range_text(&SourceRange::new(
+          highlight.range.start.pos(source),
+          highlight.range.end.pos(source),
+        )));
+      } else if start_line_number == line_number {
+        padding_width = display_width(source.range_text(&SourceRange::new(
+          line_start_pos,
+          highlight.range.start.pos(source),
+        )));
+        highlight_width = display_width(source.range_text(&SourceRange::new(
+          highlight.range.start.pos(source),
+          line_end_pos,
+        )));
+      } else if end_line_number == line_number {
+        padding_width = 0;
+        highlight_width = display_width(source.range_text(&SourceRange::new(
+          line_start_pos,
+          highlight.range.end.pos(source),
+        )));
+      } else {
+        padding_width = 0;
+        highlight_width = display_width(line_text);
+      }
+
+      let underline =
+        RepeatingCharFmt(highlight.style.underline_char(), highlight_width);
+      print_padded(io, colors::intense_blue(" | "), max_line_number_digits)?;
+      write!(io, "{}", RepeatingCharFmt(' ', padding_width))?;
+      write!(io, "{}", highlight.style.style_underline(underline))?;
+
+      if line_number == end_line_number {
+        if let Some(description) = &highlight.description {
+          write!(io, " {}", highlight.style.style_underline(description))?;
+          wrote_description = true;
         }
       }
-      writeln!(io, "{}", ReplaceTab(after))?;
-      padding_width = display_width(before);
-      highlight_width = display_width(between);
-    } else if line_number == start_line_number {
-      let (before, after) = line_text_split(source, highlight.range.start);
-      write!(io, "{}", ReplaceTab(before))?;
-      match highlight.style {
-        DiagnosticSnippetHighlightStyle::Addition => {
-          write!(io, "{}", colors::green(ReplaceTab(after)))?;
-        }
-        _ => {
-          write!(io, "{}", ReplaceTab(after))?;
-        }
-      }
+
       writeln!(io)?;
-      padding_width = display_width(before);
-      highlight_width = display_width(after);
-    } else if line_number == end_line_number {
-      let (before, after) = line_text_split(source, highlight.range.end);
-      match highlight.style {
-        DiagnosticSnippetHighlightStyle::Addition => {
-          write!(io, "{}", colors::green(ReplaceTab(before)))?;
-        }
-        _ => {
-          write!(io, "{}", ReplaceTab(before))?;
-        }
-      }
-      write!(io, "{}", ReplaceTab(after))?;
-      writeln!(io)?;
-      padding_width = 0;
-      highlight_width = display_width(before);
-    } else {
-      let line = line_text(source, line_number);
-      writeln!(io, "{}", ReplaceTab(line))?;
-      padding_width = 0;
-      highlight_width = display_width(line);
     }
 
-    print_padded(io, colors::intense_blue(" | "), max_line_number_digits)?;
-    write!(io, "{}", RepeatingCharFmt(' ', padding_width))?;
-    let underline =
-      RepeatingCharFmt(highlight.style.underline_char(), highlight_width);
-    write!(io, "{}", highlight.style.style_underline(underline))?;
-
-    if line_number == end_line_number {
-      if let Some(description) = &highlight.description {
-        write!(io, " {}", highlight.style.style_underline(description))?;
-      }
+    if wrote_description {
+      print_padded(io, colors::intense_blue(" | "), max_line_number_digits)?;
+      writeln!(io)?;
+      previous_line_empty = true;
     }
 
-    writeln!(io)?;
+    previous_line_number = Some(line_number);
   }
 
   Ok(())
