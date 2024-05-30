@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use ast::BinExpr;
 use ast::Module;
 use serde::Deserialize;
 use serde::Serialize;
@@ -292,20 +293,63 @@ impl<'a> Visit for DependencyCollector<'a> {
       }
       Expr::Tpl(tpl) => {
         if tpl.quasis.len() == 1 && tpl.exprs.is_empty() {
-          DynamicArgument::String(tpl.quasis[0].raw.clone())
+          DynamicArgument::String(
+            tpl.quasis[0].cooked.as_ref().unwrap().clone(),
+          )
         } else {
           let mut parts =
             Vec::with_capacity(tpl.quasis.len() + tpl.exprs.len());
           for i in 0..tpl.quasis.len() {
-            if tpl.quasis[i].raw.len() > 0 {
-              parts
-                .push(DynamicTemplatePart::String(tpl.quasis[i].raw.clone()));
+            let cooked = tpl.quasis[i].cooked.as_ref().unwrap();
+            if cooked.len() > 0 {
+              parts.push(DynamicTemplatePart::String(cooked.clone()));
             }
             if tpl.exprs.get(i).is_some() {
               parts.push(DynamicTemplatePart::Expr);
             }
           }
           DynamicArgument::Template(parts)
+        }
+      }
+      Expr::Bin(bin) => {
+        let mut parts = Vec::with_capacity(2);
+
+        fn visit_bin(
+          parts: &mut Vec<DynamicTemplatePart>,
+          bin: &BinExpr,
+        ) -> Result<(), ()> {
+          if bin.op != ast::BinaryOp::Add {
+            return Err(());
+          }
+
+          match &*bin.left {
+            Expr::Bin(left) => {
+              visit_bin(parts, left)?;
+            }
+            Expr::Lit(ast::Lit::Str(str)) => {
+              parts.push(DynamicTemplatePart::String(str.value.clone()));
+            }
+            _ => {
+              if parts.is_empty() {
+                return Err(());
+              }
+              parts.push(DynamicTemplatePart::Expr);
+            }
+          };
+
+          if let Expr::Lit(ast::Lit::Str(str)) = &*bin.right {
+            parts.push(DynamicTemplatePart::String(str.value.clone()));
+          } else {
+            parts.push(DynamicTemplatePart::Expr);
+          }
+
+          Ok(())
+        }
+
+        if visit_bin(&mut parts, bin).is_ok() {
+          DynamicArgument::Template(parts)
+        } else {
+          DynamicArgument::Expr
         }
       }
       _ => DynamicArgument::Expr,
@@ -832,7 +876,11 @@ const d4 = await import(`${value}/test`);
 const d5 = await import(`${value}${value2}`);
 const d6 = await import(`${value}/test/${value2}`);
 const d7 = await import(`./${value}/test/${value2}/`);
-const d8 = await import(expr);
+const d8 = await import("./foo/" + value);
+const d9 = await import("./foo/" + value + ".ts");
+const d10 = await import(value + ".ts");
+const d11 = await import("./foo/" - value);
+const d12 = await import(expr);
 "#;
     let (start_pos, dependencies) = helper("file:///test.ts", source);
     assert_eq!(
@@ -915,9 +963,48 @@ const d8 = await import(expr);
         .into(),
         DynamicDependencyDescriptor {
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 331, start_pos + 343),
+          range: SourceRange::new(start_pos + 331, start_pos + 355),
+          argument: DynamicArgument::Template(vec![
+            DynamicTemplatePart::String(JsWord::from("./foo/")),
+            DynamicTemplatePart::Expr,
+          ]),
+          argument_range: SourceRange::new(start_pos + 338, start_pos + 354),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 374, start_pos + 406),
+          argument: DynamicArgument::Template(vec![
+            DynamicTemplatePart::String(JsWord::from("./foo/")),
+            DynamicTemplatePart::Expr,
+            DynamicTemplatePart::String(JsWord::from(".ts")),
+          ]),
+          argument_range: SourceRange::new(start_pos + 381, start_pos + 405),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 426, start_pos + 447),
           argument: DynamicArgument::Expr,
-          argument_range: SourceRange::new(start_pos + 338, start_pos + 342),
+          argument_range: SourceRange::new(start_pos + 433, start_pos + 446),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 467, start_pos + 491),
+          argument: DynamicArgument::Expr,
+          argument_range: SourceRange::new(start_pos + 474, start_pos + 490),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange::new(start_pos + 511, start_pos + 523),
+          argument: DynamicArgument::Expr,
+          argument_range: SourceRange::new(start_pos + 518, start_pos + 522),
           import_attributes: ImportAttributes::None,
         }
         .into(),
