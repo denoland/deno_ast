@@ -572,7 +572,6 @@ mod test {
   use crate::MediaType;
   use crate::ModuleSpecifier;
   use crate::ParseParams;
-  use crate::SourceTextInfo;
 
   use super::*;
 

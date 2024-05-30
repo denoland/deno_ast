@@ -605,7 +605,6 @@ mod tests {
   use crate::ModuleSpecifier;
   use crate::ParseParams;
   use crate::SourceMapOption;
-  use crate::SourceTextInfo;
 
   use base64::Engine;
   use pretty_assertions::assert_eq;
