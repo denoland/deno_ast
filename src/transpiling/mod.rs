@@ -281,12 +281,11 @@ fn resolve_transpile_options(
 ) -> Cow<TranspileOptions> {
   if options.transform_jsx {
     let allows_jsx = match media_type {
+      MediaType::Jsx | MediaType::Tsx => true,
       MediaType::JavaScript
       | MediaType::Mjs
       | MediaType::Cjs
-      | MediaType::Jsx
-      | MediaType::Tsx => true,
-      MediaType::Mts
+      | MediaType::Mts
       | MediaType::Cts
       | MediaType::Dts
       | MediaType::Dmts
