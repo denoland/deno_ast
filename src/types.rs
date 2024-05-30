@@ -290,14 +290,14 @@ impl Diagnostic for ParseDiagnostic {
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
     Some(DiagnosticSnippet {
       source: Cow::Borrowed(&self.source),
-      highlight: DiagnosticSnippetHighlight {
+      highlights: vec![DiagnosticSnippetHighlight {
         style: DiagnosticSnippetHighlightStyle::Error,
         range: DiagnosticSourceRange {
           start: DiagnosticSourcePos::SourcePos(self.range.start),
           end: DiagnosticSourcePos::SourcePos(self.range.end),
         },
         description: None,
-      },
+      }],
     })
   }
 
