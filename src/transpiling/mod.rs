@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
+use deno_media_type::MediaType;
 use swc_ecma_visit::as_folder;
 use thiserror::Error;
 
@@ -24,7 +26,7 @@ use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
 use crate::EmitError;
 use crate::EmitOptions;
-use crate::EmittedSource;
+use crate::EmittedSourceBytes;
 use crate::Globals;
 use crate::Marks;
 use crate::ModuleSpecifier;
@@ -46,13 +48,13 @@ pub enum TranspileResult {
   /// The `ParsedSource` needed to be cloned in order to transpile.
   ///
   /// This is a performance issue and you should strive to get an `Owned` result.
-  Cloned(EmittedSource),
+  Cloned(EmittedSourceBytes),
   /// The emit occured consuming the `ParsedSource` without cloning.
-  Owned(EmittedSource),
+  Owned(EmittedSourceBytes),
 }
 
 impl TranspileResult {
-  pub fn into_source(self) -> EmittedSource {
+  pub fn into_source(self) -> EmittedSourceBytes {
     match self {
       TranspileResult::Owned(source) => source,
       TranspileResult::Cloned(source) => source,
@@ -213,7 +215,7 @@ impl ParsedSource {
     &self,
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
-  ) -> Result<EmittedSource, TranspileError> {
+  ) -> Result<EmittedSourceBytes, TranspileError> {
     let program = (*self.program()).clone();
     transpile(
       self.specifier().clone(),
@@ -226,7 +228,7 @@ impl ParsedSource {
       // do a deep clone of the globals, but that requires changes in swc and this
       // is unlikely to be a problem in practice
       self.globals(),
-      transpile_options,
+      &resolve_transpile_options(self.inner.media_type, transpile_options),
       emit_options,
       self.diagnostics(),
     )
@@ -236,7 +238,7 @@ impl ParsedSource {
     self,
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
-  ) -> Result<Result<EmittedSource, TranspileError>, ParsedSource> {
+  ) -> Result<Result<EmittedSourceBytes, TranspileError>, ParsedSource> {
     let inner = match Arc::try_unwrap(self.inner) {
       Ok(inner) => inner,
       Err(inner) => return Err(ParsedSource { inner }),
@@ -266,11 +268,47 @@ impl ParsedSource {
       // we need the comments to be mutable, so make it single threaded
       inner.comments.into_single_threaded(),
       &inner.globals,
-      transpile_options,
+      &resolve_transpile_options(inner.media_type, transpile_options),
       emit_options,
       &inner.diagnostics,
     ))
   }
+}
+
+fn resolve_transpile_options(
+  media_type: MediaType,
+  options: &TranspileOptions,
+) -> Cow<TranspileOptions> {
+  if options.transform_jsx {
+    let allows_jsx = match media_type {
+      MediaType::Jsx | MediaType::Tsx => true,
+      MediaType::JavaScript
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Json
+      | MediaType::Wasm
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Unknown
+      | MediaType::TypeScript => false,
+    };
+    if !allows_jsx {
+      return Cow::Owned(TranspileOptions {
+        // there is no reason for jsx transforms to be turned on because
+        // the source cannot possibly allow jsx, so we can get a perf
+        // improvement by turning it off
+        transform_jsx: false,
+        ..(options.clone())
+      });
+    }
+  }
+
+  Cow::Borrowed(options)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -283,7 +321,7 @@ fn transpile(
   transpile_options: &TranspileOptions,
   emit_options: &EmitOptions,
   diagnostics: &[ParseDiagnostic],
-) -> Result<EmittedSource, TranspileError> {
+) -> Result<EmittedSourceBytes, TranspileError> {
   if transpile_options.use_decorators_proposal
     && transpile_options.use_ts_decorators
   {
@@ -620,7 +658,9 @@ export class A {
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     let expected_text = r#"var D;
 (function(D) {
   D[D["A"] = 0] = "A";
@@ -677,7 +717,9 @@ export class A {
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     let expected_text = r#"function _using_ctx() {
   var _disposeSuppressedError = typeof SuppressedError === "function" ? SuppressedError : function(error, suppressed) {
     var err = new Error();
@@ -778,7 +820,9 @@ try {
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"div\", null"));
@@ -807,7 +851,9 @@ try {
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"my:tag\", null"));
@@ -841,6 +887,8 @@ function App() {
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"import { h, Fragment } from "https://deno.land/x/mod.ts";
 function App() {
@@ -880,6 +928,8 @@ function App() {
       )
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"/** @jsxImportSource jsx_lib */ import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
@@ -918,6 +968,8 @@ function App() {
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
@@ -957,6 +1009,8 @@ function App() {
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
 function App() {
@@ -1002,6 +1056,8 @@ function App() {
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
 const example = await import("example");
@@ -1054,6 +1110,8 @@ function App() {
       )
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"function _ts_decorate(decorators, target, key, desc) {
   var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
@@ -1119,6 +1177,8 @@ _ts_decorate([
       )
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected =
       include_str!("./testdata/tc39_decorator_proposal_output.txt");
@@ -1187,6 +1247,8 @@ _ts_decorate([
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"function enumerable(value) {
   return function(_target, _propertyKey, descriptor) {
@@ -1236,6 +1298,8 @@ export function g() {
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"export function g() {
   let algorithm;
@@ -1266,6 +1330,8 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       .transpile(&Default::default(), &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"for(let i = 0; i < testVariable >> 1; i++)callCount++;"#;
     assert_eq!(&code[..expected.len()], expected);
@@ -1394,7 +1460,9 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let transpiled = p
       .transpile(&Default::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     let lines: Vec<&str> = transpiled.text.split('\n').collect();
     let last_line = lines.last().unwrap();
     let input = last_line
@@ -1428,6 +1496,8 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected1 = r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -1466,7 +1536,9 @@ const a = _jsx(Foo, {
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     let expected1 = r#"{
   const foo = "bar";
 }
@@ -1496,7 +1568,9 @@ const a = _jsx(Foo, {
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     assert_eq!(
       &emit_result.text,
       r#"{
@@ -1533,7 +1607,9 @@ const a = _jsx(Foo, {
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     assert_eq!(
       &emit_result.text,
       r#"{
@@ -1569,7 +1645,9 @@ const a = _jsx(Foo, {
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     assert_eq!(
       &emit_result.text,
       r#"{
@@ -1602,6 +1680,8 @@ const a = _jsx(Foo, {
         },
       )
       .unwrap()
+      .unwrap()
+      .into_string()
       .unwrap();
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
   }
@@ -1645,6 +1725,8 @@ const a = _jsx(Foo, {
         },
       )
       .unwrap()
+      .unwrap()
+      .into_string()
       .unwrap();
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
   }
@@ -1677,7 +1759,9 @@ const a = _jsx(Foo, {
       .unwrap();
     let emit_result = match emit_result {
       TranspileResult::Owned(_) => unreachable!(),
-      TranspileResult::Cloned(emit_result) => emit_result,
+      TranspileResult::Cloned(emit_result) => {
+        emit_result.into_string().unwrap()
+      }
     };
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
 
@@ -1693,7 +1777,7 @@ const a = _jsx(Foo, {
       .unwrap();
     let emit_result = match emit_result {
       TranspileResult::Cloned(_) => unreachable!(),
-      TranspileResult::Owned(emit_result) => emit_result,
+      TranspileResult::Owned(emit_result) => emit_result.into_string().unwrap(),
     };
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
   }
