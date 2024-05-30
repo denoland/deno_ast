@@ -228,7 +228,7 @@ impl ParsedSource {
       // do a deep clone of the globals, but that requires changes in swc and this
       // is unlikely to be a problem in practice
       self.globals(),
-      &resolve_transpile_options(self.inner.media_type, transpile_options),
+      &resolve_transpile_options(self.0.media_type, transpile_options),
       emit_options,
       self.diagnostics(),
     )
@@ -239,26 +239,25 @@ impl ParsedSource {
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
   ) -> Result<Result<EmittedSourceBytes, TranspileError>, ParsedSource> {
-    let inner = match Arc::try_unwrap(self.inner) {
+    let inner = match Arc::try_unwrap(self.0) {
       Ok(inner) => inner,
-      Err(inner) => return Err(ParsedSource { inner }),
+      Err(inner) => return Err(ParsedSource(inner)),
     };
     let program = match Arc::try_unwrap(inner.program) {
       Ok(program) => program,
       Err(program) => {
-        return Err(ParsedSource {
-          inner: Arc::new(crate::ParsedSourceInner {
-            specifier: inner.specifier,
-            media_type: inner.media_type,
-            text: inner.text,
-            comments: inner.comments,
-            program,
-            tokens: inner.tokens,
-            syntax_contexts: inner.syntax_contexts,
-            diagnostics: inner.diagnostics,
-            globals: inner.globals,
-          }),
-        })
+        return Err(ParsedSource(Arc::new(crate::ParsedSourceInner {
+          specifier: inner.specifier,
+          media_type: inner.media_type,
+          text: inner.text,
+          source_text_info: inner.source_text_info,
+          comments: inner.comments,
+          program,
+          tokens: inner.tokens,
+          syntax_contexts: inner.syntax_contexts,
+          diagnostics: inner.diagnostics,
+          globals: inner.globals,
+        })))
       }
     };
     Ok(transpile(

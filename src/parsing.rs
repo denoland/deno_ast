@@ -154,21 +154,23 @@ fn parse(
         let source_text_info = SourceTextInfo::new(source.clone());
         ParseDiagnostic::from_swc_error(err, &specifier, source_text_info)
       })?;
-  let diagnostics = if errors.is_empty() {
-    Vec::new()
+  let (diagnostics, maybe_text_info) = if errors.is_empty() {
+    (Vec::new(), None)
   } else {
-    // todo(dsherret): remove usages of SourceTextInfo in diagnostics
     let source_text_info = SourceTextInfo::new(source.clone());
-    errors
-      .into_iter()
-      .map(|err| {
-        ParseDiagnostic::from_swc_error(
-          err,
-          &specifier,
-          source_text_info.clone(),
-        )
-      })
-      .collect()
+    (
+      errors
+        .into_iter()
+        .map(|err| {
+          ParseDiagnostic::from_swc_error(
+            err,
+            &specifier,
+            source_text_info.clone(),
+          )
+        })
+        .collect(),
+      Some(source_text_info),
+    )
   };
   let globals = Globals::default();
   let program = post_process(program, &globals);
@@ -179,17 +181,24 @@ fn parse(
     (program, None)
   };
 
-  Ok(ParsedSource::new(
+  let inner = crate::ParsedSourceInner {
     specifier,
-    params.media_type.to_owned(),
-    source,
-    MultiThreadedComments::from_single_threaded(comments),
-    Arc::new(program),
-    tokens.map(Arc::new),
+    media_type,
+    text: source,
+    source_text_info: Default::default(),
+    comments: MultiThreadedComments::from_single_threaded(comments),
+    program: Arc::new(program),
+    tokens: tokens.map(Arc::new),
     globals,
     syntax_contexts,
     diagnostics,
-  ))
+  };
+
+  if let Some(text_info) = maybe_text_info {
+    inner.source_text_info.set(text_info).unwrap();
+  }
+
+  Ok(ParsedSource(Arc::new(inner)))
 }
 
 pub(crate) fn scope_analysis_transform(
