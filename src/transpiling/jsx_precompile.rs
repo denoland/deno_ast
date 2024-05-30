@@ -2692,6 +2692,8 @@ const a = _jsxTemplate($$_tpl_1, _jsx("img", {
       },
     )
     .unwrap()
+    .into_string()
+    .unwrap()
     .text
   }
 }

@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::string::FromUtf8Error;
+
 use anyhow::Result;
 use base64::Engine;
 use thiserror::Error;
@@ -46,8 +48,26 @@ impl Default for EmitOptions {
 
 /// Source emitted based on the emit options.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
-pub struct EmittedSource {
-  /// Emitted text.
+pub struct EmittedSourceBytes {
+  /// Emitted text as utf8 bytes.
+  pub source: Vec<u8>,
+  /// Source map back to the original file.
+  pub source_map: Option<Vec<u8>>,
+}
+
+impl EmittedSourceBytes {
+  /// Convenience method to convert the emitted source bytes into a string.
+  pub fn into_string(self) -> Result<EmittedSourceText, FromUtf8Error> {
+    let text = String::from_utf8(self.source)?;
+    let source_map = self.source_map.map(String::from_utf8).transpose()?;
+    Ok(EmittedSourceText { text, source_map })
+  }
+}
+
+/// Source emitted based on the emit options.
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
+pub struct EmittedSourceText {
+  /// Emitted text as utf8 bytes.
   pub text: String,
   /// Source map back to the original file.
   pub source_map: Option<String>,
@@ -55,8 +75,6 @@ pub struct EmittedSource {
 
 #[derive(Debug, Error)]
 pub enum EmitError {
-  #[error(transparent)]
-  Utf8(#[from] std::string::FromUtf8Error),
   #[error(transparent)]
   SwcEmit(anyhow::Error),
   #[error(transparent)]
@@ -70,15 +88,15 @@ pub fn emit(
   comments: &dyn crate::swc::common::comments::Comments,
   source_map: &SourceMap,
   emit_options: &EmitOptions,
-) -> Result<EmittedSource, EmitError> {
+) -> Result<EmittedSourceBytes, EmitError> {
   let source_map = source_map.inner();
   let mut src_map_buf = vec![];
-  let mut buf = vec![];
+  let mut src_buf = vec![];
   {
     let mut writer = Box::new(JsWriter::new(
       source_map.clone(),
       "\n",
-      &mut buf,
+      &mut src_buf,
       Some(&mut src_map_buf),
     ));
     writer.set_indent_str("  "); // two spaces
@@ -98,11 +116,10 @@ pub fn emit(
       .map_err(|e| EmitError::SwcEmit(e.into()))?;
   }
 
-  let mut src = String::from_utf8(buf)?;
-  let mut map: Option<String> = None;
+  let mut map: Option<Vec<u8>> = None;
 
   if emit_options.source_map != SourceMapOption::None {
-    let mut buf = Vec::new();
+    let mut map_buf = Vec::new();
     let source_map_config = SourceMapConfig {
       inline_sources: emit_options.inline_sources,
     };
@@ -115,22 +132,37 @@ pub fn emit(
       source_map.set_file(Some(file.to_string()));
     }
     source_map
-      .to_writer(&mut buf)
+      .to_writer(&mut map_buf)
       .map_err(|e| EmitError::SourceMap(e.into()))?;
 
     if emit_options.source_map == SourceMapOption::Inline {
-      if !src.ends_with('\n') {
-        src.push('\n');
+      // length is from the base64 crate examples
+      let mut inline_buf = vec![0; map_buf.len() * 4 / 3 + 4];
+      let size = base64::prelude::BASE64_STANDARD
+        .encode_slice(map_buf, &mut inline_buf)
+        .map_err(|err| EmitError::SourceMap(err.into()))?;
+      let inline_buf = &inline_buf[..size];
+      let prelude_text = "//# sourceMappingURL=data:application/json;base64,";
+      let src_has_trailing_newline = src_buf.ends_with(&[b'\n']);
+      let additional_capacity =
+        src_has_trailing_newline.then_some(0).unwrap_or(1)
+          + prelude_text.len()
+          + inline_buf.len();
+      let expected_final_capacity = src_buf.len() + additional_capacity;
+      src_buf.reserve(additional_capacity);
+      if !src_has_trailing_newline {
+        src_buf.push(b'\n');
       }
-      src.push_str("//# sourceMappingURL=data:application/json;base64,");
-      base64::prelude::BASE64_STANDARD.encode_string(buf, &mut src);
+      src_buf.extend(prelude_text.as_bytes());
+      src_buf.extend(inline_buf);
+      debug_assert_eq!(src_buf.len(), expected_final_capacity);
     } else {
-      map = Some(String::from_utf8(buf)?);
+      map = Some(map_buf);
     }
   }
 
-  Ok(EmittedSource {
-    text: src,
+  Ok(EmittedSourceBytes {
+    source: src_buf,
     source_map: map,
   })
 }
