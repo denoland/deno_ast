@@ -275,10 +275,10 @@ impl ParsedSource {
   }
 }
 
-fn resolve_transpile_options<'a>(
+fn resolve_transpile_options(
   media_type: MediaType,
-  options: &'a TranspileOptions,
-) -> Cow<'a, TranspileOptions> {
+  options: &TranspileOptions,
+) -> Cow<TranspileOptions> {
   if options.transform_jsx {
     let allows_jsx = match media_type {
       MediaType::JavaScript
