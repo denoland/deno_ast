@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
+use deno_media_type::MediaType;
 use swc_ecma_visit::as_folder;
 use thiserror::Error;
 
@@ -226,7 +228,7 @@ impl ParsedSource {
       // do a deep clone of the globals, but that requires changes in swc and this
       // is unlikely to be a problem in practice
       self.globals(),
-      transpile_options,
+      &resolve_transpile_options(self.inner.media_type, transpile_options),
       emit_options,
       self.diagnostics(),
     )
@@ -266,11 +268,48 @@ impl ParsedSource {
       // we need the comments to be mutable, so make it single threaded
       inner.comments.into_single_threaded(),
       &inner.globals,
-      transpile_options,
+      &resolve_transpile_options(inner.media_type, transpile_options),
       emit_options,
       &inner.diagnostics,
     ))
   }
+}
+
+fn resolve_transpile_options<'a>(
+  media_type: MediaType,
+  options: &'a TranspileOptions,
+) -> Cow<'a, TranspileOptions> {
+  if options.transform_jsx {
+    let allows_jsx = match media_type {
+      MediaType::JavaScript
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::Jsx
+      | MediaType::Tsx => true,
+      MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Json
+      | MediaType::Wasm
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Unknown
+      | MediaType::TypeScript => false,
+    };
+    if !allows_jsx {
+      return Cow::Owned(TranspileOptions {
+        // there is no reason for jsx transforms to be turned on because
+        // the source cannot possibly allow jsx, so we can get a perf
+        // improvement by turning it off
+        transform_jsx: false,
+        ..(options.clone())
+      });
+    }
+  }
+
+  Cow::Borrowed(options)
 }
 
 #[allow(clippy::too_many_arguments)]
