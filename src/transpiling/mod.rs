@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::rc::Rc;
 use std::sync::Arc;
+use swc_common::sync::{Lrc, Send, Sync};
 
 use anyhow::Result;
 use swc_ecma_visit::as_folder;
@@ -308,8 +308,11 @@ fn transpile(
 
 #[derive(Default, Clone)]
 struct DiagnosticCollector {
-  diagnostics_cell: Rc<RefCell<Vec<SwcDiagnostic>>>,
+  diagnostics_cell: Lrc<RefCell<Vec<SwcDiagnostic>>>,
 }
+
+unsafe impl Send for DiagnosticCollector {}
+unsafe impl Sync for DiagnosticCollector {}
 
 impl DiagnosticCollector {
   pub fn into_handler(self) -> crate::swc::common::errors::Handler {
