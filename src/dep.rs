@@ -529,7 +529,7 @@ mod tests {
   ) -> (SourcePos, Vec<DependencyDescriptor>) {
     let source = crate::parse_module(crate::ParseParams {
       specifier: ModuleSpecifier::parse(specifier).unwrap(),
-      text_info: crate::SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: crate::MediaType::Tsx,
       capture_tokens: false,
       scope_analysis: false,

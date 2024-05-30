@@ -202,7 +202,6 @@ mod test {
   use crate::ModuleSpecifier;
   use crate::MultiThreadedComments;
   use crate::ParseParams;
-  use crate::SourceTextInfo;
   use crate::StartSourcePos;
 
   #[test]
@@ -255,16 +254,13 @@ mod test {
   ) -> (SingleThreadedComments, StartSourcePos) {
     let module = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///file.ts").unwrap(),
-      text_info: SourceTextInfo::from_string(text.to_string()),
+      text: text.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
       scope_analysis: false,
     })
     .expect("expects a module");
-    (
-      module.comments().as_single_threaded(),
-      module.text_info().range().start,
-    )
+    (module.comments().as_single_threaded(), module.range().start)
   }
 }

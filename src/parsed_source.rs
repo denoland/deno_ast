@@ -3,6 +3,9 @@
 use std::fmt;
 use std::sync::Arc;
 
+use dprint_swc_ext::common::SourceRange;
+use dprint_swc_ext::common::SourceRanged;
+use dprint_swc_ext::common::StartSourcePos;
 use swc_common::Mark;
 
 use crate::comments::MultiThreadedComments;
@@ -17,7 +20,6 @@ use crate::MediaType;
 use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::SourceRangedForSpanned;
-use crate::SourceTextInfo;
 
 #[derive(Debug, Clone)]
 pub struct Marks {
@@ -64,7 +66,7 @@ pub(crate) struct SyntaxContexts {
 pub(crate) struct ParsedSourceInner {
   pub specifier: ModuleSpecifier,
   pub media_type: MediaType,
-  pub text_info: SourceTextInfo,
+  pub text: Arc<str>,
   pub comments: MultiThreadedComments,
   pub program: Arc<Program>,
   pub tokens: Option<Arc<Vec<TokenAndSpan>>>,
@@ -86,7 +88,7 @@ impl ParsedSource {
   pub(crate) fn new(
     specifier: ModuleSpecifier,
     media_type: MediaType,
-    text_info: SourceTextInfo,
+    text: Arc<str>,
     comments: MultiThreadedComments,
     program: Arc<Program>,
     tokens: Option<Arc<Vec<TokenAndSpan>>>,
@@ -98,7 +100,7 @@ impl ParsedSource {
       inner: Arc::new(ParsedSourceInner {
         specifier,
         media_type,
-        text_info,
+        text,
         comments,
         program,
         tokens,
@@ -120,8 +122,16 @@ impl ParsedSource {
   }
 
   /// Gets the text content of the module.
-  pub fn text_info(&self) -> &SourceTextInfo {
-    &self.inner.text_info
+  pub fn text(&self) -> &Arc<str> {
+    &self.inner.text
+  }
+
+  /// Gets the source range of the parsed source.
+  pub fn range(&self) -> SourceRange<StartSourcePos> {
+    SourceRange::new(
+      StartSourcePos::START_SOURCE_POS,
+      StartSourcePos::START_SOURCE_POS + self.text().len(),
+    )
   }
 
   /// Gets the parsed program.
@@ -196,7 +206,7 @@ impl ParsedSource {
           // all of these are/should be cheap to clone
           specifier: arc_inner.specifier.clone(),
           media_type: arc_inner.media_type,
-          text_info: arc_inner.text_info.clone(),
+          text: arc_inner.text.clone(),
           comments: arc_inner.comments.clone(),
           program: arc_inner.program.clone(),
           tokens: arc_inner.tokens.clone(),
@@ -259,6 +269,16 @@ impl ParsedSource {
   }
 }
 
+impl SourceRanged for ParsedSource {
+  fn start(&self) -> dprint_swc_ext::common::SourcePos {
+    StartSourcePos::START_SOURCE_POS.as_source_pos()
+  }
+
+  fn end(&self) -> dprint_swc_ext::common::SourcePos {
+    StartSourcePos::START_SOURCE_POS + self.text().len()
+  }
+}
+
 impl fmt::Debug for ParsedSource {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_struct("ParsedModule")
@@ -281,12 +301,28 @@ impl ParsedSource {
     &self,
     with_view: impl FnOnce(crate::view::Program<'a>) -> T,
   ) -> T {
+    self.with_view_and_text_info(
+      &crate::SourceTextInfo::new(self.text().clone()),
+      with_view,
+    )
+  }
+
+  /// Variant of `with_view` where a `SourceTextInfo` isn't constructed.
+  ///
+  /// Useful if you already have a `SourceTextInfo`. Just ensure the text
+  /// matches what's in the `ParsedSource` (this is verified in debug mode).
+  pub fn with_view_and_text_info<'a, T>(
+    &self,
+    text_info: &crate::SourceTextInfo,
+    with_view: impl FnOnce(crate::view::Program<'a>) -> T,
+  ) -> T {
+    debug_assert_eq!(*self.text(), text_info.text());
     let program_info = crate::view::ProgramInfo {
       program: match self.program_ref() {
         Program::Module(module) => crate::view::ProgramRef::Module(module),
         Program::Script(script) => crate::view::ProgramRef::Script(script),
       },
-      text_info: Some(self.text_info()),
+      text_info: Some(text_info),
       tokens: self.inner.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
       comments: Some(crate::view::Comments {
         leading: self.comments().leading_map(),
@@ -312,7 +348,7 @@ mod test {
 
     let program = parse_program(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text: "// 1\n1 + 1\n// 2".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
