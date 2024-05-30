@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
+use deno_media_type::MediaType;
 use swc_ecma_visit::as_folder;
 use thiserror::Error;
 
@@ -24,7 +26,7 @@ use crate::swc::transforms::typescript;
 use crate::swc::visit::FoldWith;
 use crate::EmitError;
 use crate::EmitOptions;
-use crate::EmittedSource;
+use crate::EmittedSourceBytes;
 use crate::Globals;
 use crate::Marks;
 use crate::ModuleSpecifier;
@@ -46,13 +48,13 @@ pub enum TranspileResult {
   /// The `ParsedSource` needed to be cloned in order to transpile.
   ///
   /// This is a performance issue and you should strive to get an `Owned` result.
-  Cloned(EmittedSource),
+  Cloned(EmittedSourceBytes),
   /// The emit occured consuming the `ParsedSource` without cloning.
-  Owned(EmittedSource),
+  Owned(EmittedSourceBytes),
 }
 
 impl TranspileResult {
-  pub fn into_source(self) -> EmittedSource {
+  pub fn into_source(self) -> EmittedSourceBytes {
     match self {
       TranspileResult::Owned(source) => source,
       TranspileResult::Cloned(source) => source,
@@ -123,6 +125,9 @@ pub struct TranspileOptions {
   /// with dynamic content. Defaults to `false`, mutually exclusive with
   /// `transform_jsx`.
   pub precompile_jsx: bool,
+  /// List of elements that should not be precompiled when the JSX precompile
+  /// transform is used.
+  pub precompile_jsx_skip_elements: Option<Vec<String>>,
   /// Should import declarations be transformed to variable declarations using
   /// a dynamic import. This is useful for import & export declaration support
   /// in script contexts such as the Deno REPL.  Defaults to `false`.
@@ -143,6 +148,7 @@ impl Default for TranspileOptions {
       jsx_import_source: None,
       transform_jsx: true,
       precompile_jsx: false,
+      precompile_jsx_skip_elements: None,
       var_decl_imports: false,
     }
   }
@@ -209,7 +215,7 @@ impl ParsedSource {
     &self,
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
-  ) -> Result<EmittedSource, TranspileError> {
+  ) -> Result<EmittedSourceBytes, TranspileError> {
     let program = (*self.program()).clone();
     transpile(
       self.specifier().clone(),
@@ -222,7 +228,7 @@ impl ParsedSource {
       // do a deep clone of the globals, but that requires changes in swc and this
       // is unlikely to be a problem in practice
       self.globals(),
-      transpile_options,
+      &resolve_transpile_options(self.inner.media_type, transpile_options),
       emit_options,
       self.diagnostics(),
     )
@@ -232,7 +238,7 @@ impl ParsedSource {
     self,
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
-  ) -> Result<Result<EmittedSource, TranspileError>, ParsedSource> {
+  ) -> Result<Result<EmittedSourceBytes, TranspileError>, ParsedSource> {
     let inner = match Arc::try_unwrap(self.inner) {
       Ok(inner) => inner,
       Err(inner) => return Err(ParsedSource { inner }),
@@ -262,11 +268,47 @@ impl ParsedSource {
       // we need the comments to be mutable, so make it single threaded
       inner.comments.into_single_threaded(),
       &inner.globals,
-      transpile_options,
+      &resolve_transpile_options(inner.media_type, transpile_options),
       emit_options,
       &inner.diagnostics,
     ))
   }
+}
+
+fn resolve_transpile_options(
+  media_type: MediaType,
+  options: &TranspileOptions,
+) -> Cow<TranspileOptions> {
+  if options.transform_jsx {
+    let allows_jsx = match media_type {
+      MediaType::Jsx | MediaType::Tsx => true,
+      MediaType::JavaScript
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Json
+      | MediaType::Wasm
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Unknown
+      | MediaType::TypeScript => false,
+    };
+    if !allows_jsx {
+      return Cow::Owned(TranspileOptions {
+        // there is no reason for jsx transforms to be turned on because
+        // the source cannot possibly allow jsx, so we can get a perf
+        // improvement by turning it off
+        transform_jsx: false,
+        ..(options.clone())
+      });
+    }
+  }
+
+  Cow::Borrowed(options)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -279,7 +321,7 @@ fn transpile(
   transpile_options: &TranspileOptions,
   emit_options: &EmitOptions,
   diagnostics: &[ParseDiagnostic],
-) -> Result<EmittedSource, TranspileError> {
+) -> Result<EmittedSourceBytes, TranspileError> {
   if transpile_options.use_decorators_proposal
     && transpile_options.use_ts_decorators
   {
@@ -384,6 +426,7 @@ pub fn fold_program(
     Optional::new(
       as_folder(jsx_precompile::JsxPrecompile::new(
         options.jsx_import_source.clone().unwrap_or_default(),
+        options.precompile_jsx_skip_elements.clone(),
       )),
       options.jsx_import_source.is_some()
         && !options.transform_jsx
@@ -615,7 +658,9 @@ export class A {
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     let expected_text = r#"var D;
 (function(D) {
   D[D["A"] = 0] = "A";
@@ -672,76 +717,79 @@ export class A {
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
-    let expected_text = r#"function dispose_SuppressedError(suppressed, error) {
-  if (typeof SuppressedError !== "undefined") {
-    dispose_SuppressedError = SuppressedError;
-  } else {
-    dispose_SuppressedError = function SuppressedError(suppressed, error) {
-      this.suppressed = suppressed;
-      this.error = error;
-      this.stack = new Error().stack;
-    };
-    dispose_SuppressedError.prototype = Object.create(Error.prototype, {
-      constructor: {
-        value: dispose_SuppressedError,
-        writable: true,
-        configurable: true
+      .into_source()
+      .into_string()
+      .unwrap();
+    let expected_text = r#"function _using_ctx() {
+  var _disposeSuppressedError = typeof SuppressedError === "function" ? SuppressedError : function(error, suppressed) {
+    var err = new Error();
+    err.name = "SuppressedError";
+    err.suppressed = suppressed;
+    err.error = error;
+    return err;
+  }, empty = {}, stack = [];
+  function using(isAwait, value) {
+    if (value != null) {
+      if (Object(value) !== value) {
+        throw new TypeError("using declarations can only be used with objects, functions, null, or undefined.");
       }
-    });
-  }
-  return new dispose_SuppressedError(suppressed, error);
-}
-function _dispose(stack, error, hasError) {
-  function next() {
-    while(stack.length > 0){
-      try {
-        var r = stack.pop();
-        var p = r.d.call(r.v);
-        if (r.a) return Promise.resolve(p).then(next, err);
-      } catch (e) {
-        return err(e);
+      if (isAwait) {
+        var dispose = value[Symbol.asyncDispose || Symbol.for("Symbol.asyncDispose")];
       }
+      if (dispose == null) {
+        dispose = value[Symbol.dispose || Symbol.for("Symbol.dispose")];
+      }
+      if (typeof dispose !== "function") {
+        throw new TypeError(`Property [Symbol.dispose] is not a function.`);
+      }
+      stack.push({
+        v: value,
+        d: dispose,
+        a: isAwait
+      });
+    } else if (isAwait) {
+      stack.push({
+        d: value,
+        a: isAwait
+      });
     }
-    if (hasError) throw error;
+    return value;
   }
-  function err(e) {
-    error = hasError ? new dispose_SuppressedError(e, error) : e;
-    hasError = true;
-    return next();
-  }
-  return next();
-}
-function _using(stack, value, isAwait) {
-  if (value === null || value === void 0) return value;
-  if (Object(value) !== value) {
-    throw new TypeError("using declarations can only be used with objects, functions, null, or undefined.");
-  }
-  if (isAwait) {
-    var dispose = value[Symbol.asyncDispose || Symbol.for("Symbol.asyncDispose")];
-  }
-  if (dispose === null || dispose === void 0) {
-    dispose = value[Symbol.dispose || Symbol.for("Symbol.dispose")];
-  }
-  if (typeof dispose !== "function") {
-    throw new TypeError(`Property [Symbol.dispose] is not a function.`);
-  }
-  stack.push({
-    v: value,
-    d: dispose,
-    a: isAwait
-  });
-  return value;
+  return {
+    e: empty,
+    u: using.bind(null, false),
+    a: using.bind(null, true),
+    d: function() {
+      var error = this.e;
+      function next() {
+        while(resource = stack.pop()){
+          try {
+            var resource, disposalResult = resource.d && resource.d.call(resource.v);
+            if (resource.a) {
+              return Promise.resolve(disposalResult).then(next, err);
+            }
+          } catch (e) {
+            return err(e);
+          }
+        }
+        if (error !== empty) throw error;
+      }
+      function err(e) {
+        error = error !== empty ? new _disposeSuppressedError(error, e) : e;
+        return next();
+      }
+      return next();
+    }
+  };
 }
 try {
-  var _stack = [];
-  var data = _using(_stack, create());
+  var _usingCtx = _using_ctx();
+  var data = _usingCtx.u(create());
   console.log(data);
 } catch (_) {
-  var _error = _;
-  var _hasError = true;
+  _usingCtx.e = _;
 } finally{
-  _dispose(_stack, _error, _hasError);
+  _usingCtx.d();
 }"#;
     assert_eq!(
       &transpiled_source.text[..expected_text.len()],
@@ -772,7 +820,9 @@ try {
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"div\", null"));
@@ -801,7 +851,9 @@ try {
     let transpiled_source = module
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     assert!(transpiled_source
       .text
       .contains("React.createElement(\"my:tag\", null"));
@@ -841,6 +893,8 @@ function App() {
       )
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"import { h, Fragment } from "https://deno.land/x/mod.ts";
 function App() {
@@ -880,6 +934,8 @@ function App() {
       )
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"/** @jsxImportSource jsx_lib */ import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
@@ -924,6 +980,8 @@ function App() {
       )
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
@@ -969,6 +1027,8 @@ function App() {
       )
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"import { jsxDEV as _jsxDEV, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
 function App() {
@@ -1014,6 +1074,8 @@ function App() {
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"/** @jsxImportSource jsx_lib */ const { "jsx": _jsx, "Fragment": _Fragment } = await import("jsx_lib/jsx-runtime");
 const example = await import("example");
@@ -1066,6 +1128,8 @@ function App() {
       )
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"function _ts_decorate(decorators, target, key, desc) {
   var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
@@ -1131,6 +1195,8 @@ _ts_decorate([
       )
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected =
       include_str!("./testdata/tc39_decorator_proposal_output.txt");
@@ -1199,6 +1265,8 @@ _ts_decorate([
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"function enumerable(value) {
   return function(_target, _propertyKey, descriptor) {
@@ -1248,6 +1316,8 @@ export function g() {
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"export function g() {
   let algorithm;
@@ -1278,6 +1348,8 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       .transpile(&Default::default(), &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected = r#"for(let i = 0; i < testVariable >> 1; i++)callCount++;"#;
     assert_eq!(&code[..expected.len()], expected);
@@ -1406,7 +1478,9 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let transpiled = p
       .transpile(&Default::default(), &EmitOptions::default())
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     let lines: Vec<&str> = transpiled.text.split('\n').collect();
     let last_line = lines.last().unwrap();
     let input = last_line
@@ -1432,6 +1506,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let transpile_options = TranspileOptions {
       transform_jsx: false,
       precompile_jsx: true,
+      precompile_jsx_skip_elements: Some(vec!["p".to_string()]),
       jsx_import_source: Some("react".to_string()),
       ..Default::default()
     };
@@ -1439,21 +1514,22 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
+      .into_string()
+      .unwrap()
       .text;
     let expected1 = r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
-const $$_tpl_2 = [
-  "<p>asdf</p>"
-];
 const $$_tpl_1 = [
   "<span>hello</span>foo",
   ""
 ];
 const a = _jsx(Foo, {
   children: _jsxTemplate($$_tpl_1, _jsx(Bar, {
-    children: _jsxTemplate($$_tpl_2)
+    children: _jsx("p", {
+      children: "asdf"
+    })
   }))
 });
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJza"#;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2Vz"#;
     assert_eq!(&code[0..expected1.len()], expected1);
   }
 
@@ -1478,7 +1554,9 @@ const a = _jsx(Foo, {
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     let expected1 = r#"{
   const foo = "bar";
 }
@@ -1508,7 +1586,9 @@ const a = _jsx(Foo, {
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     assert_eq!(
       &emit_result.text,
       r#"{
@@ -1519,6 +1599,45 @@ const a = _jsx(Foo, {
       emit_result.source_map.as_deref(),
       Some(
         r#"{"version":3,"sources":["https://deno.land/x/mod.tsx"],"sourcesContent":["{ const foo = \"bar\"; };"],"names":[],"mappings":"AAAA;EAAE,MAAM,MAAM;AAAO"}"#
+      )
+    );
+  }
+
+  #[test]
+  fn test_source_map_with_file() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source = r#"{ const foo = "bar"; };"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text_info: SourceTextInfo::from_string(source.to_string()),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let emit_options = EmitOptions {
+      source_map: SourceMapOption::Separate,
+      source_map_file: Some("mod.tsx".to_owned()),
+      ..Default::default()
+    };
+    let emit_result = module
+      .transpile(&TranspileOptions::default(), &emit_options)
+      .unwrap()
+      .into_source()
+      .into_string()
+      .unwrap();
+    assert_eq!(
+      &emit_result.text,
+      r#"{
+  const foo = "bar";
+}"#
+    );
+    assert_eq!(
+      emit_result.source_map.as_deref(),
+      Some(
+        r#"{"version":3,"file":"mod.tsx","sources":["https://deno.land/x/mod.tsx"],"sourcesContent":["{ const foo = \"bar\"; };"],"names":[],"mappings":"AAAA;EAAE,MAAM,MAAM;AAAO"}"#
       )
     );
   }
@@ -1544,7 +1663,9 @@ const a = _jsx(Foo, {
     let emit_result = module
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
-      .into_source();
+      .into_source()
+      .into_string()
+      .unwrap();
     assert_eq!(
       &emit_result.text,
       r#"{
@@ -1577,6 +1698,8 @@ const a = _jsx(Foo, {
         },
       )
       .unwrap()
+      .unwrap()
+      .into_string()
       .unwrap();
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
   }
@@ -1620,6 +1743,8 @@ const a = _jsx(Foo, {
         },
       )
       .unwrap()
+      .unwrap()
+      .into_string()
       .unwrap();
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
   }
@@ -1652,7 +1777,9 @@ const a = _jsx(Foo, {
       .unwrap();
     let emit_result = match emit_result {
       TranspileResult::Owned(_) => unreachable!(),
-      TranspileResult::Cloned(emit_result) => emit_result,
+      TranspileResult::Cloned(emit_result) => {
+        emit_result.into_string().unwrap()
+      }
     };
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
 
@@ -1668,7 +1795,7 @@ const a = _jsx(Foo, {
       .unwrap();
     let emit_result = match emit_result {
       TranspileResult::Cloned(_) => unreachable!(),
-      TranspileResult::Owned(emit_result) => emit_result,
+      TranspileResult::Owned(emit_result) => emit_result.into_string().unwrap(),
     };
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
   }
