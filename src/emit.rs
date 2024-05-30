@@ -144,10 +144,9 @@ pub fn emit(
       let inline_buf = &inline_buf[..size];
       let prelude_text = "//# sourceMappingURL=data:application/json;base64,";
       let src_has_trailing_newline = src_buf.ends_with(&[b'\n']);
-      let additional_capacity =
-        src_has_trailing_newline.then_some(0).unwrap_or(1)
-          + prelude_text.len()
-          + inline_buf.len();
+      let additional_capacity = if src_has_trailing_newline { 0 } else { 1 }
+        + prelude_text.len()
+        + inline_buf.len();
       let expected_final_capacity = src_buf.len() + additional_capacity;
       src_buf.reserve(additional_capacity);
       if !src_has_trailing_newline {
