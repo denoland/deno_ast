@@ -408,8 +408,8 @@ fn print_snippet(
   let mut lines_to_show = HashMap::<usize, Vec<usize>>::new();
   let mut highlights_info = Vec::new();
   for (i, highlight) in highlights.iter().enumerate() {
-    let start_line_number = line_number(&source, highlight.range.start);
-    let end_line_number = line_number(&source, highlight.range.end);
+    let start_line_number = line_number(source, highlight.range.start);
+    let end_line_number = line_number(source, highlight.range.end);
     highlights_info.push((start_line_number, end_line_number));
     for line_number in start_line_number..=end_line_number {
       lines_to_show.entry(line_number).or_default().push(i);
