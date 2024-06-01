@@ -2,6 +2,9 @@
 
 use std::sync::Arc;
 
+use dprint_swc_ext::common::SourceTextInfo;
+use dprint_swc_ext::common::StartSourcePos;
+
 use crate::comments::MultiThreadedComments;
 use crate::swc::ast::EsVersion;
 use crate::swc::ast::Module;
@@ -20,7 +23,6 @@ use crate::MediaType;
 use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::ParsedSource;
-use crate::SourceTextInfo;
 
 /// Ecmascript version used for lexing and parsing.
 pub const ES_VERSION: EsVersion = EsVersion::Es2021;
@@ -29,8 +31,8 @@ pub const ES_VERSION: EsVersion = EsVersion::Es2021;
 pub struct ParseParams {
   /// Specifier of the source text.
   pub specifier: ModuleSpecifier,
-  /// Source text stored in a `SourceTextInfo`.
-  pub text_info: SourceTextInfo,
+  /// Source text.
+  pub text: Arc<str>,
   /// Media type of the source text.
   pub media_type: MediaType,
   /// Whether to capture tokens or not.
@@ -62,7 +64,7 @@ pub fn parse_program(
 ///  deno_ast::ParseParams {
 ///    specifier: deno_ast::ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
 ///    media_type: deno_ast::MediaType::TypeScript,
-///    text_info: deno_ast::SourceTextInfo::from_string("".to_string()),
+///    text: "console.log(4);".into(),
 ///    capture_tokens: true,
 ///    maybe_syntax: None,
 ///    scope_analysis: false,
@@ -135,9 +137,13 @@ fn parse(
   parse_mode: ParseMode,
   post_process: impl FnOnce(Program, &Globals) -> Program,
 ) -> Result<ParsedSource, ParseDiagnostic> {
-  let source = params.text_info;
+  let source = params.text;
   let specifier = params.specifier;
-  let input = source.as_string_input();
+  let input = StringInput::new(
+    source.as_ref(),
+    StartSourcePos::START_SOURCE_POS.as_byte_pos(),
+    (StartSourcePos::START_SOURCE_POS + source.len()).as_byte_pos(),
+  );
   let media_type = params.media_type;
   let syntax = params
     .maybe_syntax
@@ -145,12 +151,27 @@ fn parse(
   let (comments, program, tokens, errors) =
     parse_string_input(input, syntax, params.capture_tokens, parse_mode)
       .map_err(|err| {
-        ParseDiagnostic::from_swc_error(err, &specifier, source.clone())
+        let source_text_info = SourceTextInfo::new(source.clone());
+        ParseDiagnostic::from_swc_error(err, &specifier, source_text_info)
       })?;
-  let diagnostics = errors
-    .into_iter()
-    .map(|err| ParseDiagnostic::from_swc_error(err, &specifier, source.clone()))
-    .collect();
+  let (diagnostics, maybe_text_info) = if errors.is_empty() {
+    (Vec::new(), None)
+  } else {
+    let source_text_info = SourceTextInfo::new(source.clone());
+    (
+      errors
+        .into_iter()
+        .map(|err| {
+          ParseDiagnostic::from_swc_error(
+            err,
+            &specifier,
+            source_text_info.clone(),
+          )
+        })
+        .collect(),
+      Some(source_text_info),
+    )
+  };
   let globals = Globals::default();
   let program = post_process(program, &globals);
 
@@ -160,17 +181,24 @@ fn parse(
     (program, None)
   };
 
-  Ok(ParsedSource::new(
+  let inner = crate::ParsedSourceInner {
     specifier,
-    params.media_type.to_owned(),
-    source,
-    MultiThreadedComments::from_single_threaded(comments),
-    Arc::new(program),
-    tokens.map(Arc::new),
+    media_type,
+    text: source,
+    source_text_info: Default::default(),
+    comments: MultiThreadedComments::from_single_threaded(comments),
+    program: Arc::new(program),
+    tokens: tokens.map(Arc::new),
     globals,
     syntax_contexts,
     diagnostics,
-  ))
+  };
+
+  if let Some(text_info) = maybe_text_info {
+    inner.source_text_info.set(text_info).unwrap();
+  }
+
+  Ok(ParsedSource(Arc::new(inner)))
 }
 
 pub(crate) fn scope_analysis_transform(
@@ -313,7 +341,7 @@ mod test {
   fn should_parse_program() {
     let program = parse_program(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text: "// 1\n1 + 1\n// 2".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -321,7 +349,7 @@ mod test {
     })
     .unwrap();
     assert_eq!(program.specifier().as_str(), "file:///my_file.js");
-    assert_eq!(program.text_info().text_str(), "// 1\n1 + 1\n// 2");
+    assert_eq!(program.text().as_ref(), "// 1\n1 + 1\n// 2");
     assert_eq!(program.media_type(), MediaType::JavaScript);
     assert!(matches!(
       program.script().body[0],
@@ -337,7 +365,7 @@ mod test {
   fn should_parse_module() {
     let program = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text: "// 1\n1 + 1\n// 2".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -359,9 +387,7 @@ mod test {
 
     let program = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string(
-        "class T { method() { #test in this; } }".to_string(),
-      ),
+      text: "class T { method() { #test in this; } }".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -384,7 +410,7 @@ mod test {
   fn should_panic_when_getting_tokens_and_tokens_not_captured() {
     let program = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text: "// 1\n1 + 1\n// 2".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -398,7 +424,7 @@ mod test {
   fn should_handle_parse_error() {
     let diagnostic = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string("t u".to_string()),
+      text: "t u".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -439,7 +465,7 @@ mod test {
   fn get_scope_analysis_false_parsed_source() -> ParsedSource {
     parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text: "// 1\n1 + 1\n// 2".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -453,9 +479,7 @@ mod test {
   fn should_do_scope_analysis() {
     let parsed_source = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string(
-        "export function test() { const test = 2; test; } test()".to_string(),
-      ),
+      text: "export function test() { const test = 2; test; } test()".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -492,9 +516,7 @@ mod test {
   fn should_allow_scope_analysis_after_the_fact() {
     let parsed_source = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string(
-        "export function test() { const test = 2; test; } test()".to_string(),
-      ),
+      text: "export function test() { const test = 2; test; } test()".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -539,13 +561,11 @@ mod test {
   fn should_scope_analyze_typescript() {
     let parsed_source = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
-      text_info: SourceTextInfo::from_string(
-        r#"import type { Foo } from "./foo.ts";
+      text: r#"import type { Foo } from "./foo.ts";
 function _bar(...Foo: Foo) {
   console.log(Foo);
 }"#
-          .to_string(),
-      ),
+        .into(),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
       maybe_syntax: None,
@@ -650,7 +670,7 @@ function _bar(...Foo: Foo) {
   fn parse_ts_module(text: &str) -> Result<ParsedSource, ParseDiagnostic> {
     parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
-      text_info: SourceTextInfo::from_string(text.to_string()),
+      text: text.to_string().into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,

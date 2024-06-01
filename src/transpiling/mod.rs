@@ -219,7 +219,7 @@ impl ParsedSource {
     let program = (*self.program()).clone();
     transpile(
       self.specifier().clone(),
-      self.text_info().text_str().to_string(),
+      self.text().to_string(),
       program,
       // we need the comments to be mutable, so make it single threaded
       self.comments().as_single_threaded(),
@@ -228,7 +228,7 @@ impl ParsedSource {
       // do a deep clone of the globals, but that requires changes in swc and this
       // is unlikely to be a problem in practice
       self.globals(),
-      &resolve_transpile_options(self.inner.media_type, transpile_options),
+      &resolve_transpile_options(self.0.media_type, transpile_options),
       emit_options,
       self.diagnostics(),
     )
@@ -239,31 +239,30 @@ impl ParsedSource {
     transpile_options: &TranspileOptions,
     emit_options: &EmitOptions,
   ) -> Result<Result<EmittedSourceBytes, TranspileError>, ParsedSource> {
-    let inner = match Arc::try_unwrap(self.inner) {
+    let inner = match Arc::try_unwrap(self.0) {
       Ok(inner) => inner,
-      Err(inner) => return Err(ParsedSource { inner }),
+      Err(inner) => return Err(ParsedSource(inner)),
     };
     let program = match Arc::try_unwrap(inner.program) {
       Ok(program) => program,
       Err(program) => {
-        return Err(ParsedSource {
-          inner: Arc::new(crate::ParsedSourceInner {
-            specifier: inner.specifier,
-            media_type: inner.media_type,
-            text_info: inner.text_info,
-            comments: inner.comments,
-            program,
-            tokens: inner.tokens,
-            syntax_contexts: inner.syntax_contexts,
-            diagnostics: inner.diagnostics,
-            globals: inner.globals,
-          }),
-        })
+        return Err(ParsedSource(Arc::new(crate::ParsedSourceInner {
+          specifier: inner.specifier,
+          media_type: inner.media_type,
+          text: inner.text,
+          source_text_info: inner.source_text_info,
+          comments: inner.comments,
+          program,
+          tokens: inner.tokens,
+          syntax_contexts: inner.syntax_contexts,
+          diagnostics: inner.diagnostics,
+          globals: inner.globals,
+        })))
       }
     };
     Ok(transpile(
       inner.specifier,
-      inner.text_info.text_str().to_string(),
+      inner.text.to_string(),
       program,
       // we need the comments to be mutable, so make it single threaded
       inner.comments.into_single_threaded(),
@@ -606,7 +605,6 @@ mod tests {
   use crate::ModuleSpecifier;
   use crate::ParseParams;
   use crate::SourceMapOption;
-  use crate::SourceTextInfo;
 
   use base64::Engine;
   use pretty_assertions::assert_eq;
@@ -648,7 +646,7 @@ export class A {
     "#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -707,7 +705,7 @@ export class A {
     let source = "using data = create();\nconsole.log(data);";
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -810,7 +808,7 @@ try {
     "#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -841,7 +839,7 @@ try {
     "#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -876,7 +874,7 @@ function App() {
 }"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Jsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -917,7 +915,7 @@ function App() {
 }"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Jsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -958,7 +956,7 @@ function App() {
 }"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Jsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1004,7 +1002,7 @@ function App() {
 }"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Jsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1059,7 +1057,7 @@ function App() {
 }"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Jsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1111,7 +1109,7 @@ function App() {
     "#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1178,7 +1176,7 @@ _ts_decorate([
     "#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1210,7 +1208,7 @@ _ts_decorate([
     let source = "";
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1254,7 +1252,7 @@ _ts_decorate([
     "#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1301,7 +1299,7 @@ export function g() {
   "#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1337,7 +1335,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   "#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1364,7 +1362,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
 };"#;
     let parsed_source = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1440,7 +1438,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let parsed_source = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1462,12 +1460,10 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let p = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///Users/ib/dev/deno/foo.ts")
         .unwrap(),
-      text_info: SourceTextInfo::from_string(
-        r#"export default function () {
+      text: r#"export default function () {
     return "📣❓";
 }"#
-          .to_string(),
-      ),
+        .into(),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
       scope_analysis: false,
@@ -1496,7 +1492,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       r#"const a = <Foo><span>hello</span>foo<Bar><p>asdf</p></Bar></Foo>;"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1540,7 +1536,7 @@ const a = _jsx(Foo, {
     let source = r#"{ const foo = "bar"; };"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1572,7 +1568,7 @@ const a = _jsx(Foo, {
     let source = r#"{ const foo = "bar"; };"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1610,7 +1606,7 @@ const a = _jsx(Foo, {
     let source = r#"{ const foo = "bar"; };"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1649,7 +1645,7 @@ const a = _jsx(Foo, {
     let source = r#"{ const foo = "bar"; };"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::Tsx,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1682,7 +1678,7 @@ const a = _jsx(Foo, {
     let source = r#"const foo: string = "bar";"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1711,7 +1707,7 @@ const a = _jsx(Foo, {
     let source = r#"const foo: string = "bar";"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1756,7 +1752,7 @@ const a = _jsx(Foo, {
     let source = r#"const foo: string = "bar";"#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
@@ -1818,7 +1814,7 @@ export function formatter(record: Record) {
 "#;
     let module = parse_module(ParseParams {
       specifier,
-      text_info: SourceTextInfo::from_string(source.to_string()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,

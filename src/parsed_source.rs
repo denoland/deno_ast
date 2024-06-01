@@ -3,6 +3,10 @@
 use std::fmt;
 use std::sync::Arc;
 
+use dprint_swc_ext::common::SourceRange;
+use dprint_swc_ext::common::SourceRanged;
+use dprint_swc_ext::common::SourceTextInfo;
+use dprint_swc_ext::common::StartSourcePos;
 use swc_common::Mark;
 
 use crate::comments::MultiThreadedComments;
@@ -17,7 +21,6 @@ use crate::MediaType;
 use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::SourceRangedForSpanned;
-use crate::SourceTextInfo;
 
 #[derive(Debug, Clone)]
 pub struct Marks {
@@ -64,7 +67,8 @@ pub(crate) struct SyntaxContexts {
 pub(crate) struct ParsedSourceInner {
   pub specifier: ModuleSpecifier,
   pub media_type: MediaType,
-  pub text_info: SourceTextInfo,
+  pub text: Arc<str>,
+  pub source_text_info: Arc<once_cell::sync::OnceCell<SourceTextInfo>>,
   pub comments: MultiThreadedComments,
   pub program: Arc<Program>,
   pub tokens: Option<Arc<Vec<TokenAndSpan>>>,
@@ -77,61 +81,52 @@ pub(crate) struct ParsedSourceInner {
 ///
 /// Note: This struct is cheap to clone.
 #[derive(Clone)]
-pub struct ParsedSource {
-  pub(crate) inner: Arc<ParsedSourceInner>,
-}
+pub struct ParsedSource(pub(crate) Arc<ParsedSourceInner>);
 
 impl ParsedSource {
-  #[allow(clippy::too_many_arguments)]
-  pub(crate) fn new(
-    specifier: ModuleSpecifier,
-    media_type: MediaType,
-    text_info: SourceTextInfo,
-    comments: MultiThreadedComments,
-    program: Arc<Program>,
-    tokens: Option<Arc<Vec<TokenAndSpan>>>,
-    globals: Globals,
-    syntax_contexts: Option<SyntaxContexts>,
-    diagnostics: Vec<ParseDiagnostic>,
-  ) -> Self {
-    ParsedSource {
-      inner: Arc::new(ParsedSourceInner {
-        specifier,
-        media_type,
-        text_info,
-        comments,
-        program,
-        tokens,
-        globals,
-        syntax_contexts,
-        diagnostics,
-      }),
-    }
-  }
-
   /// Gets the module specifier of the module.
   pub fn specifier(&self) -> &ModuleSpecifier {
-    &self.inner.specifier
+    &self.0.specifier
   }
 
   /// Gets the media type of the module.
   pub fn media_type(&self) -> MediaType {
-    self.inner.media_type
+    self.0.media_type
   }
 
   /// Gets the text content of the module.
-  pub fn text_info(&self) -> &SourceTextInfo {
-    &self.inner.text_info
+  pub fn text(&self) -> &Arc<str> {
+    &self.0.text
+  }
+
+  /// Gets an object with pre-computed positions for lines and indexes of
+  /// multi-byte chars.
+  ///
+  /// Note: Prefer using `.text()` over this if able because this is lazily
+  /// created.
+  pub fn text_info_lazy(&self) -> &SourceTextInfo {
+    self
+      .0
+      .source_text_info
+      .get_or_init(|| SourceTextInfo::new(self.text().clone()))
+  }
+
+  /// Gets the source range of the parsed source.
+  pub fn range(&self) -> SourceRange<StartSourcePos> {
+    SourceRange::new(
+      StartSourcePos::START_SOURCE_POS,
+      StartSourcePos::START_SOURCE_POS + self.text().len(),
+    )
   }
 
   /// Gets the parsed program.
   pub fn program(&self) -> Arc<Program> {
-    self.inner.program.clone()
+    self.0.program.clone()
   }
 
   /// Gets the parsed program as a reference.
   pub fn program_ref(&self) -> &Program {
-    &self.inner.program
+    &self.0.program
   }
 
   /// Gets the parsed module.
@@ -156,18 +151,18 @@ impl ParsedSource {
 
   /// Gets the comments found in the source file.
   pub fn comments(&self) -> &MultiThreadedComments {
-    &self.inner.comments
+    &self.0.comments
   }
 
   /// Wrapper around globals that swc uses for transpiling.
   pub fn globals(&self) -> &Globals {
-    &self.inner.globals
+    &self.0.globals
   }
 
   /// Get the source's leading comments, where triple slash directives might
   /// be located.
   pub fn get_leading_comments(&self) -> Option<&Vec<Comment>> {
-    self.inner.comments.get_leading(self.inner.program.start())
+    self.0.comments.get_leading(self.0.program.start())
   }
 
   /// Gets the tokens found in the source file.
@@ -175,7 +170,7 @@ impl ParsedSource {
   /// This will panic if tokens were not captured during parsing.
   pub fn tokens(&self) -> &[TokenAndSpan] {
     self
-      .inner
+      .0
       .tokens
       .as_ref()
       .expect("Tokens not found because they were not captured during parsing.")
@@ -190,13 +185,14 @@ impl ParsedSource {
     if self.has_scope_analysis() {
       self
     } else {
-      let mut inner = match Arc::try_unwrap(self.inner) {
+      let mut inner = match Arc::try_unwrap(self.0) {
         Ok(inner) => inner,
         Err(arc_inner) => ParsedSourceInner {
           // all of these are/should be cheap to clone
           specifier: arc_inner.specifier.clone(),
           media_type: arc_inner.media_type,
-          text_info: arc_inner.text_info.clone(),
+          text: arc_inner.text.clone(),
+          source_text_info: arc_inner.source_text_info.clone(),
           comments: arc_inner.comments.clone(),
           program: arc_inner.program.clone(),
           tokens: arc_inner.tokens.clone(),
@@ -213,16 +209,14 @@ impl ParsedSource {
         scope_analysis_transform(program, &inner.globals);
       inner.program = Arc::new(program);
       inner.syntax_contexts = context;
-      ParsedSource {
-        inner: Arc::new(inner),
-      }
+      ParsedSource(Arc::new(inner))
     }
   }
 
   /// Gets if the source's program has scope information stored
   /// in the identifiers.
   pub fn has_scope_analysis(&self) -> bool {
-    self.inner.syntax_contexts.is_some()
+    self.0.syntax_contexts.is_some()
   }
 
   /// Gets the top level context used when parsing with scope analysis.
@@ -240,12 +234,12 @@ impl ParsedSource {
   }
 
   fn syntax_contexts(&self) -> &SyntaxContexts {
-    self.inner.syntax_contexts.as_ref().expect("Could not get syntax context because the source was not parsed with scope analysis.")
+    self.0.syntax_contexts.as_ref().expect("Could not get syntax context because the source was not parsed with scope analysis.")
   }
 
   /// Gets extra non-fatal diagnostics found while parsing.
   pub fn diagnostics(&self) -> &Vec<ParseDiagnostic> {
-    &self.inner.diagnostics
+    &self.0.diagnostics
   }
 
   /// Gets if this source is a module.
@@ -259,11 +253,21 @@ impl ParsedSource {
   }
 }
 
+impl SourceRanged for ParsedSource {
+  fn start(&self) -> dprint_swc_ext::common::SourcePos {
+    StartSourcePos::START_SOURCE_POS.as_source_pos()
+  }
+
+  fn end(&self) -> dprint_swc_ext::common::SourcePos {
+    StartSourcePos::START_SOURCE_POS + self.text().len()
+  }
+}
+
 impl fmt::Debug for ParsedSource {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_struct("ParsedModule")
-      .field("comments", &self.inner.comments)
-      .field("program", &self.inner.program)
+      .field("comments", &self.0.comments)
+      .field("program", &self.0.program)
       .finish()
   }
 }
@@ -286,8 +290,8 @@ impl ParsedSource {
         Program::Module(module) => crate::view::ProgramRef::Module(module),
         Program::Script(script) => crate::view::ProgramRef::Script(script),
       },
-      text_info: Some(self.text_info()),
-      tokens: self.inner.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
+      text_info: Some(self.text_info_lazy()),
+      tokens: self.0.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
       comments: Some(crate::view::Comments {
         leading: self.comments().leading_map(),
         trailing: self.comments().trailing_map(),
@@ -312,7 +316,7 @@ mod test {
 
     let program = parse_program(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text_info: SourceTextInfo::from_string("// 1\n1 + 1\n// 2".to_string()),
+      text: "// 1\n1 + 1\n// 2".into(),
       media_type: MediaType::JavaScript,
       capture_tokens: true,
       maybe_syntax: None,
