@@ -331,16 +331,16 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
 }
 
 pub fn strip_bom(mut s: String) -> String {
-  if s.starts_with("\u{FEFF}") {
+  if s.starts_with('\u{FEFF}') {
     s.drain(..3);
   }
   s
 }
 
 fn strip_bom_from_arc(s: Arc<str>, should_panic_in_debug: bool) -> Arc<str> {
-  if let Some(stripped_text) = s.strip_prefix("\u{FEFF}") {
+  if let Some(stripped_text) = s.strip_prefix('\u{FEFF}') {
+    // this is only a perf concern, so don't crash in release
     if cfg!(debug_assertions) && should_panic_in_debug {
-      // don't fail in release
       panic!("BOM should be stripped from text before providing it to deno_ast to avoid a file text allocation");
     }
     stripped_text.into()
