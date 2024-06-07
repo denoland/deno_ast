@@ -137,7 +137,7 @@ fn parse(
   parse_mode: ParseMode,
   post_process: impl FnOnce(Program, &Globals) -> Program,
 ) -> Result<ParsedSource, ParseDiagnostic> {
-  let source = params.text;
+  let source = strip_bom_from_arc(params.text, /* panic in debug */ true);
   let specifier = params.specifier;
   let input = StringInput::new(
     source.as_ref(),
@@ -327,6 +327,25 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
       jsx: media_type == MediaType::Jsx,
       explicit_resource_management: true,
     }),
+  }
+}
+
+pub fn strip_bom(mut s: String) -> String {
+  if s.starts_with("\u{FEFF}") {
+    s.drain(..3);
+  }
+  s
+}
+
+fn strip_bom_from_arc(s: Arc<str>, should_panic_in_debug: bool) -> Arc<str> {
+  if let Some(stripped_text) = s.strip_prefix("\u{FEFF}") {
+    if cfg!(debug_assertions) && should_panic_in_debug {
+      // don't fail in release
+      panic!("BOM should be stripped from text before providing it to deno_ast to avoid a file text allocation");
+    }
+    stripped_text.into()
+  } else {
+    s
   }
 }
 
@@ -660,6 +679,26 @@ function _bar(...Foo: Foo) {
       diagnostic.message().to_string(),
       "Using declaration requires initializer"
     );
+  }
+
+  #[test]
+  fn test_strip_bom() {
+    let text = "\u{FEFF}test";
+    assert_eq!(strip_bom(text.to_string()), "test");
+    let text = "test";
+    assert_eq!(strip_bom(text.to_string()), "test");
+    let text = "";
+    assert_eq!(strip_bom(text.to_string()), "");
+  }
+
+  #[test]
+  fn test_strip_bom_arc() {
+    let text = "\u{FEFF}test";
+    assert_eq!(strip_bom_from_arc(text.into(), false), "test".into());
+    let text = "test";
+    assert_eq!(strip_bom_from_arc(text.into(), false), "test".into());
+    let text = "";
+    assert_eq!(strip_bom_from_arc(text.into(), false), "".into());
   }
 
   fn parse_for_diagnostic(text: &str) -> ParseDiagnostic {
