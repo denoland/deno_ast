@@ -16,6 +16,9 @@ pub struct JsxPrecompile {
   import_source: String,
   // List of HTML elements which should not be serialized
   skip_serialize: Option<Vec<String>>,
+  // List of props/attributes that should not be serialized and
+  // always be treated as dynamic instead.
+  skip_prop_serialize: Option<Vec<String>>,
 
   // Internal state
   next_index: usize,
@@ -41,6 +44,7 @@ impl Default for JsxPrecompile {
       templates: vec![],
       import_source: "react".to_string(),
       skip_serialize: None,
+      skip_prop_serialize: None,
       import_jsx: None,
       import_jsx_ssr: None,
       import_jsx_attr: None,
@@ -53,10 +57,12 @@ impl JsxPrecompile {
   pub fn new(
     import_source: String,
     skip_serialize: Option<Vec<String>>,
+    skip_prop_serialize: Option<Vec<String>>,
   ) -> Self {
     Self {
       import_source,
       skip_serialize,
+      skip_prop_serialize,
       ..JsxPrecompile::default()
     }
   }
@@ -250,11 +256,11 @@ fn null_arg() -> ExprOrSpread {
   }
 }
 
-fn get_attr_name(jsx_attr: &JSXAttr, is_component: bool) -> String {
+fn get_attr_name(jsx_attr: &JSXAttr, normalize: bool) -> String {
   match &jsx_attr.name {
     // Case: <button class="btn">
     JSXAttrName::Ident(ident) => {
-      if is_component {
+      if !normalize {
         ident.sym.to_string()
       } else {
         normalize_dom_attr_name(ident.sym.as_ref())
@@ -825,7 +831,7 @@ impl JsxPrecompile {
       for attr in el.opening.attrs.iter() {
         match attr {
           JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-            let attr_name = get_attr_name(jsx_attr, is_component);
+            let attr_name = get_attr_name(jsx_attr, !is_component);
             let prop_name = if !is_text_valid_identifier(&attr_name) {
               PropName::Str(Str {
                 span: DUMMY_SP,
@@ -1070,7 +1076,38 @@ impl JsxPrecompile {
       // Case: <button class="btn">
       match attr {
         JSXAttrOrSpread::JSXAttr(jsx_attr) => {
-          let attr_name = get_attr_name(jsx_attr, false);
+          // User's can force certain attributes to always be treated
+          // as dynamic.
+          if let Some(skip_prop_serialize) = &self.skip_prop_serialize {
+            let attr_name = get_attr_name(jsx_attr, false);
+            if skip_prop_serialize.contains(&attr_name) {
+              strings.last_mut().unwrap().push(' ');
+              strings.push("".to_string());
+
+              let value = match &jsx_attr.value {
+                Some(attr_value) => match attr_value.clone() {
+                  JSXAttrValue::Lit(lit) => Expr::Lit(lit),
+                  JSXAttrValue::JSXExprContainer(_) => todo!(),
+                  JSXAttrValue::JSXElement(jsx_element) => {
+                    Expr::JSXElement(jsx_element)
+                  }
+                  JSXAttrValue::JSXFragment(jsx_frag) => {
+                    Expr::JSXFragment(jsx_frag)
+                  }
+                },
+                None => Expr::Lit(Lit::Bool(Bool {
+                  span: DUMMY_SP,
+                  value: true,
+                })),
+              };
+
+              let expr = self.convert_to_jsx_attr_call(attr_name.into(), value);
+              dynamic_exprs.push(Expr::Call(expr));
+              continue;
+            }
+          }
+
+          let attr_name = get_attr_name(jsx_attr, true);
 
           // Case: <input required />
           let Some(attr_value) = &jsx_attr.value else {
@@ -2514,7 +2551,7 @@ const a = _jsx(MyIsland.Foo, {
   #[test]
   fn import_source_option_test() {
     test_transform(
-      JsxPrecompile::new("foobar".to_string(), None),
+      JsxPrecompile::new("foobar".to_string(), None, None),
       r#"const a = <div>foo</div>;"#,
       r#"import { jsxTemplate as _jsxTemplate } from "foobar/jsx-runtime";
 const $$_tpl_1 = [
@@ -2664,6 +2701,7 @@ const a = _jsxTemplate($$_tpl_1);"#,
       JsxPrecompile::new(
         "react".to_string(),
         Some(vec!["a".to_string(), "img".to_string()]),
+        None,
       ),
       r#"const a = <div><img src="foo.jpg"/><a href="\#">foo</a></div>"#,
       r#"import { jsx as _jsx, jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
@@ -2678,6 +2716,25 @@ const a = _jsxTemplate($$_tpl_1, _jsx("img", {
   href: "\\#",
   children: "foo"
 }));"#,
+    );
+  }
+
+  #[test]
+  fn skip_prop_serialization_test() {
+    test_transform(
+      JsxPrecompile::new(
+        "react".to_string(),
+        None,
+        Some(vec!["class".to_string(), "className".to_string()]),
+      ),
+      r#"const a = <div class="foo"><img id="foo" className="foo" /></div>"#,
+      r#"import { jsxTemplate as _jsxTemplate, jsxAttr as _jsxAttr } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div ",
+  '><img id="foo" ',
+  "></div>"
+];
+const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className", "foo"));"#,
     );
   }
 
