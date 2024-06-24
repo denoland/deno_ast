@@ -774,6 +774,7 @@ impl JsxPrecompile {
   ///
   /// Case: <div {...props} />
   /// Case: <Foo bar="1" />
+  /// Case: <Foo.Bar bar="1" />
   fn serialize_jsx_to_call_expr(&mut self, el: &JSXElement) -> CallExpr {
     let mut is_component = false;
     let name_expr = match &el.opening.name {
@@ -792,6 +793,9 @@ impl JsxPrecompile {
       }
       // Case: <ctx.Provider />
       JSXElementName::JSXMemberExpr(jsx_member_expr) => {
+        // Expressions are always treated as component since we can't
+        // reliably detect if the variable holds a component or a string.
+        is_component = true;
         Expr::Member(jsx_member_expr_to_normal(jsx_member_expr))
       }
       JSXElementName::JSXNamespacedName(namespace_name) => {
@@ -2482,6 +2486,27 @@ const a = _jsx(ctx.Provider, {
       r#"import { jsx as _jsx } from "react/jsx-runtime";
 const a = _jsx(a.b.c.d, {
   value: null
+});"#,
+    );
+  }
+
+  #[test]
+  fn component_prop_casing_test() {
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <Foo someCasing={2} />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(Foo, {
+  someCasing: 2
+});"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <MyIsland.Foo someCasing={2} />;"#,
+      r#"import { jsx as _jsx } from "react/jsx-runtime";
+const a = _jsx(MyIsland.Foo, {
+  someCasing: 2
 });"#,
     );
   }
