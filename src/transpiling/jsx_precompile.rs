@@ -1547,7 +1547,7 @@ mod tests {
   use crate::swc::parser::Parser;
   use crate::swc::parser::StringInput;
   use crate::swc::parser::Syntax;
-  use crate::swc::parser::TsConfig;
+  use crate::swc::parser::TsSyntax;
   use crate::swc::visit::FoldWith;
   use crate::EmitOptions;
   use crate::SourceMap;
@@ -2755,7 +2755,7 @@ const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className",
     let source_file =
       source_map.new_source_file("file:///test.ts", src.to_string());
     let input = StringInput::from(&*source_file);
-    let syntax = Syntax::Typescript(TsConfig {
+    let syntax = Syntax::Typescript(TsSyntax {
       tsx: true,
       ..Default::default()
     });
