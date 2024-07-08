@@ -2135,7 +2135,7 @@ const a = _jsxTemplate($$_tpl_1);"#,
 </div>;"#,
       r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  "<div>foo bar</div>"
+  "<div>foo bar		</div>"
 ];
 const result = _jsxTemplate($$_tpl_1);"#,
     );
@@ -2149,7 +2149,7 @@ const result = _jsxTemplate($$_tpl_1);"#,
 </div>;"#,
       r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  "<div>foo bar</div>"
+  "<div>foo bar    </div>"
 ];
 const result = _jsxTemplate($$_tpl_1);"#,
     );
