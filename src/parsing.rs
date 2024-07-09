@@ -15,9 +15,9 @@ use crate::swc::common::input::StringInput;
 use crate::swc::parser::error::Error as SwcError;
 use crate::swc::parser::lexer::Lexer;
 use crate::swc::parser::token::TokenAndSpan;
-use crate::swc::parser::EsConfig;
+use crate::swc::parser::EsSyntax;
 use crate::swc::parser::Syntax;
-use crate::swc::parser::TsConfig;
+use crate::swc::parser::TsSyntax;
 use crate::Globals;
 use crate::MediaType;
 use crate::ModuleSpecifier;
@@ -291,7 +291,7 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
     | MediaType::Dmts
     | MediaType::Dcts
     | MediaType::Tsx => {
-      Syntax::Typescript(TsConfig {
+      Syntax::Typescript(TsSyntax {
         decorators: true,
         // should be true for mts and cts:
         // https://babeljs.io/docs/babel-preset-typescript#disallowambiguousjsxlike
@@ -315,7 +315,7 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
     | MediaType::Wasm
     | MediaType::TsBuildInfo
     | MediaType::SourceMap
-    | MediaType::Unknown => Syntax::Es(EsConfig {
+    | MediaType::Unknown => Syntax::Es(EsSyntax {
       allow_return_outside_function: true,
       allow_super_outside_method: true,
       auto_accessors: true,

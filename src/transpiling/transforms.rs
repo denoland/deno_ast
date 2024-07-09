@@ -283,7 +283,7 @@ mod test {
   use crate::swc::parser::Parser;
   use crate::swc::parser::StringInput;
   use crate::swc::parser::Syntax;
-  use crate::swc::parser::TsConfig;
+  use crate::swc::parser::TsSyntax;
   use crate::swc::visit::Fold;
   use crate::swc::visit::FoldWith;
   use crate::ModuleSpecifier;
@@ -495,7 +495,7 @@ mod test {
       src.to_string(),
     );
     let input = StringInput::from(&*source_file);
-    let syntax = Syntax::Typescript(TsConfig {
+    let syntax = Syntax::Typescript(TsSyntax {
       ..Default::default()
     });
     let mut parser = Parser::new(syntax, input, None);
