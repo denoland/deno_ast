@@ -299,15 +299,19 @@ fn normalize_lit_str(lit: &Lit) -> Lit {
   }
 }
 
-fn jsx_text_to_str(jsx_text: &JSXText, escape: bool) -> String {
+fn jsx_text_to_str(
+  jsx_text: &JSXText,
+  escape: bool,
+  trim_last_child: bool,
+) -> String {
   let mut text = String::new();
 
   let mut lines = jsx_text.value.lines().enumerate().peekable();
   while let Some((i, line)) = lines.next() {
     let mut line = if i != 0 { line.trim_start() } else { line };
 
-    if lines.peek().is_some() {
-      line = line.trim_end()
+    if lines.peek().is_some() || trim_last_child {
+      line = line.trim_end();
     }
 
     if line.is_empty() {
@@ -427,6 +431,7 @@ fn merge_serializable_children(
   children: &[JSXElementChild],
   skip_serialize: &Option<Vec<String>>,
   escape_text_children: bool,
+  is_parent_serializable: bool,
 ) -> (Vec<JSXElementChild>, usize, usize) {
   // Do a first pass over children to merge sibling text nodes
   // and check if it contains any serializable nodes.
@@ -435,10 +440,15 @@ fn merge_serializable_children(
   let mut buf = String::new();
 
   let mut normalized_children: Vec<JSXElementChild> = vec![];
-  for child in children.iter() {
+  let mut child_iter = children.iter().peekable();
+  while let Some(child) = child_iter.next() {
     match child {
       JSXElementChild::JSXText(jsx_text) => {
-        let text = jsx_text_to_str(jsx_text, escape_text_children);
+        let text = jsx_text_to_str(
+          jsx_text,
+          escape_text_children,
+          is_parent_serializable && child_iter.peek().is_none(),
+        );
         if text.is_empty() {
           continue;
         }
@@ -641,7 +651,7 @@ impl JsxPrecompile {
         let child = &children[0];
         match child {
           JSXElementChild::JSXText(jsx_text) => {
-            let text = jsx_text_to_str(jsx_text, false);
+            let text = jsx_text_to_str(jsx_text, false, true);
             Some(string_lit_expr(text.into()))
           }
           JSXElementChild::JSXExprContainer(jsx_expr_container) => {
@@ -669,7 +679,12 @@ impl JsxPrecompile {
       }
       _ => {
         let (normalized_children, text_count, serializable_count) =
-          merge_serializable_children(children, &self.skip_serialize, false);
+          merge_serializable_children(
+            children,
+            &self.skip_serialize,
+            false,
+            false,
+          );
 
         // Merge sibling children when they can be serialized into one
         // serialized child. If all children are serializable, we'll
@@ -693,6 +708,7 @@ impl JsxPrecompile {
             &normalized_children,
             &mut strings,
             &mut dynamic_exprs,
+            false,
           );
 
           let expr = self.gen_template(index, strings, dynamic_exprs);
@@ -987,9 +1003,15 @@ impl JsxPrecompile {
     children: &[JSXElementChild],
     strings: &mut Vec<String>,
     dynamic_exprs: &mut Vec<Expr>,
+    is_parent_serializable: bool,
   ) {
     let (normalized_children, _text_count, _serializable_count) =
-      merge_serializable_children(children, &self.skip_serialize, true);
+      merge_serializable_children(
+        children,
+        &self.skip_serialize,
+        true,
+        is_parent_serializable,
+      );
 
     for child in normalized_children {
       match child {
@@ -1030,6 +1052,7 @@ impl JsxPrecompile {
             &jsx_frag.children,
             strings,
             dynamic_exprs,
+            false,
           ),
         // Invalid, was part of an earlier JSX iteration, but no
         // transform supports it. Babel and TypeScript error when they
@@ -1285,7 +1308,12 @@ impl JsxPrecompile {
       return;
     }
 
-    self.serialize_jsx_children_to_string(&el.children, strings, dynamic_exprs);
+    self.serialize_jsx_children_to_string(
+      &el.children,
+      strings,
+      dynamic_exprs,
+      true,
+    );
 
     let closing_tag = format!("</{}>", name);
     strings.last_mut().unwrap().push_str(closing_tag.as_str());
@@ -1498,6 +1526,7 @@ impl VisitMut for JsxPrecompile {
                 &frag.children,
                 &mut strings,
                 &mut dynamic_exprs,
+                false,
               );
               *expr = self.gen_template(index, strings, dynamic_exprs)
             }
@@ -1531,6 +1560,7 @@ impl VisitMut for JsxPrecompile {
             &frag.children,
             &mut strings,
             &mut dynamic_exprs,
+            false,
           );
           *expr = self.gen_template(index, strings, dynamic_exprs)
         }
@@ -2135,7 +2165,7 @@ const a = _jsxTemplate($$_tpl_1);"#,
 </div>;"#,
       r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  "<div>foo bar		</div>"
+  "<div>foo bar</div>"
 ];
 const result = _jsxTemplate($$_tpl_1);"#,
     );
@@ -2149,7 +2179,7 @@ const result = _jsxTemplate($$_tpl_1);"#,
 </div>;"#,
       r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_1 = [
-  "<div>foo bar    </div>"
+  "<div>foo bar</div>"
 ];
 const result = _jsxTemplate($$_tpl_1);"#,
     );
