@@ -14,7 +14,6 @@ use crate::swc::ast::Program;
 use crate::swc::common::chain;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::errors::Diagnostic as SwcDiagnostic;
-use crate::swc::parser::error::SyntaxError;
 use crate::swc::transforms::fixer;
 use crate::swc::transforms::helpers;
 use crate::swc::transforms::hygiene;
