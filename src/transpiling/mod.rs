@@ -567,7 +567,7 @@ fn ensure_no_fatal_diagnostics(
 ) -> Result<(), ParseDiagnosticsError> {
   let fatal_diagnostics = diagnostics
     .iter()
-    .filter(|d| is_fatal_syntax_error(&d.kind))
+    .filter(|d| d.is_fatal())
     .map(ToOwned::to_owned)
     .collect::<Vec<_>>();
   if !fatal_diagnostics.is_empty() {
@@ -575,30 +575,6 @@ fn ensure_no_fatal_diagnostics(
   } else {
     Ok(())
   }
-}
-
-fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
-  matches!(
-    error_kind,
-    // expected identifier
-    SyntaxError::TS1003 |
-        // expected semi-colon
-        SyntaxError::TS1005 |
-        // octal literals not allowed
-        SyntaxError::TS1085 |
-        SyntaxError::LegacyOctal |
-        SyntaxError::LegacyDecimal |
-        // expected expression
-        SyntaxError::TS1109 |
-        // unterminated string literal
-        SyntaxError::UnterminatedStrLit |
-        // nullish coalescing with logical op
-        SyntaxError::NullishCoalescingWithLogicalOp |
-        // init required for using
-        SyntaxError::InitRequiredForUsingDecl |
-        // missing a token
-        SyntaxError::Expected(_, _)
-  )
 }
 
 #[cfg(test)]

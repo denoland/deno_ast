@@ -46,6 +46,36 @@ impl ParseDiagnostic {
   pub fn display_position(&self) -> LineAndColumnDisplay {
     self.source.line_and_column_display(self.range.start)
   }
+
+  /// If the diagnostic syntax kind means that tasks such as
+  /// transpiling should not proceed.
+  pub fn is_fatal(&self) -> bool {
+    is_fatal_syntax_error(&self.kind)
+  }
+}
+
+fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
+  matches!(
+    error_kind,
+    // expected identifier
+    SyntaxError::TS1003 |
+        // expected semi-colon
+        SyntaxError::TS1005 |
+        // octal literals not allowed
+        SyntaxError::TS1085 |
+        SyntaxError::LegacyOctal |
+        SyntaxError::LegacyDecimal |
+        // expected expression
+        SyntaxError::TS1109 |
+        // unterminated string literal
+        SyntaxError::UnterminatedStrLit |
+        // nullish coalescing with logical op
+        SyntaxError::NullishCoalescingWithLogicalOp |
+        // init required for using
+        SyntaxError::InitRequiredForUsingDecl |
+        // missing a token
+        SyntaxError::Expected(_, _)
+  )
 }
 
 impl Diagnostic for ParseDiagnostic {
