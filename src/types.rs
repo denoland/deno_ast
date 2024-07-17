@@ -48,7 +48,9 @@ impl ParseDiagnostic {
   }
 
   /// If the diagnostic syntax kind means that tasks such as
-  /// transpiling should not proceed.
+  /// transpiling should not proceed. We don't surface certain
+  /// swc diagnostics because we let TypeScript and v8 surface
+  /// them instead.
   pub fn is_fatal(&self) -> bool {
     is_fatal_syntax_error(&self.kind)
   }
