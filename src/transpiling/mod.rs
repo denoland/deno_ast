@@ -1609,6 +1609,91 @@ const a = _jsx(Foo, {
   }
 
   #[test]
+  fn test_source_map_base() {
+    #[track_caller]
+    fn run_test(file_name: &str, base: &str, expected: &str) {
+      let specifier = ModuleSpecifier::parse(file_name).unwrap();
+      let source = r#"{ const foo = "bar"; };"#;
+      let module = parse_module(ParseParams {
+        specifier,
+        text: source.into(),
+        media_type: MediaType::Tsx,
+        capture_tokens: false,
+        maybe_syntax: None,
+        scope_analysis: false,
+      })
+      .unwrap();
+      let emit_options = EmitOptions {
+        source_map: SourceMapOption::Separate,
+        source_map_base: Some(ModuleSpecifier::parse(base).unwrap()),
+        ..Default::default()
+      };
+      let emit_result = module
+        .transpile(&TranspileOptions::default(), &emit_options)
+        .unwrap()
+        .into_source()
+        .into_string()
+        .unwrap();
+      assert_eq!(
+        &emit_result.text,
+        r#"{
+  const foo = "bar";
+}"#
+      );
+      let value: serde_json::Value =
+        serde_json::from_str(&emit_result.source_map.unwrap()).unwrap();
+      assert_eq!(
+        value,
+        serde_json::json!({
+          "version":3,
+          "sources":[expected],
+          "sourcesContent":["{ const foo = \"bar\"; };"],
+          "names":[],
+          "mappings":"AAAA;EAAE,MAAM,MAAM;AAAO"
+        })
+      );
+    }
+
+    run_test(
+      "https://deno.land/x/mod.tsx",
+      "https://deno.land/x/",
+      "mod.tsx",
+    );
+    run_test(
+      "https://deno.land/x/mod.tsx",
+      "https://deno.land/",
+      "x/mod.tsx",
+    );
+    run_test(
+      "https://deno.land/x/mod.tsx",
+      "file:///home/user/",
+      "https://deno.land/x/mod.tsx",
+    );
+    run_test(
+      "https://deno.land/x/mod.tsx",
+      "https://example.com/",
+      "https://deno.land/x/mod.tsx",
+    );
+    run_test(
+      "https://example.com/base/",
+      "https://example.com/base/",
+      // maybe not ideal, but this is ok
+      "https://example.com/base/",
+    );
+    run_test("file:///example.ts", "file:///", "example.ts");
+    run_test(
+      "file:///sub_dir/example.ts",
+      "file:///",
+      "sub_dir/example.ts",
+    );
+    run_test(
+      "file:///sub_dir/example.ts",
+      "file:///sub_dir/",
+      "example.ts",
+    );
+  }
+
+  #[test]
   fn test_source_map_with_file() {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
