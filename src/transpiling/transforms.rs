@@ -48,16 +48,15 @@ impl Fold for ImportDeclsToVarDeclsFolder {
           .specifiers
           .iter()
           .filter_map(|specifier| match specifier {
-            ImportSpecifier::Default(specifier) => Some(create_key_value(
-              "default".to_string(),
-              specifier.local.clone(),
-            )),
+            ImportSpecifier::Default(specifier) => {
+              Some(create_key_value("default".into(), specifier.local.clone()))
+            }
             ImportSpecifier::Named(specifier) => {
               Some(match specifier.imported.as_ref() {
                 Some(name) => create_key_value(
                   match name {
-                    ModuleExportName::Ident(ident) => ident.sym.to_string(),
-                    ModuleExportName::Str(str) => str.value.to_string(),
+                    ModuleExportName::Ident(ident) => ident.sym.clone(),
+                    ModuleExportName::Str(str) => str.value.clone(),
                   },
                   specifier.local.clone(),
                 ),
@@ -199,7 +198,7 @@ fn create_ident(name: Atom) -> swc_ast::Ident {
   swc_ast::Ident {
     span: DUMMY_SP,
     ctxt: SyntaxContext::default(),
-    sym: name.into(),
+    sym: name,
     optional: false,
   }
 }
@@ -207,19 +206,19 @@ fn create_ident(name: Atom) -> swc_ast::Ident {
 fn create_ident_name(name: Atom) -> swc_ast::IdentName {
   swc_ast::IdentName {
     span: DUMMY_SP,
-    sym: name.into(),
+    sym: name,
   }
 }
 
 fn create_key_value(
-  key: String,
+  key: Atom,
   value: swc_ast::Ident,
 ) -> swc_ast::ObjectPatProp {
   swc_ast::ObjectPatProp::KeyValue(swc_ast::KeyValuePatProp {
     // use a string literal because it will work in more scenarios than an identifier
     key: swc_ast::PropName::Str(swc_ast::Str {
       span: DUMMY_SP,
-      value: key.into(),
+      value: key,
       raw: None,
     }),
     value: Box::new(swc_ast::Pat::Ident(swc_ast::BindingIdent {
