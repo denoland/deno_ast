@@ -270,15 +270,15 @@ impl<'a> Visit for DependencyCollector<'a> {
   }
 
   fn visit_module_items(&mut self, items: &[ast::ModuleItem]) {
-    swc_ecma_visit::visit_module_items(self, items);
+    items.visit_children_with(self);
   }
 
   fn visit_stmts(&mut self, items: &[ast::Stmt]) {
-    swc_ecma_visit::visit_stmts(self, items);
+    items.visit_children_with(self)
   }
 
   fn visit_call_expr(&mut self, node: &ast::CallExpr) {
-    swc_ecma_visit::visit_call_expr(self, node);
+    node.visit_children_with(self);
 
     if !matches!(&node.callee, Callee::Import(_)) {
       return;
