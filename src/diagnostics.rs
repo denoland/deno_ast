@@ -254,7 +254,8 @@ impl fmt::Display for ReplaceTab<'_> {
 /// adjust the width accordingly. However, this is probably not worth the
 /// effort.
 fn display_width(str: &str) -> usize {
-  str.width_cjk() + (str.chars().filter(|c| *c == '\t').count() * TAB_WIDTH)
+  let num_tabs = str.chars().filter(|c| *c == '\t').count();
+  str.width_cjk() + num_tabs * TAB_WIDTH - num_tabs
 }
 
 pub struct DiagnosticDisplay<'a, T: Diagnostic + ?Sized> {
