@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use swc_atoms::Atom;
+use swc_common::SyntaxContext;
+
 use crate::swc::ast as swc_ast;
 use crate::swc::common::DUMMY_SP;
 use crate::swc::visit::noop_fold_type;
@@ -45,16 +48,15 @@ impl Fold for ImportDeclsToVarDeclsFolder {
           .specifiers
           .iter()
           .filter_map(|specifier| match specifier {
-            ImportSpecifier::Default(specifier) => Some(create_key_value(
-              "default".to_string(),
-              specifier.local.clone(),
-            )),
+            ImportSpecifier::Default(specifier) => {
+              Some(create_key_value("default".into(), specifier.local.clone()))
+            }
             ImportSpecifier::Named(specifier) => {
               Some(match specifier.imported.as_ref() {
                 Some(name) => create_key_value(
                   match name {
-                    ModuleExportName::Ident(ident) => ident.sym.to_string(),
-                    ModuleExportName::Str(str) => str.value.to_string(),
+                    ModuleExportName::Ident(ident) => ident.sym.clone(),
+                    ModuleExportName::Str(str) => str.value.clone(),
                   },
                   specifier.local.clone(),
                 ),
@@ -79,6 +81,7 @@ impl Fold for ImportDeclsToVarDeclsFolder {
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(VarDecl {
           span: DUMMY_SP,
           kind: VarDeclKind::Const,
+          ctxt: SyntaxContext::default(),
           declare: false,
           decls: {
             let mut decls = Vec::new();
@@ -191,23 +194,31 @@ fn create_empty_stmt() -> swc_ast::ModuleItem {
   ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP }))
 }
 
-fn create_ident(name: String) -> swc_ast::Ident {
+fn create_ident(name: Atom) -> swc_ast::Ident {
   swc_ast::Ident {
     span: DUMMY_SP,
-    sym: name.into(),
+    ctxt: SyntaxContext::default(),
+    sym: name,
     optional: false,
   }
 }
 
+fn create_ident_name(name: Atom) -> swc_ast::IdentName {
+  swc_ast::IdentName {
+    span: DUMMY_SP,
+    sym: name,
+  }
+}
+
 fn create_key_value(
-  key: String,
+  key: Atom,
   value: swc_ast::Ident,
 ) -> swc_ast::ObjectPatProp {
   swc_ast::ObjectPatProp::KeyValue(swc_ast::KeyValuePatProp {
     // use a string literal because it will work in more scenarios than an identifier
     key: swc_ast::PropName::Str(swc_ast::Str {
       span: DUMMY_SP,
-      value: key.into(),
+      value: key,
       raw: None,
     }),
     value: Box::new(swc_ast::Pat::Ident(swc_ast::BindingIdent {
@@ -239,7 +250,7 @@ fn create_await_import_expr(
         span: DUMMY_SP,
         props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
           KeyValueProp {
-            key: PropName::Ident(create_ident("assert".to_string())),
+            key: PropName::Ident(create_ident_name("assert".into())),
             value: Box::new(Expr::Object(*asserts)),
           },
         )))],
@@ -251,11 +262,10 @@ fn create_await_import_expr(
     span: DUMMY_SP,
     arg: Box::new(Expr::Call(CallExpr {
       span: DUMMY_SP,
-      callee: Callee::Expr(Box::new(Expr::Ident(Ident {
-        span: DUMMY_SP,
-        sym: "import".into(),
-        optional: false,
-      }))),
+      ctxt: SyntaxContext::default(),
+      callee: Callee::Expr(Box::new(Expr::Ident(create_ident(
+        "import".into(),
+      )))),
       args,
       type_args: None,
     })),
@@ -491,7 +501,9 @@ mod test {
   fn parse(src: &str) -> (Rc<SourceMap>, Module) {
     let source_map = Rc::new(SourceMap::default());
     let source_file = source_map.new_source_file(
-      FileName::Url(ModuleSpecifier::parse("file:///test.ts").unwrap()),
+      Rc::new(FileName::Url(
+        ModuleSpecifier::parse("file:///test.ts").unwrap(),
+      )),
       src.to_string(),
     );
     let input = StringInput::from(&*source_file);

@@ -413,7 +413,11 @@ pub fn fold_program(
       options.var_decl_imports
     ),
     Optional::new(
-      typescript::typescript(options.as_typescript_config(), marks.top_level),
+      typescript::typescript(
+        options.as_typescript_config(),
+        marks.unresolved,
+        marks.top_level
+      ),
       !options.transform_jsx
     ),
     Optional::new(
@@ -422,6 +426,7 @@ pub fn fold_program(
         options.as_typescript_config(),
         options.as_tsx_config(),
         comments,
+        marks.unresolved,
         marks.top_level,
       ),
       options.transform_jsx

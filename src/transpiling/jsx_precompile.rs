@@ -2,6 +2,7 @@
 
 use crate::swc::atoms::Atom;
 use crate::swc::parser::lexer::util::CharExt;
+use swc_common::SyntaxContext;
 use swc_common::DUMMY_SP;
 use swc_ecma_ast::*;
 use swc_ecma_utils::prepend_stmt;
@@ -558,7 +559,7 @@ impl JsxPrecompile {
     match &self.import_jsx {
       Some(ident) => ident.clone(),
       None => {
-        let ident = Ident::new("_jsx".into(), DUMMY_SP);
+        let ident = new_ident("_jsx".into());
         self.import_jsx = Some(ident.clone());
         ident
       }
@@ -570,7 +571,7 @@ impl JsxPrecompile {
     match &self.import_jsx_ssr {
       Some(ident) => ident.clone(),
       None => {
-        let ident = Ident::new("_jsxTemplate".into(), DUMMY_SP);
+        let ident = new_ident("_jsxTemplate".into());
         self.import_jsx_ssr = Some(ident.clone());
         ident
       }
@@ -582,7 +583,7 @@ impl JsxPrecompile {
     match &self.import_jsx_attr {
       Some(ident) => ident.clone(),
       None => {
-        let ident = Ident::new("_jsxAttr".into(), DUMMY_SP);
+        let ident = new_ident("_jsxAttr".into());
         self.import_jsx_attr = Some(ident.clone());
         ident
       }
@@ -594,7 +595,7 @@ impl JsxPrecompile {
     match &self.import_jsx_escape {
       Some(ident) => ident.clone(),
       None => {
-        let ident = Ident::new("_jsxEscape".into(), DUMMY_SP);
+        let ident = new_ident("_jsxEscape".into());
         self.import_jsx_escape = Some(ident.clone());
         ident
       }
@@ -609,6 +610,7 @@ impl JsxPrecompile {
 
     Expr::Call(CallExpr {
       span: DUMMY_SP,
+      ctxt: Default::default(),
       callee: Callee::Expr(Box::new(Expr::Ident(
         self.get_jsx_escape_fn_identifier(),
       ))),
@@ -970,6 +972,7 @@ impl JsxPrecompile {
 
     CallExpr {
       span: DUMMY_SP,
+      ctxt: Default::default(),
       callee: Callee::Expr(Box::new(Expr::Ident(self.get_jsx_identifier()))),
       args,
       type_args: None,
@@ -990,6 +993,7 @@ impl JsxPrecompile {
 
     CallExpr {
       span: DUMMY_SP,
+      ctxt: Default::default(),
       callee: Callee::Expr(Box::new(Expr::Ident(
         self.get_jsx_attr_identifier(),
       ))),
@@ -1332,7 +1336,7 @@ impl JsxPrecompile {
       Vec::with_capacity(1 + dynamic_exprs.len());
     args.push(ExprOrSpread {
       spread: None,
-      expr: Box::new(Expr::Ident(Ident::new(name.into(), DUMMY_SP))),
+      expr: Box::new(Expr::Ident(new_ident(name.into()))),
     });
     for dynamic_expr in dynamic_exprs.into_iter() {
       args.push(ExprOrSpread {
@@ -1346,6 +1350,7 @@ impl JsxPrecompile {
 
     Expr::Call(CallExpr {
       span: DUMMY_SP,
+      ctxt: Default::default(),
       callee: Callee::Expr(Box::new(Expr::Ident(jsx_ident))),
       args,
       type_args: Default::default(),
@@ -1377,25 +1382,19 @@ impl JsxPrecompile {
     let mut imports: Vec<(Ident, Ident)> = vec![];
 
     if let Some(jsx_ident) = &self.import_jsx {
-      imports.push((jsx_ident.clone(), Ident::new("jsx".into(), DUMMY_SP)))
+      imports.push((jsx_ident.clone(), new_ident("jsx".into())))
     }
 
     if let Some(jsx_ssr_ident) = &self.import_jsx_ssr {
-      imports.push((
-        jsx_ssr_ident.clone(),
-        Ident::new("jsxTemplate".into(), DUMMY_SP),
-      ))
+      imports.push((jsx_ssr_ident.clone(), new_ident("jsxTemplate".into())))
     }
 
     if let Some(jsx_attr_ident) = &self.import_jsx_attr {
-      imports.push((
-        jsx_attr_ident.clone(),
-        Ident::new("jsxAttr".into(), DUMMY_SP),
-      ))
+      imports.push((jsx_attr_ident.clone(), new_ident("jsxAttr".into())))
     }
 
     if let Some(espace_ident) = self.import_jsx_escape.take() {
-      imports.push((espace_ident, Ident::new("jsxEscape".into(), DUMMY_SP)))
+      imports.push((espace_ident, new_ident("jsxEscape".into())))
     }
 
     if !imports.is_empty() {
@@ -1472,12 +1471,13 @@ impl VisitMut for JsxPrecompile {
         non_mod_stmt_idx,
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(VarDecl {
           span: DUMMY_SP,
+          ctxt: SyntaxContext::default(),
           kind: VarDeclKind::Const,
           declare: false,
           decls: vec![VarDeclarator {
             span: DUMMY_SP,
             name: Pat::Ident(BindingIdent {
-              id: Ident::new(create_tpl_binding_name(*idx).into(), DUMMY_SP),
+              id: new_ident(create_tpl_binding_name(*idx).into()),
               type_ann: None,
             }),
             init: Some(Box::new(Expr::Array(ArrayLit {
@@ -1571,6 +1571,10 @@ impl VisitMut for JsxPrecompile {
   }
 }
 
+fn new_ident(name: Atom) -> Ident {
+  Ident::new(name, DUMMY_SP, SyntaxContext::default())
+}
+
 #[cfg(test)]
 mod tests {
   use crate::swc::ast::Module;
@@ -1580,6 +1584,7 @@ mod tests {
   use crate::swc::parser::TsSyntax;
   use crate::swc::visit::FoldWith;
   use crate::EmitOptions;
+  use crate::ModuleSpecifier;
   use crate::SourceMap;
   use pretty_assertions::assert_eq;
   use swc_common::comments::SingleThreadedComments;
@@ -2782,8 +2787,10 @@ const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className",
 
   fn parse(src: &str) -> (SourceMap, Module) {
     let source_map = SourceMap::default();
-    let source_file =
-      source_map.new_source_file("file:///test.ts", src.to_string());
+    let source_file = source_map.new_source_file(
+      ModuleSpecifier::parse("file:///test.ts").unwrap(),
+      src.to_string(),
+    );
     let input = StringInput::from(&*source_file);
     let syntax = Syntax::Typescript(TsSyntax {
       tsx: true,
