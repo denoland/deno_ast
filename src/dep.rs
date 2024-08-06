@@ -311,30 +311,27 @@ impl<'a> Visit for DependencyCollector<'a> {
             let mut is_member_expr = false;
 
             if let Some(expr) = tpl.exprs.get(i) {
-              match **expr {
-                Expr::Member(MemberExpr {
-                  prop: MemberProp::Ident(IdentName { sym: ref sym2, .. }),
-                  ref obj,
+              if let Expr::Member(MemberExpr {
+                prop: MemberProp::Ident(IdentName { sym: ref sym2, .. }),
+                ref obj,
+                ..
+              }) = **expr
+              {
+                if let Expr::Member(MemberExpr {
+                  prop: MemberProp::Ident(IdentName { sym: ref sym1, .. }),
+                  obj: ref obj1,
                   ..
-                }) => match **obj {
-                  Expr::Member(MemberExpr {
-                    prop: MemberProp::Ident(IdentName { sym: ref sym1, .. }),
-                    obj: ref obj1,
-                    ..
-                  }) => match **obj1 {
-                    Expr::Ident(Ident { ref sym, .. }) => {
-                      parts.push(DynamicTemplatePart::MemberExpr(
-                        sym.clone(),
-                        sym1.clone(),
-                        sym2.clone(),
-                      ));
-                      is_member_expr = true;
-                    }
-                    _ => {}
-                  },
-                  _ => {}
-                },
-                _ => {}
+                }) = **obj
+                {
+                  if let Expr::Ident(Ident { ref sym, .. }) = **obj1 {
+                    parts.push(DynamicTemplatePart::MemberExpr(
+                      sym.clone(),
+                      sym1.clone(),
+                      sym2.clone(),
+                    ));
+                    is_member_expr = true;
+                  }
+                }
               }
 
               if !is_member_expr {
