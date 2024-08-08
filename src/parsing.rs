@@ -351,6 +351,8 @@ fn strip_bom_from_arc(s: Arc<str>, should_panic_in_debug: bool) -> Arc<str> {
 
 #[cfg(test)]
 mod test {
+  use pretty_assertions::assert_eq;
+
   use crate::diagnostics::Diagnostic;
   use crate::LineAndColumnDisplay;
 
@@ -462,6 +464,47 @@ mod test {
     assert_eq!(
       diagnostic.message().to_string(),
       "Expected ';', '}' or <eof>"
+    );
+  }
+
+  #[test]
+  fn test_err_trailing_blank_line() {
+    let diagnostic = parse_ts_module("setTimeout(() => {}),\n").err().unwrap();
+    assert_eq!(
+      diagnostic.to_string(),
+      // should contain some context by including the previous line
+      // instead of just a blank line
+      vec![
+        "Unexpected eof at file:///my_file.ts:2:1",
+        "",
+        "  setTimeout(() => {}),",
+        "  ~~~~~~~~~~~~~~~~~~~~~",
+        "",
+        "  ~"
+      ]
+      .join("\n")
+    );
+  }
+
+  #[test]
+  fn test_err_many_trailing_blank_lines() {
+    let diagnostic = parse_ts_module("setTimeout(() => {}),\n\n\n\n\n\n\n\n").err().unwrap();
+    assert_eq!(
+      diagnostic.to_string(),
+      // should contain some context by including the previous lines
+      // instead of just a blank line
+      vec![
+        "Unexpected eof at file:///my_file.ts:9:1",
+        "",
+        "  setTimeout(() => {}),",
+        "  ~~~~~~~~~~~~~~~~~~~~~",
+        "",
+        "  ~",
+        "  ...",
+        "",
+        "  ~"
+      ]
+      .join("\n")
     );
   }
 
