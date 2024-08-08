@@ -474,7 +474,7 @@ mod test {
       diagnostic.to_string(),
       // should contain some context by including the previous line
       // instead of just a blank line
-      vec![
+      [
         "Unexpected eof at file:///my_file.ts:2:1",
         "",
         "  setTimeout(() => {}),",
@@ -495,7 +495,7 @@ mod test {
       diagnostic.to_string(),
       // should contain some context by including the previous lines
       // instead of just a blank line
-      vec![
+      [
         "Unexpected eof at file:///my_file.ts:9:1",
         "",
         "  setTimeout(() => {}),",
