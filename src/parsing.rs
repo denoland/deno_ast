@@ -488,7 +488,9 @@ mod test {
 
   #[test]
   fn test_err_many_trailing_blank_lines() {
-    let diagnostic = parse_ts_module("setTimeout(() => {}),\n\n\n\n\n\n\n\n").err().unwrap();
+    let diagnostic = parse_ts_module("setTimeout(() => {}),\n\n\n\n\n\n\n\n")
+      .err()
+      .unwrap();
     assert_eq!(
       diagnostic.to_string(),
       // should contain some context by including the previous lines
