@@ -362,7 +362,7 @@ impl fmt::Display for ParseDiagnostic {
           .join("\n")
       })
       .unwrap_or_else(|err| {
-        format!("Bug. Please report this issue: {:?}", err)
+        format!("Bug in Deno. Please report this issue: {:?}", err)
       }),
     )
   }
@@ -413,14 +413,22 @@ fn get_range_text_highlight(
     source: &SourceTextInfo,
     byte_range: SourceRange,
   ) -> (&str, (usize, usize)) {
-    let first_line_start =
-      source.line_start(source.line_index(byte_range.start));
+    let mut first_line_index = source.line_index(byte_range.start);
+    let mut first_line_start = source.line_start(first_line_index);
     let last_line_end = source.line_end(source.line_index(byte_range.end));
+    let mut sub_text =
+      source.range_text(&SourceRange::new(first_line_start, last_line_end));
+
+    // while the text is empty, show the previous line
+    while sub_text.trim().is_empty() && first_line_index > 0 {
+      first_line_index -= 1;
+      first_line_start = source.line_start(first_line_index);
+      sub_text =
+        source.range_text(&SourceRange::new(first_line_start, last_line_end));
+    }
 
     let error_start = byte_range.start - first_line_start;
     let error_end = error_start + (byte_range.end - byte_range.start);
-    let sub_text =
-      source.range_text(&SourceRange::new(first_line_start, last_line_end));
     (sub_text, (error_start, error_end))
   }
 
