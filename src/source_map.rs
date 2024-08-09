@@ -1,14 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::rc::Rc;
-
+use crate::swc::common::sync::Lrc;
 use crate::swc::common::SourceFile;
 
 use crate::ModuleSpecifier;
 
 #[derive(Clone, Default)]
 pub struct SourceMap {
-  inner: Rc<crate::swc::common::SourceMap>,
+  inner: Lrc<crate::swc::common::SourceMap>,
 }
 
 impl SourceMap {
@@ -16,11 +15,11 @@ impl SourceMap {
     let map = Self::default();
     map
       .inner
-      .new_source_file(Rc::new(swc_common::FileName::Url(specifier)), source);
+      .new_source_file(Lrc::new(swc_common::FileName::Url(specifier)), source);
     map
   }
 
-  pub fn inner(&self) -> &Rc<crate::swc::common::SourceMap> {
+  pub fn inner(&self) -> &Lrc<crate::swc::common::SourceMap> {
     &self.inner
   }
 
@@ -28,9 +27,9 @@ impl SourceMap {
     &self,
     specifier: ModuleSpecifier,
     source: String,
-  ) -> Rc<SourceFile> {
+  ) -> Lrc<SourceFile> {
     self
       .inner
-      .new_source_file(Rc::new(swc_common::FileName::Url(specifier)), source)
+      .new_source_file(Lrc::new(swc_common::FileName::Url(specifier)), source)
   }
 }

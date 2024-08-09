@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -14,6 +13,7 @@ use crate::swc::ast::Program;
 use crate::swc::common::chain;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::errors::Diagnostic as SwcDiagnostic;
+use crate::swc::common::sync::{Lrc, Send, Sync};
 use crate::swc::parser::error::SyntaxError;
 use crate::swc::transforms::fixer;
 use crate::swc::transforms::helpers;
@@ -349,8 +349,11 @@ fn transpile(
 
 #[derive(Default, Clone)]
 struct DiagnosticCollector {
-  diagnostics_cell: Rc<RefCell<Vec<SwcDiagnostic>>>,
+  diagnostics_cell: Lrc<RefCell<Vec<SwcDiagnostic>>>,
 }
+
+unsafe impl Send for DiagnosticCollector {}
+unsafe impl Sync for DiagnosticCollector {}
 
 impl DiagnosticCollector {
   pub fn into_handler(self) -> crate::swc::common::errors::Handler {
