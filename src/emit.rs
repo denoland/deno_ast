@@ -2,7 +2,6 @@
 
 use std::string::FromUtf8Error;
 
-use anyhow::Result;
 use base64::Engine;
 use thiserror::Error;
 
@@ -83,9 +82,11 @@ pub struct EmittedSourceText {
 #[derive(Debug, Error)]
 pub enum EmitError {
   #[error(transparent)]
-  SwcEmit(anyhow::Error),
+  SwcEmit(std::io::Error),
   #[error(transparent)]
-  SourceMap(anyhow::Error),
+  SourceMap(sourcemap::Error),
+  #[error(transparent)]
+  SourceMapEncode(base64::EncodeSliceError),
 }
 
 /// Emits the program as a string of JavaScript code, possibly with the passed
@@ -120,7 +121,7 @@ pub fn emit(
     };
     program
       .emit_with(&mut emitter)
-      .map_err(|e| EmitError::SwcEmit(e.into()))?;
+      .map_err(EmitError::SwcEmit)?;
   }
 
   let mut map: Option<Vec<u8>> = None;
@@ -141,14 +142,14 @@ pub fn emit(
     }
     source_map
       .to_writer(&mut map_buf)
-      .map_err(|e| EmitError::SourceMap(e.into()))?;
+      .map_err(EmitError::SourceMap)?;
 
     if emit_options.source_map == SourceMapOption::Inline {
       // length is from the base64 crate examples
       let mut inline_buf = vec![0; map_buf.len() * 4 / 3 + 4];
       let size = base64::prelude::BASE64_STANDARD
         .encode_slice(map_buf, &mut inline_buf)
-        .map_err(|err| EmitError::SourceMap(err.into()))?;
+        .map_err(EmitError::SourceMapEncode)?;
       let inline_buf = &inline_buf[..size];
       let prelude_text = "//# sourceMappingURL=data:application/json;base64,";
       let src_has_trailing_newline = src_buf.ends_with(&[b'\n']);

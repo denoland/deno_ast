@@ -226,7 +226,6 @@ dependencies = [
 name = "deno_ast"
 version = "0.41.3"
 dependencies = [
- "anyhow",
  "base64",
  "deno_media_type",
  "deno_terminal",
@@ -236,6 +235,7 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
+ "sourcemap",
  "swc_atoms",
  "swc_bundler",
  "swc_common",
