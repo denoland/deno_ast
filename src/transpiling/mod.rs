@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use anyhow::Result;
 use deno_media_type::MediaType;
 use swc_ecma_visit::as_folder;
 use thiserror::Error;
