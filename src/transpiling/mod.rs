@@ -594,6 +594,8 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
         SyntaxError::LegacyDecimal |
         // expected expression
         SyntaxError::TS1109 |
+        // invalid left hand side of assignment
+        SyntaxError::TS2406 |
         // unterminated string literal
         SyntaxError::UnterminatedStrLit |
         // nullish coalescing with logical op
@@ -1439,6 +1441,20 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       "Using declaration requires initializer at https://deno.land/x/mod.ts:1:1\n\n",
       "  using test\n",
       "  ~~~~~~~~~~",
+    ));
+  }
+
+  #[test]
+  fn diagnostic_invalid_left_hand_side_of_assignment() {
+    assert_eq!(get_diagnostic("(true ? a : b) = 1;"), concat!(
+      "The left-hand side of an assignment expression must be a variable or a property access. at https://deno.land/x/mod.ts:1:1\n\n",
+      "  (true ? a : b) = 1;\n",
+      "  ~~~~~~~~~~~~~~\n",
+      "\n",
+      // for some reason, swc does the same diagnostic twice
+      "The left-hand side of an assignment expression must be a variable or a property access. at https://deno.land/x/mod.ts:1:1\n\n",
+      "  (true ? a : b) = 1;\n",
+      "  ~~~~~~~~~~~~~~",
     ));
   }
 
