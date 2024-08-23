@@ -6,7 +6,7 @@ use crate::swc::common::FileName;
 use crate::swc::common::SourceFile;
 use crate::ModuleSpecifier;
 
-/// This is used in JSR, so don't remove it.
+// this is used in JSR, so don't remove it
 pub trait IntoSwcFileName {
   fn into_file_name(self) -> FileName;
 }
