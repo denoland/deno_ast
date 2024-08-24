@@ -6,6 +6,7 @@ use std::sync::Arc;
 use dprint_swc_ext::common::SourceRange;
 use dprint_swc_ext::common::SourceRanged;
 use dprint_swc_ext::common::SourceTextInfo;
+use dprint_swc_ext::common::SourceTextProvider;
 use dprint_swc_ext::common::StartSourcePos;
 use swc_common::Mark;
 
@@ -250,6 +251,16 @@ impl ParsedSource {
   /// Gets if this source is a script.
   pub fn is_script(&self) -> bool {
     matches!(self.program_ref(), Program::Script(_))
+  }
+}
+
+impl<'a> SourceTextProvider<'a> for &'a ParsedSource {
+  fn text(&self) -> &'a Arc<str> {
+    ParsedSource::text(self)
+  }
+
+  fn start_pos(&self) -> StartSourcePos {
+    StartSourcePos::START_SOURCE_POS
   }
 }
 
