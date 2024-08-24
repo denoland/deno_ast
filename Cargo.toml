@@ -35,7 +35,7 @@ base64 = { version = "0.21.6", optional = true }
 deno_media_type = "0.1.4"
 deno_terminal = "0.1.1"
 
-dprint-swc-ext = "0.19.0"
+dprint-swc-ext = "0.20.0"
 once_cell = "1.19.0"
 percent-encoding = "2.3.1"
 serde = { version = "1.0.144", features = ["derive"] }
@@ -49,26 +49,26 @@ unicode-width = "0.1.13" # 0.1.13 because control characters have a width of 1 t
 #
 # NOTE: You can automatically update these dependencies by running ./scripts/update_swc_deps.ts
 swc_atoms = "=0.6.7"
-swc_common = "=0.37.2"
+swc_common = "=0.37.5"
 swc_config = { version = "=0.1.15", optional = true }
 swc_config_macro = { version = "=0.1.4", optional = true }
-swc_ecma_ast = { version = "=0.118.1", features = ["serde-impl"] }
+swc_ecma_ast = { version = "=0.118.2", features = ["serde-impl"] }
 swc_ecma_codegen = { version = "=0.155.0", optional = true }
 swc_ecma_codegen_macros = { version = "=0.7.7", optional = true }
 swc_ecma_loader = { version = "=0.49.1", optional = true }
-swc_ecma_parser = "=0.149.0"
+swc_ecma_parser = "=0.149.1"
 swc_ecma_transforms_base = { version = "=0.144.0", optional = true }
 swc_ecma_transforms_classes = { version = "=0.133.0", optional = true }
 swc_ecma_transforms_compat = { version = "=0.170.0", optional = true }
 swc_ecma_transforms_macros = { version = "=0.5.5", optional = true }
-swc_ecma_transforms_optimization = { version = "=0.205.0", optional = true }
-swc_ecma_transforms_proposal = { version = "=0.178.0", optional = true }
+swc_ecma_transforms_optimization = { version = "=0.207.1", optional = true }
+swc_ecma_transforms_proposal = { version = "=0.178.1", optional = true }
 swc_ecma_transforms_react = { version = "=0.190.0", optional = true }
-swc_ecma_transforms_typescript = { version = "=0.195.1", optional = true }
+swc_ecma_transforms_typescript = { version = "=0.197.3", optional = true }
 swc_ecma_utils = { version = "=0.134.1", optional = true }
-swc_ecma_visit = { version = "=0.104.5", optional = true }
+swc_ecma_visit = { version = "=0.104.8", optional = true }
 swc_eq_ignore_macros = "=0.1.4"
-swc_bundler = { version = "=0.234.0", optional = true }
+swc_bundler = { version = "=0.236.0", optional = true }
 swc_graph_analyzer = { version = "=0.26.0", optional = true }
 swc_macros_common = { version = "=0.3.13", optional = true }
 swc_trace_macro = { version = "=0.1.3", optional = true }
