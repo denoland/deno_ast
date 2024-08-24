@@ -188,6 +188,7 @@ impl TranspileOptions {
       // Do not opt into swc's optimization to inline enum member values
       // in the same module as it might cause bugs in certain code.
       ts_enum_is_mutable: true,
+      native_class_properties: false,
     }
   }
 }

@@ -703,10 +703,10 @@ function _bar(...Foo: Foo) {
 
   #[test]
   fn should_diganotic_when_var_stmts_sep_by_comma() {
-    let diagnostic = parse_for_diagnostic("let a = 0, let b = 1;");
+    let diagnostic = parse_ts_module("let a = 0, let b = 1;").err().unwrap();
     assert_eq!(
       diagnostic.message().to_string(),
-      "`let` cannot be used as an identifier in strict mode"
+      "Unexpected token `let`. Expected let is reserved in const, let, class declaration"
     );
   }
 
