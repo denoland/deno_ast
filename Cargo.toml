@@ -53,22 +53,22 @@ swc_common = "=0.37.5"
 swc_config = { version = "=0.1.15", optional = true }
 swc_config_macro = { version = "=0.1.4", optional = true }
 swc_ecma_ast = { version = "=0.118.2", features = ["serde-impl"] }
-swc_ecma_codegen = { version = "=0.155.0", optional = true }
+swc_ecma_codegen = { version = "=0.155.1", optional = true }
 swc_ecma_codegen_macros = { version = "=0.7.7", optional = true }
 swc_ecma_loader = { version = "=0.49.1", optional = true }
 swc_ecma_parser = "=0.149.1"
-swc_ecma_transforms_base = { version = "=0.144.0", optional = true }
-swc_ecma_transforms_classes = { version = "=0.133.0", optional = true }
-swc_ecma_transforms_compat = { version = "=0.170.0", optional = true }
+swc_ecma_transforms_base = { version = "=0.145.0", optional = true }
+swc_ecma_transforms_classes = { version = "=0.134.0", optional = true }
+swc_ecma_transforms_compat = { version = "=0.171.0", optional = true }
 swc_ecma_transforms_macros = { version = "=0.5.5", optional = true }
-swc_ecma_transforms_optimization = { version = "=0.207.1", optional = true }
-swc_ecma_transforms_proposal = { version = "=0.178.1", optional = true }
-swc_ecma_transforms_react = { version = "=0.190.0", optional = true }
-swc_ecma_transforms_typescript = { version = "=0.197.3", optional = true }
-swc_ecma_utils = { version = "=0.134.1", optional = true }
+swc_ecma_transforms_optimization = { version = "=0.208.0", optional = true }
+swc_ecma_transforms_proposal = { version = "=0.179.0", optional = true }
+swc_ecma_transforms_react = { version = "=0.191.0", optional = true }
+swc_ecma_transforms_typescript = { version = "=0.198.1", optional = true }
+swc_ecma_utils = { version = "=0.134.2", optional = true }
 swc_ecma_visit = { version = "=0.104.8", optional = true }
 swc_eq_ignore_macros = "=0.1.4"
-swc_bundler = { version = "=0.236.0", optional = true }
+swc_bundler = { version = "=0.237.0", optional = true }
 swc_graph_analyzer = { version = "=0.26.0", optional = true }
 swc_macros_common = { version = "=0.3.13", optional = true }
 swc_trace_macro = { version = "=0.1.3", optional = true }
