@@ -132,6 +132,19 @@ enum ParseMode {
   Script,
 }
 
+fn refine_parse_mode(
+  parse_mode: ParseMode,
+  media_type: MediaType,
+) -> ParseMode {
+  match (parse_mode, media_type) {
+    (ParseMode::Program, MediaType::Cjs) => ParseMode::Script,
+    (ParseMode::Program, MediaType::Cts) => ParseMode::Script,
+    (ParseMode::Program, MediaType::Mjs) => ParseMode::Module,
+    (ParseMode::Program, MediaType::Mts) => ParseMode::Module,
+    (parse_mode, _) => parse_mode,
+  }
+}
+
 fn parse(
   params: ParseParams,
   parse_mode: ParseMode,
@@ -148,6 +161,7 @@ fn parse(
   let syntax = params
     .maybe_syntax
     .unwrap_or_else(|| get_syntax(media_type));
+  let parse_mode = refine_parse_mode(parse_mode, media_type);
   let (comments, program, tokens, errors) =
     parse_string_input(input, syntax, params.capture_tokens, parse_mode)
       .map_err(|err| {
