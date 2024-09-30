@@ -110,9 +110,9 @@ fn normalize_dom_attr_name(name: &str) -> String {
     "xmlSpace" => "xml:space".to_string(),
 
     // Attributes that are kebab-cased
-    "acceptCharset"
+    "accentHeight"
+    | "acceptCharset"
     | "alignmentBaseline"
-    | "allowReorder"
     | "arabicForm"
     | "baselineShift"
     | "capHeight"
@@ -142,6 +142,7 @@ fn normalize_dom_attr_name(name: &str) -> String {
     | "glyphOrientationVertical"
     | "horizAdvX"
     | "horizOriginX"
+    | "horizOriginY"
     | "httpEquiv"
     | "imageRendering"
     | "letterSpacing"
@@ -154,8 +155,6 @@ fn normalize_dom_attr_name(name: &str) -> String {
     | "paintOrder"
     | "pointerEvents"
     | "renderingIntent"
-    | "repeatCount"
-    | "repeatDur"
     | "shapeRendering"
     | "stopColor"
     | "stopOpacity"
@@ -170,6 +169,8 @@ fn normalize_dom_attr_name(name: &str) -> String {
     | "strokeWidth"
     | "textAnchor"
     | "textDecoration"
+    | "textRendering"
+    | "transformOrigin"
     | "underlinePosition"
     | "underlineThickness"
     | "unicodeBidi"
@@ -191,6 +192,68 @@ fn normalize_dom_attr_name(name: &str) -> String {
         _ => ch.to_string(),
       })
       .collect(),
+
+    // Attributes that are camelCased and should be kept as is.
+    "allowReorder"
+    | "attributeName"
+    | "attributeType"
+    | "baseFrequency"
+    | "baseProfile"
+    | "calcMode"
+    | "clipPathUnits"
+    | "diffuseConstant"
+    | "edgeMode"
+    | "filterUnits"
+    | "glyphRef"
+    | "gradientTransform"
+    | "gradientUnits"
+    | "kernelMatrix"
+    | "kernelUnitLength"
+    | "keyPoints"
+    | "keySplines"
+    | "keyTimes"
+    | "lengthAdjust"
+    | "limitingConeAngle"
+    | "markerHeight"
+    | "markerUnits"
+    | "markerWidth"
+    | "maskContentUnits"
+    | "maskUnits"
+    | "numOctaves"
+    | "pathLength"
+    | "patternContentUnits"
+    | "patternTransform"
+    | "patternUnits"
+    | "pointsAtX"
+    | "pointsAtY"
+    | "pointsAtZ"
+    | "preserveAlpha"
+    | "preserveAspectRatio"
+    | "primitiveUnits"
+    | "referrerPolicy"
+    | "refX"
+    | "refY"
+    | "repeatCount"
+    | "repeatDur"
+    | "requiredExtensions"
+    | "requiredFeatures"
+    | "specularConstant"
+    | "specularExponent"
+    | "spreadMethod"
+    | "startOffset"
+    | "stdDeviation"
+    | "stitchTiles"
+    | "surfaceScale"
+    | "systemLanguage"
+    | "tableValues"
+    | "targetX"
+    | "targetY"
+    | "textLength"
+    | "viewBox"
+    | "xChannelSelector"
+    | "yChannelSelector"
+    | "zoomAndPan" => name.to_string(),
+
     _ => {
       // Devs expect attributes in the HTML document to be lowercased.
       name.to_lowercase()
@@ -1577,6 +1640,8 @@ fn new_ident(name: Atom) -> Ident {
 
 #[cfg(test)]
 mod tests {
+  use std::collections::HashMap;
+
   use crate::swc::ast::Module;
   use crate::swc::parser::Parser;
   use crate::swc::parser::StringInput;
@@ -2771,6 +2836,178 @@ const $$_tpl_1 = [
 ];
 const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className", "foo"));"#,
     );
+  }
+
+  #[test]
+  fn attr_casing_test() {
+    let values = HashMap::from([
+      ("accentHeight", "accent-height"),
+      ("acceptCharset", "accept-charset"),
+      ("alignmentBaseline", "alignment-baseline"),
+      ("allowReorder", "allowReorder"),
+      ("arabicForm", "arabic-form"),
+      ("attributeName", "attributeName"),
+      ("attributeType", "attributeType"),
+      ("baseFrequency", "baseFrequency"),
+      ("baselineShift", "baseline-shift"),
+      ("baseProfile", "baseProfile"),
+      ("calcMode", "calcMode"),
+      ("capHeight", "cap-height"),
+      ("className", "class"),
+      ("clipPath", "clip-path"),
+      ("clipPathUnits", "clipPathUnits"),
+      ("clipRule", "clip-rule"),
+      ("colorInterpolation", "color-interpolation"),
+      ("colorInterpolationFilters", "color-interpolation-filters"),
+      ("colorProfile", "color-profile"),
+      ("colorRendering", "color-rendering"),
+      ("contentScriptType", "content-script-type"),
+      ("contentStyleType", "content-style-type"),
+      ("diffuseConstant", "diffuseConstant"),
+      ("dominantBaseline", "dominant-baseline"),
+      ("edgeMode", "edgeMode"),
+      ("enableBackground", "enable-background"),
+      ("fillOpacity", "fill-opacity"),
+      ("fillRule", "fill-rule"),
+      ("filterUnits", "filterUnits"),
+      ("floodColor", "flood-color"),
+      ("floodOpacity", "flood-opacity"),
+      ("fontFamily", "font-family"),
+      ("fontSize", "font-size"),
+      ("fontSizeAdjust", "font-size-adjust"),
+      ("fontStretch", "font-stretch"),
+      ("fontStyle", "font-style"),
+      ("fontVariant", "font-variant"),
+      ("fontWeight", "font-weight"),
+      ("glyphName", "glyph-name"),
+      ("glyphOrientationHorizontal", "glyph-orientation-horizontal"),
+      ("glyphOrientationVertical", "glyph-orientation-vertical"),
+      ("glyphRef", "glyphRef"),
+      ("gradientTransform", "gradientTransform"),
+      ("gradientUnits", "gradientUnits"),
+      ("horizAdvX", "horiz-adv-x"),
+      ("horizOriginX", "horiz-origin-x"),
+      ("horizOriginY", "horiz-origin-y"),
+      ("htmlFor", "for"),
+      ("httpEquiv", "http-equiv"),
+      ("imageRendering", "image-rendering"),
+      ("kernelMatrix", "kernelMatrix"),
+      ("kernelUnitLength", "kernelUnitLength"),
+      ("keyPoints", "keyPoints"),
+      ("keySplines", "keySplines"),
+      ("keyTimes", "keyTimes"),
+      ("lengthAdjust", "lengthAdjust"),
+      ("letterSpacing", "letter-spacing"),
+      ("lightingColor", "lighting-color"),
+      ("limitingConeAngle", "limitingConeAngle"),
+      ("markerEnd", "marker-end"),
+      ("markerHeight", "markerHeight"),
+      ("markerMid", "marker-mid"),
+      ("markerStart", "marker-start"),
+      ("markerUnits", "markerUnits"),
+      ("markerWidth", "markerWidth"),
+      ("maskContentUnits", "maskContentUnits"),
+      ("maskUnits", "maskUnits"),
+      ("numOctaves", "numOctaves"),
+      ("overlinePosition", "overline-position"),
+      ("overlineThickness", "overline-thickness"),
+      ("paintOrder", "paint-order"),
+      ("panose1", "panose-1"),
+      ("pathLength", "pathLength"),
+      ("patternContentUnits", "patternContentUnits"),
+      ("patternTransform", "patternTransform"),
+      ("patternUnits", "patternUnits"),
+      ("pointsAtX", "pointsAtX"),
+      ("pointsAtY", "pointsAtY"),
+      ("pointsAtZ", "pointsAtZ"),
+      ("pointerEvents", "pointer-events"),
+      ("preserveAlpha", "preserveAlpha"),
+      ("preserveAspectRatio", "preserveAspectRatio"),
+      ("primitiveUnits", "primitiveUnits"),
+      ("referrerPolicy", "referrerPolicy"),
+      ("refX", "refX"),
+      ("refY", "refY"),
+      ("renderingIntent", "rendering-intent"),
+      ("repeatCount", "repeatCount"),
+      ("repeatDur", "repeatDur"),
+      ("requiredExtensions", "requiredExtensions"),
+      ("requiredFeatures", "requiredFeatures"),
+      ("shapeRendering", "shape-rendering"),
+      ("specularConstant", "specularConstant"),
+      ("specularExponent", "specularExponent"),
+      ("spreadMethod", "spreadMethod"),
+      ("startOffset", "startOffset"),
+      ("stdDeviation", "stdDeviation"),
+      ("stitchTiles", "stitchTiles"),
+      ("stopColor", "stop-color"),
+      ("stopOpacity", "stop-opacity"),
+      ("strikethroughPosition", "strikethrough-position"),
+      ("strikethroughThickness", "strikethrough-thickness"),
+      ("strokeDasharray", "stroke-dasharray"),
+      ("strokeDashoffset", "stroke-dashoffset"),
+      ("strokeLinecap", "stroke-linecap"),
+      ("strokeLinejoin", "stroke-linejoin"),
+      ("strokeMiterlimit", "stroke-miterlimit"),
+      ("strokeOpacity", "stroke-opacity"),
+      ("strokeWidth", "stroke-width"),
+      ("surfaceScale", "surfaceScale"),
+      ("systemLanguage", "systemLanguage"),
+      ("tableValues", "tableValues"),
+      ("targetX", "targetX"),
+      ("targetY", "targetY"),
+      ("textAnchor", "text-anchor"),
+      ("textDecoration", "text-decoration"),
+      ("textLength", "textLength"),
+      ("textRendering", "text-rendering"),
+      ("transformOrigin", "transform-origin"),
+      ("underlinePosition", "underline-position"),
+      ("underlineThickness", "underline-thickness"),
+      ("unicodeBidi", "unicode-bidi"),
+      ("unicodeRange", "unicode-range"),
+      ("unitsPerEm", "units-per-em"),
+      ("vAlphabetic", "v-alphabetic"),
+      ("viewBox", "viewBox"),
+      ("vectorEffect", "vector-effect"),
+      ("vertAdvY", "vert-adv-y"),
+      ("vertOriginX", "vert-origin-x"),
+      ("vertOriginY", "vert-origin-y"),
+      ("vHanging", "v-hanging"),
+      ("vMathematical", "v-mathematical"),
+      ("wordSpacing", "word-spacing"),
+      ("writingMode", "writing-mode"),
+      ("xChannelSelector", "xChannelSelector"),
+      ("xHeight", "x-height"),
+      ("xlinkActuate", "xlink:actuate"),
+      ("xlinkArcrole", "xlink:arcrole"),
+      ("xlinkHref", "href"),
+      ("xlink:href", "href"),
+      ("xlinkRole", "xlink:role"),
+      ("xlinkShow", "xlink:show"),
+      ("xlinkTitle", "xlink:title"),
+      ("xlinkType", "xlink:type"),
+      ("xmlBase", "xml:base"),
+      ("xmlLang", "xml:lang"),
+      ("xmlSpace", "xml:space"),
+      ("yChannelSelector", "yChannelSelector"),
+      ("zoomAndPan", "zoomAndPan"),
+    ]);
+
+    for (key, value) in values.into_iter() {
+      let input = format!("const a = <div {}=\"foo\" />", key);
+      let expected = vec![
+        "import { jsxTemplate as _jsxTemplate } from \"react/jsx-runtime\";",
+        "const $$_tpl_1 = [",
+        &format!("  '<div {}=\"foo\"></div>'", value),
+        "];",
+        "const a = _jsxTemplate($$_tpl_1);",
+      ]
+      .join("\n");
+      test_transform(
+        JsxPrecompile::new("react".to_string(), None, None),
+        &input,
+        &expected,
+      );
+    }
   }
 
   #[track_caller]
