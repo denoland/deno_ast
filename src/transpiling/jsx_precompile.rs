@@ -2994,7 +2994,7 @@ const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className",
 
     for (key, value) in values.into_iter() {
       let input = format!("const a = <div {}=\"foo\" />", key);
-      let expected = vec![
+      let expected = [
         "import { jsxTemplate as _jsxTemplate } from \"react/jsx-runtime\";",
         "const $$_tpl_1 = [",
         &format!("  '<div {}=\"foo\"></div>'", value),
