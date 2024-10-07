@@ -385,7 +385,7 @@ mod test {
     test_transform(
       ImportDeclsToVarDeclsFolder,
       r#"import data from "./mod.json" assert { type: "json" };"#,
-      "const { \"default\": data } = await import(\"./mod.json\", {\n  assert: {\n    type: \"json\"\n  }\n});",
+      "const { \"default\": data } = await import(\"./mod.json\", {\n  with: {\n    type: \"json\"\n  }\n});",
     );
   }
 
@@ -413,8 +413,8 @@ mod test {
   fn test_strip_exports_assertions() {
     test_transform(
       StripExportsFolder,
-      r#"export { default as data } from "./mod.json" assert { type: "json" };"#,
-      "await import(\"./mod.json\", {\n  assert: {\n    type: \"json\"\n  }\n});",
+      r#"export { default as data } from "./mod.json" with { type: "json" };"#,
+      "await import(\"./mod.json\", {\n  with: {\n    type: \"json\"\n  }\n});",
     );
   }
 
@@ -424,7 +424,7 @@ mod test {
     test_transform(
       StripExportsFolder,
       r#"export * from "./mod.json" assert { type: "json" };"#,
-      "await import(\"./mod.json\", {\n  assert: {\n    type: \"json\"\n  }\n});",
+      "await import(\"./mod.json\", {\n  with: {\n    type: \"json\"\n  }\n});",
     );
   }
 
