@@ -243,7 +243,7 @@ fn create_await_import_expr(
   }];
 
   // add assert object if it exists
-  if let Some(asserts) = maybe_attrs {
+  if let Some(attrs) = maybe_attrs {
     args.push(ExprOrSpread {
       spread: None,
       expr: Box::new(Expr::Object(ObjectLit {
@@ -251,7 +251,7 @@ fn create_await_import_expr(
         props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
           KeyValueProp {
             key: PropName::Ident(create_ident_name("with".into())),
-            value: Box::new(Expr::Object(*asserts)),
+            value: Box::new(Expr::Object(*attrs)),
           },
         )))],
       })),
