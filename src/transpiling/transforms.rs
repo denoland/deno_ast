@@ -230,7 +230,7 @@ fn create_key_value(
 
 fn create_await_import_expr(
   module_specifier: &str,
-  maybe_asserts: Option<Box<swc_ast::ObjectLit>>,
+  maybe_attrs: Option<Box<swc_ast::ObjectLit>>,
 ) -> Box<swc_ast::Expr> {
   use swc_ast::*;
   let mut args = vec![ExprOrSpread {
@@ -243,15 +243,15 @@ fn create_await_import_expr(
   }];
 
   // add assert object if it exists
-  if let Some(asserts) = maybe_asserts {
+  if let Some(attrs) = maybe_attrs {
     args.push(ExprOrSpread {
       spread: None,
       expr: Box::new(Expr::Object(ObjectLit {
         span: DUMMY_SP,
         props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
           KeyValueProp {
-            key: PropName::Ident(create_ident_name("assert".into())),
-            value: Box::new(Expr::Object(*asserts)),
+            key: PropName::Ident(create_ident_name("with".into())),
+            value: Box::new(Expr::Object(*attrs)),
           },
         )))],
       })),
@@ -385,7 +385,7 @@ mod test {
     test_transform(
       ImportDeclsToVarDeclsFolder,
       r#"import data from "./mod.json" assert { type: "json" };"#,
-      "const { \"default\": data } = await import(\"./mod.json\", {\n  assert: {\n    type: \"json\"\n  }\n});",
+      "const { \"default\": data } = await import(\"./mod.json\", {\n  with: {\n    type: \"json\"\n  }\n});",
     );
   }
 
@@ -413,8 +413,8 @@ mod test {
   fn test_strip_exports_assertions() {
     test_transform(
       StripExportsFolder,
-      r#"export { default as data } from "./mod.json" assert { type: "json" };"#,
-      "await import(\"./mod.json\", {\n  assert: {\n    type: \"json\"\n  }\n});",
+      r#"export { default as data } from "./mod.json" with { type: "json" };"#,
+      "await import(\"./mod.json\", {\n  with: {\n    type: \"json\"\n  }\n});",
     );
   }
 
@@ -424,7 +424,7 @@ mod test {
     test_transform(
       StripExportsFolder,
       r#"export * from "./mod.json" assert { type: "json" };"#,
-      "await import(\"./mod.json\", {\n  assert: {\n    type: \"json\"\n  }\n});",
+      "await import(\"./mod.json\", {\n  with: {\n    type: \"json\"\n  }\n});",
     );
   }
 
