@@ -230,7 +230,7 @@ fn create_key_value(
 
 fn create_await_import_expr(
   module_specifier: &str,
-  maybe_asserts: Option<Box<swc_ast::ObjectLit>>,
+  maybe_attrs: Option<Box<swc_ast::ObjectLit>>,
 ) -> Box<swc_ast::Expr> {
   use swc_ast::*;
   let mut args = vec![ExprOrSpread {
@@ -243,14 +243,14 @@ fn create_await_import_expr(
   }];
 
   // add assert object if it exists
-  if let Some(asserts) = maybe_asserts {
+  if let Some(asserts) = maybe_attrs {
     args.push(ExprOrSpread {
       spread: None,
       expr: Box::new(Expr::Object(ObjectLit {
         span: DUMMY_SP,
         props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
           KeyValueProp {
-            key: PropName::Ident(create_ident_name("assert".into())),
+            key: PropName::Ident(create_ident_name("with".into())),
             value: Box::new(Expr::Object(*asserts)),
           },
         )))],
