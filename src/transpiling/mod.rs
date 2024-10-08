@@ -97,6 +97,9 @@ pub struct TranspileOptions {
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
+  /// `true` changes type stripping behaviour so that _only_ `type` imports
+  /// are stripped.
+  pub verbatim_module_syntax: bool,
   /// What to do with import statements that only import types i.e. whether to
   /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
   /// or error (`Error`). Defaults to `Remove`.
@@ -142,6 +145,7 @@ impl Default for TranspileOptions {
       use_ts_decorators: false,
       use_decorators_proposal: false,
       emit_metadata: false,
+      verbatim_module_syntax: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       jsx_automatic: false,
       jsx_development: false,
@@ -167,7 +171,7 @@ impl TranspileOptions {
 
   fn as_typescript_config(&self) -> typescript::Config {
     typescript::Config {
-      verbatim_module_syntax: false,
+      verbatim_module_syntax: self.verbatim_module_syntax,
       import_not_used_as_values: match self.imports_not_used_as_values {
         ImportsNotUsedAsValues::Remove => {
           typescript::ImportsNotUsedAsValues::Remove
@@ -395,7 +399,6 @@ pub fn fold_program(
       proposal::decorators::decorators(proposal::decorators::Config {
         legacy: true,
         emit_metadata: options.emit_metadata,
-
         use_define_for_class_fields: true,
       }),
       options.use_ts_decorators,
@@ -1556,6 +1559,38 @@ const a = _jsx(Foo, {
   }))
 });
 //# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2Vz"#;
+    assert_eq!(&code[0..expected1.len()], expected1);
+  }
+
+  #[test]
+  fn test_verbatim_module_syntax() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"import type foo from "./foo.ts"; import bar from "./bar.ts"; import baz from "./baz.ts"; const b: baz = 1;"#;
+    let module = parse_module(ParseParams {
+      specifier,
+      text: source.into(),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let transpile_options = TranspileOptions {
+      verbatim_module_syntax: true,
+      ..Default::default()
+    };
+    let code = module
+      .transpile(&transpile_options, &EmitOptions::default())
+      .unwrap()
+      .into_source()
+      .into_string()
+      .unwrap()
+      .text;
+    let expected1 = r#"import bar from "./bar.ts";
+import baz from "./baz.ts";
+const b = 1;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImh0dHBzOi8vZGVuby5sYW5kL3gvbW9kLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIGZvbyBmcm9tIFwiLi9mb28udHNcIjsgaW1wb3J0IGJhciBmcm9tIFwiLi9iYXIudHNcIjsgaW1wb3J0IGJheiBmcm9tIFwiLi9iYXoudHNcIjsgY29uc3QgYjogYmF6ID0gMTsiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IkFBQWlDLE9BQU8sU0FBUyxXQUFXO0FBQUMsT0FBTyxTQUFTLFdBQVc7QUFB"#;
     assert_eq!(&code[0..expected1.len()], expected1);
   }
 
