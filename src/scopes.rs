@@ -236,9 +236,8 @@ impl Visit for Analyzer<'_> {
     n.params.visit_with(self);
 
     // Don't add ScopeKind::Block
-    match &n.body {
-      Some(s) => s.stmts.visit_with(self),
-      None => {}
+    if let Some(body) = &n.body {
+      body.stmts.visit_with(self);
     }
   }
 
