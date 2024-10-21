@@ -21,7 +21,9 @@ use crate::SourceRange;
 use crate::SourceRangedForSpanned;
 
 impl ParsedSource {
-  /// Analyzes the module for a list of its imports and exports.
+  /// Analyzes the module for a list of its static and dynamic imports.
+  ///
+  /// Note: This will also include `require` calls as dynamic imports.
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
     analyze_program_dependencies(self.program_ref(), self.comments())
   }
