@@ -31,14 +31,10 @@ impl ParsedSource {
     }
 
     let mut visitor = CjsVisitor::default();
-<<<<<<< Updated upstream
-    visitor.visit_script(self.script());
-=======
     match self.program_ref() {
       ProgramRef::Module(n) => visitor.visit_module(n),
       ProgramRef::Script(n) => visitor.visit_script(n),
     };
->>>>>>> Stashed changes
     visitor.take_result()
   }
 }
