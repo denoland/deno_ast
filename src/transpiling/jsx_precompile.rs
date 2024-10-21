@@ -1650,6 +1650,7 @@ mod tests {
   use crate::swc::visit::FoldWith;
   use crate::EmitOptions;
   use crate::ModuleSpecifier;
+  use crate::ProgramRef;
   use crate::SourceMap;
   use pretty_assertions::assert_eq;
   use swc_common::comments::SingleThreadedComments;
@@ -3018,7 +3019,7 @@ const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className",
   ) {
     let (source_map, module) = parse(src);
     let mut transform_folder = as_folder(transform);
-    let output = print(&source_map, module.fold_with(&mut transform_folder));
+    let output = print(&source_map, &module.fold_with(&mut transform_folder));
     assert_eq!(output, format!("{}\n", expected_output));
   }
 
@@ -3037,9 +3038,9 @@ const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className",
     (source_map, parser.parse_module().unwrap())
   }
 
-  fn print(source_map: &SourceMap, module: Module) -> String {
+  fn print(source_map: &SourceMap, module: &Module) -> String {
     crate::emit::emit(
-      &Program::Module(module),
+      ProgramRef::Module(module),
       &SingleThreadedComments::default(),
       source_map,
       &EmitOptions {
