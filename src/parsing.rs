@@ -387,7 +387,7 @@ mod test {
     assert_eq!(program.text().as_ref(), "// 1\n1 + 1\n// 2");
     assert_eq!(program.media_type(), MediaType::JavaScript);
     assert!(matches!(
-      program.script().body[0],
+      program.program_ref().unwrap_script().body[0],
       crate::swc::ast::Stmt::Expr(..)
     ));
     assert_eq!(program.get_leading_comments().unwrap().len(), 1);
@@ -408,7 +408,7 @@ mod test {
     })
     .unwrap();
     assert!(matches!(
-      program.module().body[0],
+      program.program_ref().unwrap_module().body[0],
       crate::swc::ast::ModuleItem::Stmt(..)
     ));
   }

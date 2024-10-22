@@ -9,6 +9,9 @@ use dprint_swc_ext::common::SourceTextInfo;
 use dprint_swc_ext::common::SourceTextProvider;
 use dprint_swc_ext::common::StartSourcePos;
 use swc_common::Mark;
+use swc_ecma_ast::ModuleDecl;
+use swc_ecma_ast::ModuleItem;
+use swc_ecma_ast::Stmt;
 
 use crate::comments::MultiThreadedComments;
 use crate::scope_analysis_transform;
@@ -56,6 +59,129 @@ impl Globals {
 
   pub fn marks(&self) -> &Marks {
     &self.marks
+  }
+}
+
+/// A reference to a Program.
+///
+/// It is generally preferable for functions to accept this over `&Program`
+/// because it doesn't require cloning when only owning a `Module` or `Script`.
+#[derive(Debug, Clone, Copy)]
+pub enum ProgramRef<'a> {
+  Module(&'a Module),
+  Script(&'a Script),
+}
+
+impl<'a> ProgramRef<'a> {
+  pub fn unwrap_module(&self) -> &Module {
+    match self {
+      ProgramRef::Module(m) => m,
+      ProgramRef::Script(_) => {
+        panic!("Cannot get a module when the source was a script.")
+      }
+    }
+  }
+
+  pub fn unwrap_script(&self) -> &Script {
+    match self {
+      ProgramRef::Module(_) => {
+        panic!("Cannot get a script when the source was a module.")
+      }
+      ProgramRef::Script(s) => s,
+    }
+  }
+
+  pub fn shebang(&self) -> Option<&swc_atoms::Atom> {
+    match self {
+      ProgramRef::Module(m) => m.shebang.as_ref(),
+      ProgramRef::Script(s) => s.shebang.as_ref(),
+    }
+  }
+
+  pub fn body(&self) -> impl Iterator<Item = ModuleItemRef<'a>> {
+    match self {
+      ProgramRef::Module(m) => Box::new(m.body.iter().map(|n| n.into()))
+        as Box<dyn Iterator<Item = ModuleItemRef<'a>>>,
+      ProgramRef::Script(s) => Box::new(s.body.iter().map(ModuleItemRef::Stmt)),
+    }
+  }
+
+  pub fn to_owned(&self) -> Program {
+    match self {
+      ProgramRef::Module(m) => Program::Module((*m).clone()),
+      ProgramRef::Script(s) => Program::Script((*s).clone()),
+    }
+  }
+}
+
+impl<'a> From<&'a Program> for ProgramRef<'a> {
+  fn from(program: &'a Program) -> Self {
+    match program {
+      Program::Module(module) => ProgramRef::Module(module),
+      Program::Script(script) => ProgramRef::Script(script),
+    }
+  }
+}
+
+#[cfg(feature = "visit")]
+impl<'a, T: swc_ecma_visit::Visit> swc_ecma_visit::VisitWith<T>
+  for ProgramRef<'a>
+{
+  fn visit_with(&self, visitor: &mut T) {
+    match self {
+      ProgramRef::Module(n) => n.visit_with(visitor),
+      ProgramRef::Script(n) => n.visit_with(visitor),
+    }
+  }
+
+  fn visit_children_with(&self, visitor: &mut T) {
+    match self {
+      ProgramRef::Module(n) => n.visit_children_with(visitor),
+      ProgramRef::Script(n) => n.visit_children_with(visitor),
+    }
+  }
+}
+
+impl swc_common::Spanned for ProgramRef<'_> {
+  // ok because we're implementing Spanned
+  #[allow(clippy::disallowed_methods)]
+  #[allow(clippy::disallowed_types)]
+  fn span(&self) -> swc_common::Span {
+    match self {
+      Self::Module(m) => m.span,
+      Self::Script(s) => s.span,
+    }
+  }
+}
+
+/// Reference to a ModuleDecl or Stmt in a Program.
+///
+/// This is used to allow using the same API for the top level
+/// statements when working with a ProgramRef.
+#[derive(Debug, Clone, Copy)]
+pub enum ModuleItemRef<'a> {
+  ModuleDecl(&'a ModuleDecl),
+  Stmt(&'a Stmt),
+}
+
+impl swc_common::Spanned for ModuleItemRef<'_> {
+  // ok because we're implementing Spanned
+  #[allow(clippy::disallowed_methods)]
+  #[allow(clippy::disallowed_types)]
+  fn span(&self) -> swc_common::Span {
+    match self {
+      Self::ModuleDecl(n) => n.span(),
+      Self::Stmt(n) => n.span(),
+    }
+  }
+}
+
+impl<'a> From<&'a ModuleItem> for ModuleItemRef<'a> {
+  fn from(item: &'a ModuleItem) -> Self {
+    match item {
+      ModuleItem::ModuleDecl(n) => ModuleItemRef::ModuleDecl(n),
+      ModuleItem::Stmt(n) => ModuleItemRef::Stmt(n),
+    }
   }
 }
 
@@ -126,27 +252,10 @@ impl ParsedSource {
   }
 
   /// Gets the parsed program as a reference.
-  pub fn program_ref(&self) -> &Program {
-    &self.0.program
-  }
-
-  /// Gets the parsed module.
-  ///
-  /// This will panic if the source is not a module.
-  pub fn module(&self) -> &Module {
-    match self.program_ref() {
-      Program::Module(module) => module,
-      Program::Script(_) => panic!("Cannot get a module when the source was a script. Use `.program()` instead."),
-    }
-  }
-
-  /// Gets the parsed script.
-  ///
-  /// This will panic if the source is not a script.
-  pub fn script(&self) -> &Script {
-    match self.program_ref() {
-      Program::Script(script) => script,
-      Program::Module(_) => panic!("Cannot get a script when the source was a module. Use `.program()` instead."),
+  pub fn program_ref(&self) -> ProgramRef<'_> {
+    match self.0.program.as_ref() {
+      Program::Module(module) => ProgramRef::Module(module),
+      Program::Script(script) => ProgramRef::Script(script),
     }
   }
 
@@ -245,12 +354,12 @@ impl ParsedSource {
 
   /// Gets if this source is a module.
   pub fn is_module(&self) -> bool {
-    matches!(self.program_ref(), Program::Module(_))
+    matches!(self.program_ref(), ProgramRef::Module(_))
   }
 
   /// Gets if this source is a script.
   pub fn is_script(&self) -> bool {
-    matches!(self.program_ref(), Program::Script(_))
+    matches!(self.program_ref(), ProgramRef::Script(_))
   }
 }
 
@@ -298,8 +407,8 @@ impl ParsedSource {
   ) -> T {
     let program_info = crate::view::ProgramInfo {
       program: match self.program_ref() {
-        Program::Module(module) => crate::view::ProgramRef::Module(module),
-        Program::Script(script) => crate::view::ProgramRef::Script(script),
+        ProgramRef::Module(module) => crate::view::ProgramRef::Module(module),
+        ProgramRef::Script(script) => crate::view::ProgramRef::Script(script),
       },
       text_info: Some(self.text_info_lazy()),
       tokens: self.0.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
