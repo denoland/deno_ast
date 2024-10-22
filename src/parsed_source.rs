@@ -81,6 +81,24 @@ impl<'a> From<&'a Program> for ProgramRef<'a> {
   }
 }
 
+impl<'a, T: swc_ecma_visit::Visit> swc_ecma_visit::VisitWith<T>
+  for ProgramRef<'a>
+{
+  fn visit_with(&self, visitor: &mut T) {
+    match self {
+      ProgramRef::Module(n) => n.visit_with(visitor),
+      ProgramRef::Script(n) => n.visit_with(visitor),
+    }
+  }
+
+  fn visit_children_with(&self, visitor: &mut T) {
+    match self {
+      ProgramRef::Module(n) => n.visit_children_with(visitor),
+      ProgramRef::Script(n) => n.visit_children_with(visitor),
+    }
+  }
+}
+
 impl<'a> ProgramRef<'a> {
   pub fn shebang(&self) -> &Option<swc_atoms::Atom> {
     match self {
