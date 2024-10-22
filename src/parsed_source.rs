@@ -72,34 +72,25 @@ pub enum ProgramRef<'a> {
   Script(&'a Script),
 }
 
-impl<'a> From<&'a Program> for ProgramRef<'a> {
-  fn from(program: &'a Program) -> Self {
-    match program {
-      Program::Module(module) => ProgramRef::Module(module),
-      Program::Script(script) => ProgramRef::Script(script),
-    }
-  }
-}
-
-impl<'a, T: swc_ecma_visit::Visit> swc_ecma_visit::VisitWith<T>
-  for ProgramRef<'a>
-{
-  fn visit_with(&self, visitor: &mut T) {
-    match self {
-      ProgramRef::Module(n) => n.visit_with(visitor),
-      ProgramRef::Script(n) => n.visit_with(visitor),
-    }
-  }
-
-  fn visit_children_with(&self, visitor: &mut T) {
-    match self {
-      ProgramRef::Module(n) => n.visit_children_with(visitor),
-      ProgramRef::Script(n) => n.visit_children_with(visitor),
-    }
-  }
-}
-
 impl<'a> ProgramRef<'a> {
+  pub fn unwrap_module(&self) -> &Module {
+    match self {
+      ProgramRef::Module(m) => m,
+      ProgramRef::Script(_) => {
+        panic!("Cannot get a module when the source was a script.")
+      }
+    }
+  }
+
+  pub fn unwrap_script(&self) -> &Script {
+    match self {
+      ProgramRef::Module(_) => {
+        panic!("Cannot get a script when the source was a module.")
+      }
+      ProgramRef::Script(s) => s,
+    }
+  }
+
   pub fn shebang(&self) -> Option<&swc_atoms::Atom> {
     match self {
       ProgramRef::Module(m) => m.shebang.as_ref(),
@@ -119,6 +110,34 @@ impl<'a> ProgramRef<'a> {
     match self {
       ProgramRef::Module(m) => Program::Module((*m).clone()),
       ProgramRef::Script(s) => Program::Script((*s).clone()),
+    }
+  }
+}
+
+impl<'a> From<&'a Program> for ProgramRef<'a> {
+  fn from(program: &'a Program) -> Self {
+    match program {
+      Program::Module(module) => ProgramRef::Module(module),
+      Program::Script(script) => ProgramRef::Script(script),
+    }
+  }
+}
+
+#[cfg(feature = "visit")]
+impl<'a, T: swc_ecma_visit::Visit> swc_ecma_visit::VisitWith<T>
+  for ProgramRef<'a>
+{
+  fn visit_with(&self, visitor: &mut T) {
+    match self {
+      ProgramRef::Module(n) => n.visit_with(visitor),
+      ProgramRef::Script(n) => n.visit_with(visitor),
+    }
+  }
+
+  fn visit_children_with(&self, visitor: &mut T) {
+    match self {
+      ProgramRef::Module(n) => n.visit_children_with(visitor),
+      ProgramRef::Script(n) => n.visit_children_with(visitor),
     }
   }
 }
@@ -237,26 +256,6 @@ impl ParsedSource {
     match self.0.program.as_ref() {
       Program::Module(module) => ProgramRef::Module(module),
       Program::Script(script) => ProgramRef::Script(script),
-    }
-  }
-
-  /// Gets the parsed module.
-  ///
-  /// This will panic if the source is not a module.
-  pub fn module(&self) -> &Module {
-    match self.program_ref() {
-      ProgramRef::Module(module) => module,
-      ProgramRef::Script(_) => panic!("Cannot get a module when the source was a script. Use `.program()` instead."),
-    }
-  }
-
-  /// Gets the parsed script.
-  ///
-  /// This will panic if the source is not a script.
-  pub fn script(&self) -> &Script {
-    match self.program_ref() {
-      ProgramRef::Script(script) => script,
-      ProgramRef::Module(_) => panic!("Cannot get a script when the source was a module. Use `.program()` instead."),
     }
   }
 

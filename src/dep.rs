@@ -567,7 +567,7 @@ mod tests {
       maybe_syntax: None,
     })
     .unwrap();
-    (source.module().start(), source.analyze_dependencies())
+    (source.program_ref().start(), source.analyze_dependencies())
   }
 
   #[test]
