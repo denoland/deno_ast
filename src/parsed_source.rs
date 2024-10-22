@@ -100,10 +100,10 @@ impl<'a, T: swc_ecma_visit::Visit> swc_ecma_visit::VisitWith<T>
 }
 
 impl<'a> ProgramRef<'a> {
-  pub fn shebang(&self) -> &Option<swc_atoms::Atom> {
+  pub fn shebang(&self) -> Option<&swc_atoms::Atom> {
     match self {
-      ProgramRef::Module(m) => &m.shebang,
-      ProgramRef::Script(s) => &s.shebang,
+      ProgramRef::Module(m) => m.shebang.as_ref(),
+      ProgramRef::Script(s) => s.shebang.as_ref(),
     }
   }
 
