@@ -104,6 +104,9 @@ pub struct TranspileOptions {
   /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
   /// or error (`Error`). Defaults to `Remove`.
   pub imports_not_used_as_values: ImportsNotUsedAsValues,
+  /// If CJS is being transpiled. This is useful when transpiling JSX that is
+  /// ambiguously a script or a module.
+  pub is_cjs: bool,
   /// `true` if the program should use an implicit JSX import source/the "new"
   /// JSX transforms.
   pub jsx_automatic: bool,
@@ -142,6 +145,7 @@ pub struct TranspileOptions {
 impl Default for TranspileOptions {
   fn default() -> Self {
     TranspileOptions {
+      is_cjs: false,
       use_ts_decorators: false,
       use_decorators_proposal: false,
       emit_metadata: false,
@@ -320,6 +324,27 @@ fn transpile(
   }
 
   let source_map = SourceMap::single(specifier, source);
+
+  let program = match program {
+    Program::Module(module) => Program::Module(module),
+    Program::Script(script) => {
+      // force transpiling as a module so that the jsx import source is
+      // injected as an import declaration and not require
+      if !transpile_options.is_cjs {
+        Program::Module(crate::swc::ast::Module {
+          span: script.span,
+          body: script
+            .body
+            .into_iter()
+            .map(crate::swc::ast::ModuleItem::Stmt)
+            .collect(),
+          shebang: script.shebang,
+        })
+      } else {
+        Program::Script(script)
+      }
+    }
+  };
 
   let program = globals.with(|marks| {
     fold_program(
@@ -604,7 +629,7 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
 mod tests {
   use super::*;
 
-  use crate::parse_module;
+  use crate::parse_program;
   use crate::MediaType;
   use crate::ModuleSpecifier;
   use crate::ParseParams;
@@ -648,7 +673,7 @@ export class A {
   }
 }
     "#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -657,7 +682,7 @@ export class A {
       scope_analysis: false,
     })
     .unwrap();
-    let transpiled_source = module
+    let transpiled_source = program
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .into_source();
@@ -705,7 +730,7 @@ export class A {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = "using data = create();\nconsole.log(data);";
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -714,7 +739,7 @@ export class A {
       scope_analysis: false,
     })
     .unwrap();
-    let transpiled_source = module
+    let transpiled_source = program
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .into_source();
@@ -806,7 +831,7 @@ try {
       }
     }
     "#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Tsx,
@@ -815,7 +840,7 @@ try {
       scope_analysis: true, // ensure scope analysis doesn't conflict with a second resolver pass
     })
     .unwrap();
-    let transpiled_source = module
+    let transpiled_source = program
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .into_source();
@@ -835,7 +860,7 @@ try {
       }
     }
     "#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Tsx,
@@ -844,7 +869,7 @@ try {
       scope_analysis: true, // ensure scope analysis doesn't conflict with a second resolver pass
     })
     .unwrap();
-    let transpiled_source = module
+    let transpiled_source = program
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .into_source();
@@ -868,7 +893,7 @@ function App() {
     <div><></></div>
   );
 }"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Jsx,
@@ -877,7 +902,7 @@ function App() {
       scope_analysis: true,
     })
     .unwrap();
-    let code = module
+    let code = program
       .transpile(
         &TranspileOptions::default(),
         &EmitOptions {
@@ -907,7 +932,7 @@ function App() {
     <div><></></div>
   );
 }"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Jsx,
@@ -916,7 +941,7 @@ function App() {
       scope_analysis: true,
     })
     .unwrap();
-    let code = module
+    let code = program
       .transpile(
         &TranspileOptions::default(),
         &EmitOptions {
@@ -946,7 +971,7 @@ function App() {
     <div><></></div>
   );
 }"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Jsx,
@@ -960,7 +985,7 @@ function App() {
       jsx_import_source: Some("jsx_lib".to_string()),
       ..Default::default()
     };
-    let code = module
+    let code = program
       .transpile(
         &transpile_options,
         &EmitOptions {
@@ -990,7 +1015,7 @@ function App() {
     <div><></></div>
   );
 }"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Jsx,
@@ -1005,7 +1030,7 @@ function App() {
       jsx_development: true,
       ..Default::default()
     };
-    let code = module
+    let code = program
       .transpile(
         &transpile_options,
         &EmitOptions {
@@ -1043,7 +1068,7 @@ function App() {
     <div><></></div>
   );
 }"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Jsx,
@@ -1056,7 +1081,7 @@ function App() {
       var_decl_imports: true,
       ..Default::default()
     };
-    let code = module
+    let code = program
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
@@ -1067,6 +1092,52 @@ function App() {
   return /*#__PURE__*/ _jsx("div", {
     children: /*#__PURE__*/ _jsx(_Fragment, {})
   });
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
+  fn test_transpile_jsx_import_source_cjs() {
+    let specifier =
+      ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
+    let source = r#"
+function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let program = parse_program(ParseParams {
+      specifier,
+      text: source.into(),
+      media_type: MediaType::Jsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let transpile_options = TranspileOptions {
+      is_cjs: true, // notice this
+      jsx_automatic: true,
+      jsx_import_source: Some("jsx_lib".to_string()),
+      ..Default::default()
+    };
+    let code = program
+      .transpile(
+        &transpile_options,
+        &EmitOptions {
+          remove_comments: true,
+          ..Default::default()
+        },
+      )
+      .unwrap()
+      .into_source()
+      .text;
+    let expected = r#"const { jsx: _jsx, Fragment: _Fragment } = require("jsx_lib/jsx-runtime");
+function App() {
+  return _jsx("div", {
+    children: _jsx(_Fragment, {})
+  });
+}
 "#;
     assert_eq!(&code[..expected.len()], expected);
   }
@@ -1093,7 +1164,7 @@ function App() {
       }
     }
     "#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1102,7 +1173,7 @@ function App() {
       scope_analysis: false,
     })
     .unwrap();
-    let code = module
+    let code = program
       .transpile(
         &TranspileOptions {
           use_ts_decorators: true,
@@ -1158,7 +1229,7 @@ _ts_decorate([
       }
     }
     "#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1167,7 +1238,7 @@ _ts_decorate([
       scope_analysis: false,
     })
     .unwrap();
-    let code = module
+    let code = program
       .transpile(
         &TranspileOptions {
           use_decorators_proposal: true,
@@ -1188,7 +1259,7 @@ _ts_decorate([
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = "";
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1197,7 +1268,7 @@ _ts_decorate([
       scope_analysis: false,
     })
     .unwrap();
-    module
+    program
       .transpile(
         &TranspileOptions {
           use_decorators_proposal: true,
@@ -1232,7 +1303,7 @@ _ts_decorate([
       }
     }
     "#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1241,7 +1312,7 @@ _ts_decorate([
       scope_analysis: false,
     })
     .unwrap();
-    let code = module
+    let code = program
       .transpile(&TranspileOptions::default(), &EmitOptions::default())
       .unwrap()
       .into_source()
@@ -1277,7 +1348,7 @@ export function g() {
   )
 }
   "#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1290,7 +1361,7 @@ export function g() {
       transform_jsx: true,
       ..Default::default()
     };
-    let code = module
+    let code = program
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
@@ -1311,7 +1382,7 @@ export function g() {
     let source = r#"
 for (let i = 0; i < testVariable >> 1; i++) callCount++;
   "#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1320,7 +1391,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       scope_analysis: false,
     })
     .unwrap();
-    let code = module
+    let code = program
       .transpile(&Default::default(), &EmitOptions::default())
       .unwrap()
       .into_source()
@@ -1336,7 +1407,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let source = r#"const A = () => {
   return <div>{...[]}</div>;
 };"#;
-    let parsed_source = parse_module(ParseParams {
+    let parsed_source = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Tsx,
@@ -1352,18 +1423,19 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
 
   #[test]
   fn diagnostic_octal_and_leading_zero_num_literals() {
-    assert_eq!(get_diagnostic("077"), concat!(
+    // todo(dsherret): remove export {} after https://github.com/swc-project/swc/pull/9682
+    assert_eq!(get_diagnostic("077;\n\nexport {};"), concat!(
       "Legacy octal literals are not available when targeting ECMAScript 5 and higher ",
       "at https://deno.land/x/mod.ts:1:1\n\n",
-      "  077\n",
+      "  077;\n",
       "  ~~~\n\n",
       "Legacy octal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-      "  077\n",
+      "  077;\n",
       "  ~~~",
     ));
-    assert_eq!(get_diagnostic("099"), concat!(
+    assert_eq!(get_diagnostic("099;\n\nexport {};"), concat!(
       "Legacy decimal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-      "  099\n",
+      "  099;\n",
       "  ~~~",
     ));
   }
@@ -1426,7 +1498,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   fn get_diagnostic(source: &str) -> String {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
-    let parsed_source = parse_module(ParseParams {
+    let parsed_source = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1447,7 +1519,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     // Ref https://github.com/denoland/deno/issues/10936
     // Ref https://github.com/swc-project/swc/issues/3288#issuecomment-1117252904
 
-    let p = parse_module(ParseParams {
+    let p = parse_program(ParseParams {
       specifier: ModuleSpecifier::parse("file:///Users/ib/dev/deno/foo.ts")
         .unwrap(),
       text: r#"export default function () {
@@ -1477,7 +1549,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
     let source = r#"const a = <Foo><span>hello</span>foo<Bar><p><span  class="bar">asdf</span></p></Bar></Foo>;"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Tsx,
@@ -1494,7 +1566,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       jsx_import_source: Some("react".to_string()),
       ..Default::default()
     };
-    let code = module
+    let code = program
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
@@ -1524,7 +1596,7 @@ const a = _jsx(Foo, {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = r#"import type foo from "./foo.ts"; import bar from "./bar.ts"; import baz from "./baz.ts"; const b: baz = 1;"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1537,7 +1609,7 @@ const a = _jsx(Foo, {
       verbatim_module_syntax: true,
       ..Default::default()
     };
-    let code = module
+    let code = program
       .transpile(&transpile_options, &EmitOptions::default())
       .unwrap()
       .into_source()
@@ -1554,7 +1626,7 @@ const b = 1;
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
     let source = r#"{ const foo = "bar"; };"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Tsx,
@@ -1567,7 +1639,7 @@ const b = 1;
       source_map: SourceMapOption::Inline,
       ..Default::default()
     };
-    let emit_result = module
+    let emit_result = program
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
       .into_source();
@@ -1584,7 +1656,7 @@ const b = 1;
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
     let source = r#"{ const foo = "bar"; };"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Tsx,
@@ -1597,7 +1669,7 @@ const b = 1;
       source_map: SourceMapOption::Separate,
       ..Default::default()
     };
-    let emit_result = module
+    let emit_result = program
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
       .into_source();
@@ -1621,7 +1693,7 @@ const b = 1;
     fn run_test(file_name: &str, base: &str, expected: &str) {
       let specifier = ModuleSpecifier::parse(file_name).unwrap();
       let source = r#"{ const foo = "bar"; };"#;
-      let module = parse_module(ParseParams {
+      let program = parse_program(ParseParams {
         specifier,
         text: source.into(),
         media_type: MediaType::Tsx,
@@ -1635,7 +1707,7 @@ const b = 1;
         source_map_base: Some(ModuleSpecifier::parse(base).unwrap()),
         ..Default::default()
       };
-      let emit_result = module
+      let emit_result = program
         .transpile(&TranspileOptions::default(), &emit_options)
         .unwrap()
         .into_source();
@@ -1703,7 +1775,7 @@ const b = 1;
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
     let source = r#"{ const foo = "bar"; };"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Tsx,
@@ -1717,7 +1789,7 @@ const b = 1;
       source_map_file: Some("mod.tsx".to_owned()),
       ..Default::default()
     };
-    let emit_result = module
+    let emit_result = program
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
       .into_source();
@@ -1740,7 +1812,7 @@ const b = 1;
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.tsx").unwrap();
     let source = r#"{ const foo = "bar"; };"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::Tsx,
@@ -1753,7 +1825,7 @@ const b = 1;
       source_map: SourceMapOption::None,
       ..Default::default()
     };
-    let emit_result = module
+    let emit_result = program
       .transpile(&TranspileOptions::default(), &emit_options)
       .unwrap()
       .into_source();
@@ -1771,7 +1843,7 @@ const b = 1;
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = r#"const foo: string = "bar";"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1780,7 +1852,7 @@ const b = 1;
       scope_analysis: false,
     })
     .unwrap();
-    let emit_result = module
+    let emit_result = program
       .transpile_owned(
         &TranspileOptions::default(),
         &EmitOptions {
@@ -1798,7 +1870,7 @@ const b = 1;
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = r#"const foo: string = "bar";"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1808,22 +1880,22 @@ const b = 1;
     })
     .unwrap();
 
-    // won't transpile since the module is cloned
-    let borrowed_module = module.clone();
+    // won't transpile since the program is cloned
+    let borrowed_program = program.clone();
     let result =
-      module.transpile_owned(&Default::default(), &Default::default());
-    let module = result.err().unwrap();
-    drop(borrowed_module);
+      program.transpile_owned(&Default::default(), &Default::default());
+    let program = result.err().unwrap();
+    drop(borrowed_program);
 
     // won't transpile since the program is cloned
-    let borrowed_program = module.program().clone();
+    let borrowed_program = program.program().clone();
     let result =
-      module.transpile_owned(&Default::default(), &Default::default());
-    let module = result.err().unwrap();
+      program.transpile_owned(&Default::default(), &Default::default());
+    let program = result.err().unwrap();
     drop(borrowed_program);
 
     // now it will work
-    let emit_result = module
+    let emit_result = program
       .transpile_owned(
         &TranspileOptions::default(),
         &EmitOptions {
@@ -1841,7 +1913,7 @@ const b = 1;
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
     let source = r#"const foo: string = "bar";"#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1852,8 +1924,8 @@ const b = 1;
     .unwrap();
 
     // even though it's borrowed, it will transpile
-    let borrowed_module = module.clone();
-    let emit_result = module
+    let borrowed_program = program.clone();
+    let emit_result = program
       .transpile(
         &TranspileOptions::default(),
         &EmitOptions {
@@ -1869,7 +1941,7 @@ const b = 1;
     assert_eq!(&emit_result.text, "const foo = \"bar\";\n");
 
     // now it's owned, should still work
-    let emit_result = borrowed_module
+    let emit_result = borrowed_program
       .transpile(
         &TranspileOptions::default(),
         &EmitOptions {
@@ -1901,7 +1973,7 @@ export function defaultFormatter(record: Record): string {
 export function formatter(record: Record) {
 }
 "#;
-    let module = parse_module(ParseParams {
+    let program = parse_program(ParseParams {
       specifier,
       text: source.into(),
       media_type: MediaType::TypeScript,
@@ -1912,7 +1984,7 @@ export function formatter(record: Record) {
     .unwrap();
 
     let emit_result =
-      module.transpile(&TranspileOptions::default(), &EmitOptions::default());
+      program.transpile(&TranspileOptions::default(), &EmitOptions::default());
     assert!(emit_result.is_ok());
   }
 }
