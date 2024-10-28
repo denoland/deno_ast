@@ -289,20 +289,7 @@ fn resolve_transpile_options(
   if options.transform_jsx {
     let allows_jsx = match media_type {
       MediaType::Jsx | MediaType::Tsx => true,
-      MediaType::JavaScript
-      | MediaType::Mjs
-      | MediaType::Cjs
-      | MediaType::Mts
-      | MediaType::Cts
-      | MediaType::Dts
-      | MediaType::Dmts
-      | MediaType::Dcts
-      | MediaType::Json
-      | MediaType::Wasm
-      | MediaType::TsBuildInfo
-      | MediaType::SourceMap
-      | MediaType::Unknown
-      | MediaType::TypeScript => false,
+      _ => false,
     };
     if !allows_jsx {
       return Cow::Owned(TranspileOptions {
