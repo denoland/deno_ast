@@ -202,18 +202,12 @@ impl TranspileOptions {
 ///
 /// This is separate from `TranspileOptions` in order for that to
 /// be shared across modules, but this to be changed per module.
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Default, Clone, Hash)]
 pub struct TranspileModuleOptions {
   /// The kind of module being transpiled.
   ///
   /// Defaults to being derived from the media type of the parsed source.
   pub module_kind: Option<ModuleKind>,
-}
-
-impl Default for TranspileModuleOptions {
-  fn default() -> Self {
-    Self { module_kind: None }
-  }
 }
 
 impl ParsedSource {
