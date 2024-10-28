@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 
 use ast::BinExpr;
-use ast::Module;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -16,31 +15,32 @@ use crate::swc::visit::Visit;
 use crate::swc::visit::VisitWith;
 use crate::MultiThreadedComments;
 use crate::ParsedSource;
+use crate::ProgramRef;
 use crate::SourcePos;
 use crate::SourceRange;
 use crate::SourceRangedForSpanned;
 
 impl ParsedSource {
-  /// Analyzes the module for a list of its imports and exports.
+  /// Analyzes the module for a list of its static and dynamic imports.
+  ///
+  /// Note: This will also include `require` calls as dynamic imports.
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
-    match self.program_ref() {
-      ast::Program::Module(module) => {
-        analyze_module_dependencies(module, self.comments())
-      }
-      ast::Program::Script(_) => vec![],
-    }
+    analyze_program_dependencies(self.program_ref(), self.comments())
   }
 }
 
-pub fn analyze_module_dependencies(
-  module: &Module,
+pub fn analyze_program_dependencies(
+  program: ProgramRef,
   comments: &MultiThreadedComments,
 ) -> Vec<DependencyDescriptor> {
   let mut v = DependencyCollector {
     comments,
     items: vec![],
   };
-  module.visit_with(&mut v);
+  match program {
+    ProgramRef::Module(n) => n.visit_with(&mut v),
+    ProgramRef::Script(n) => n.visit_with(&mut v),
+  }
   v.items
 }
 
@@ -567,7 +567,7 @@ mod tests {
       maybe_syntax: None,
     })
     .unwrap();
-    (source.module().start(), source.analyze_dependencies())
+    (source.program_ref().start(), source.analyze_dependencies())
   }
 
   #[test]

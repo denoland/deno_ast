@@ -348,7 +348,12 @@ fn transpile(
     )
   })?;
 
-  Ok(emit(&program, &comments, &source_map, emit_options)?)
+  Ok(emit(
+    (&program).into(),
+    &comments,
+    &source_map,
+    emit_options,
+  )?)
 }
 
 #[derive(Default, Clone)]

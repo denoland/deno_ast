@@ -12,6 +12,7 @@ use crate::swc::visit::noop_visit_type;
 use crate::swc::visit::Visit;
 use crate::swc::visit::VisitWith;
 use crate::ParsedSource;
+use crate::ProgramRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CjsAnalysis {
@@ -30,7 +31,10 @@ impl ParsedSource {
     }
 
     let mut visitor = CjsVisitor::default();
-    visitor.visit_script(self.script());
+    match self.program_ref() {
+      ProgramRef::Module(n) => visitor.visit_module(n),
+      ProgramRef::Script(n) => visitor.visit_script(n),
+    };
     visitor.take_result()
   }
 }

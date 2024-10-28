@@ -5,11 +5,11 @@ use std::string::FromUtf8Error;
 use base64::Engine;
 use thiserror::Error;
 
-use crate::swc::ast::Program;
 use crate::swc::codegen::text_writer::JsWriter;
 use crate::swc::codegen::Node;
 use crate::swc::common::FileName;
 use crate::ModuleSpecifier;
+use crate::ProgramRef;
 use crate::SourceMap;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -92,7 +92,7 @@ pub enum EmitError {
 /// Emits the program as a string of JavaScript code, possibly with the passed
 /// comments, and optionally also a source map.
 pub fn emit(
-  program: &Program,
+  program: ProgramRef,
   comments: &dyn crate::swc::common::comments::Comments,
   source_map: &SourceMap,
   emit_options: &EmitOptions,
@@ -119,9 +119,14 @@ pub fn emit(
       cm: source_map.clone(),
       wr: writer,
     };
-    program
-      .emit_with(&mut emitter)
-      .map_err(EmitError::SwcEmit)?;
+    match program {
+      ProgramRef::Module(n) => {
+        n.emit_with(&mut emitter).map_err(EmitError::SwcEmit)?;
+      }
+      ProgramRef::Script(n) => {
+        n.emit_with(&mut emitter).map_err(EmitError::SwcEmit)?;
+      }
+    }
   }
 
   let mut map: Option<Vec<u8>> = None;
