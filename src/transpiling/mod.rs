@@ -337,11 +337,11 @@ fn transpile(
         if matches!(media_type, MediaType::Cjs | MediaType::Cts) {
           ModuleKind::Cjs
         } else {
-          ModuleKind::Es
+          ModuleKind::Esm
         }
       });
       match module_kind {
-        ModuleKind::Es => {
+        ModuleKind::Esm => {
           // force transpiling as a module so that the jsx import source is
           // injected as an import declaration and not require
           Program::Module(crate::swc::ast::Module {

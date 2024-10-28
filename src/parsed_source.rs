@@ -65,7 +65,7 @@ impl Globals {
 /// If the module is an Es module or CommonJs module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModuleKind {
-  Es,
+  Esm,
   Cjs,
 }
 
