@@ -156,7 +156,7 @@ pub fn emit(
 
   debug_assert!(std::str::from_utf8(&src_buf).is_ok(), "valid utf-8");
   if let Some(map) = &map {
-    debug_assert!(std::str::from_utf8(&map).is_ok(), "valid utf-8");
+    debug_assert!(std::str::from_utf8(map).is_ok(), "valid utf-8");
   }
 
   // It's better to return a string here because then we can pass this to deno_core/v8
