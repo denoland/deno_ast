@@ -105,10 +105,6 @@ pub struct TranspileOptions {
   /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
   /// or error (`Error`). Defaults to `Remove`.
   pub imports_not_used_as_values: ImportsNotUsedAsValues,
-  /// The kind of module being transpiled.
-  ///
-  /// Defaults to being derived from the media type of the parsed source.
-  pub module_kind: Option<ModuleKind>,
   /// `true` if the program should use an implicit JSX import source/the "new"
   /// JSX transforms.
   pub jsx_automatic: bool,
@@ -147,7 +143,6 @@ pub struct TranspileOptions {
 impl Default for TranspileOptions {
   fn default() -> Self {
     TranspileOptions {
-      module_kind: None,
       use_ts_decorators: false,
       use_decorators_proposal: false,
       emit_metadata: false,
@@ -203,6 +198,24 @@ impl TranspileOptions {
   }
 }
 
+/// Transpile options specific to the module being transpiled.
+///
+/// This is separate from `TranspileOptions` in order for that to
+/// be shared across modules, but this to be changed per module.
+#[derive(Debug, Clone, Hash)]
+pub struct TranspileModuleOptions {
+  /// The kind of module being transpiled.
+  ///
+  /// Defaults to being derived from the media type of the parsed source.
+  pub module_kind: Option<ModuleKind>,
+}
+
+impl Default for TranspileModuleOptions {
+  fn default() -> Self {
+    Self { module_kind: None }
+  }
+}
+
 impl ParsedSource {
   /// Transform a TypeScript file into a JavaScript file attempting to transpile
   /// owned, then falls back to cloning the program.
@@ -212,14 +225,23 @@ impl ParsedSource {
   pub fn transpile(
     self,
     transpile_options: &TranspileOptions,
+    transpile_module_options: &TranspileModuleOptions,
     emit_options: &EmitOptions,
   ) -> Result<TranspileResult, TranspileError> {
-    match self.transpile_owned(transpile_options, emit_options) {
+    match self.transpile_owned(
+      transpile_options,
+      transpile_module_options,
+      emit_options,
+    ) {
       Ok(result) => Ok(TranspileResult::Owned(result?)),
       Err(parsed_source) => {
         // fallback
         parsed_source
-          .transpile_cloned(transpile_options, emit_options)
+          .transpile_cloned(
+            transpile_options,
+            transpile_module_options,
+            emit_options,
+          )
           .map(TranspileResult::Cloned)
       }
     }
@@ -228,6 +250,7 @@ impl ParsedSource {
   fn transpile_cloned(
     &self,
     transpile_options: &TranspileOptions,
+    transpile_module_options: &TranspileModuleOptions,
     emit_options: &EmitOptions,
   ) -> Result<EmittedSourceText, TranspileError> {
     let program = (*self.program()).clone();
@@ -244,6 +267,7 @@ impl ParsedSource {
       // is unlikely to be a problem in practice
       self.globals(),
       &resolve_transpile_options(self.0.media_type, transpile_options),
+      transpile_module_options,
       emit_options,
       self.diagnostics(),
     )
@@ -252,6 +276,7 @@ impl ParsedSource {
   fn transpile_owned(
     self,
     transpile_options: &TranspileOptions,
+    transpile_module_options: &TranspileModuleOptions,
     emit_options: &EmitOptions,
   ) -> Result<Result<EmittedSourceText, TranspileError>, ParsedSource> {
     let inner = match Arc::try_unwrap(self.0) {
@@ -284,6 +309,7 @@ impl ParsedSource {
       inner.comments.into_single_threaded(),
       &inner.globals,
       &resolve_transpile_options(inner.media_type, transpile_options),
+      transpile_module_options,
       emit_options,
       &inner.diagnostics,
     ))
@@ -319,6 +345,7 @@ fn transpile(
   comments: SingleThreadedComments,
   globals: &Globals,
   transpile_options: &TranspileOptions,
+  transpile_module_options: &TranspileModuleOptions,
   emit_options: &EmitOptions,
   diagnostics: &[ParseDiagnostic],
 ) -> Result<EmittedSourceText, TranspileError> {
@@ -333,7 +360,7 @@ fn transpile(
   let program = match program {
     Program::Module(module) => Program::Module(module),
     Program::Script(script) => {
-      let module_kind = transpile_options.module_kind.unwrap_or({
+      let module_kind = transpile_module_options.module_kind.unwrap_or({
         if matches!(media_type, MediaType::Cjs | MediaType::Cts) {
           ModuleKind::Cjs
         } else {
@@ -696,7 +723,11 @@ export class A {
     })
     .unwrap();
     let transpiled_source = program
-      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .transpile(
+        &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source();
     let expected_text = r#"var D;
@@ -753,7 +784,11 @@ export class A {
     })
     .unwrap();
     let transpiled_source = program
-      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .transpile(
+        &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source();
     let expected_text = r#"function _using_ctx() {
@@ -854,7 +889,11 @@ try {
     })
     .unwrap();
     let transpiled_source = program
-      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .transpile(
+        &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source();
     assert!(transpiled_source
@@ -883,7 +922,11 @@ try {
     })
     .unwrap();
     let transpiled_source = program
-      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .transpile(
+        &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source();
     assert!(transpiled_source
@@ -918,6 +961,7 @@ function App() {
     let code = program
       .transpile(
         &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
         &EmitOptions {
           remove_comments: true,
           ..Default::default()
@@ -957,6 +1001,7 @@ function App() {
     let code = program
       .transpile(
         &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
         &EmitOptions {
           remove_comments: false,
           ..Default::default()
@@ -1001,6 +1046,7 @@ function App() {
     let code = program
       .transpile(
         &transpile_options,
+        &TranspileModuleOptions::default(),
         &EmitOptions {
           remove_comments: true,
           ..Default::default()
@@ -1046,6 +1092,7 @@ function App() {
     let code = program
       .transpile(
         &transpile_options,
+        &TranspileModuleOptions::default(),
         &EmitOptions {
           remove_comments: true,
           ..Default::default()
@@ -1095,7 +1142,11 @@ function App() {
       ..Default::default()
     };
     let code = program
-      .transpile(&transpile_options, &EmitOptions::default())
+      .transpile(
+        &transpile_options,
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source()
       .text;
@@ -1129,14 +1180,17 @@ function App() {
     })
     .unwrap();
     let transpile_options = TranspileOptions {
-      module_kind: Some(ModuleKind::Cjs), // notice this
       jsx_automatic: true,
       jsx_import_source: Some("jsx_lib".to_string()),
       ..Default::default()
     };
+    let transpile_module_options = TranspileModuleOptions {
+      module_kind: Some(ModuleKind::Cjs), // notice this
+    };
     let code = program
       .transpile(
         &transpile_options,
+        &transpile_module_options,
         &EmitOptions {
           remove_comments: true,
           ..Default::default()
@@ -1192,6 +1246,7 @@ function App() {
           use_ts_decorators: true,
           ..Default::default()
         },
+        &TranspileModuleOptions::default(),
         &EmitOptions::default(),
       )
       .unwrap()
@@ -1257,6 +1312,7 @@ _ts_decorate([
           use_decorators_proposal: true,
           ..Default::default()
         },
+        &TranspileModuleOptions::default(),
         &EmitOptions::default(),
       )
       .unwrap()
@@ -1288,6 +1344,7 @@ _ts_decorate([
           use_ts_decorators: true,
           ..Default::default()
         },
+        &TranspileModuleOptions::default(),
         &EmitOptions::default(),
       )
       .unwrap_err();
@@ -1326,7 +1383,11 @@ _ts_decorate([
     })
     .unwrap();
     let code = program
-      .transpile(&TranspileOptions::default(), &EmitOptions::default())
+      .transpile(
+        &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source()
       .text;
@@ -1375,7 +1436,11 @@ export function g() {
       ..Default::default()
     };
     let code = program
-      .transpile(&transpile_options, &EmitOptions::default())
+      .transpile(
+        &transpile_options,
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source()
       .text;
@@ -1405,7 +1470,11 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     })
     .unwrap();
     let code = program
-      .transpile(&Default::default(), &EmitOptions::default())
+      .transpile(
+        &Default::default(),
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source()
       .text;
@@ -1430,7 +1499,11 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     })
     .unwrap();
     assert!(parsed_source
-      .transpile(&Default::default(), &EmitOptions::default())
+      .transpile(
+        &Default::default(),
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default()
+      )
       .is_ok());
   }
 
@@ -1521,7 +1594,11 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     })
     .unwrap();
     parsed_source
-      .transpile(&Default::default(), &EmitOptions::default())
+      .transpile(
+        &Default::default(),
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .err()
       .unwrap()
       .to_string()
@@ -1547,7 +1624,11 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     .unwrap();
 
     let transpiled = p
-      .transpile(&Default::default(), &EmitOptions::default())
+      .transpile(
+        &Default::default(),
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source();
     let lines: Vec<&str> = transpiled.text.split('\n').collect();
@@ -1580,7 +1661,11 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       ..Default::default()
     };
     let code = program
-      .transpile(&transpile_options, &EmitOptions::default())
+      .transpile(
+        &transpile_options,
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source()
       .text;
@@ -1623,7 +1708,11 @@ const a = _jsx(Foo, {
       ..Default::default()
     };
     let code = program
-      .transpile(&transpile_options, &EmitOptions::default())
+      .transpile(
+        &transpile_options,
+        &TranspileModuleOptions::default(),
+        &EmitOptions::default(),
+      )
       .unwrap()
       .into_source()
       .text;
@@ -1653,7 +1742,11 @@ const b = 1;
       ..Default::default()
     };
     let emit_result = program
-      .transpile(&TranspileOptions::default(), &emit_options)
+      .transpile(
+        &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
+        &emit_options,
+      )
       .unwrap()
       .into_source();
     let expected1 = r#"{
@@ -1683,7 +1776,11 @@ const b = 1;
       ..Default::default()
     };
     let emit_result = program
-      .transpile(&TranspileOptions::default(), &emit_options)
+      .transpile(
+        &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
+        &emit_options,
+      )
       .unwrap()
       .into_source();
     assert_eq!(
@@ -1721,7 +1818,11 @@ const b = 1;
         ..Default::default()
       };
       let emit_result = program
-        .transpile(&TranspileOptions::default(), &emit_options)
+        .transpile(
+          &TranspileOptions::default(),
+          &TranspileModuleOptions::default(),
+          &emit_options,
+        )
         .unwrap()
         .into_source();
       assert_eq!(
@@ -1803,7 +1904,11 @@ const b = 1;
       ..Default::default()
     };
     let emit_result = program
-      .transpile(&TranspileOptions::default(), &emit_options)
+      .transpile(
+        &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
+        &emit_options,
+      )
       .unwrap()
       .into_source();
     assert_eq!(
@@ -1839,7 +1944,11 @@ const b = 1;
       ..Default::default()
     };
     let emit_result = program
-      .transpile(&TranspileOptions::default(), &emit_options)
+      .transpile(
+        &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
+        &emit_options,
+      )
       .unwrap()
       .into_source();
     assert_eq!(
@@ -1868,6 +1977,7 @@ const b = 1;
     let emit_result = program
       .transpile_owned(
         &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
         &EmitOptions {
           source_map: SourceMapOption::None,
           ..Default::default()
@@ -1895,15 +2005,21 @@ const b = 1;
 
     // won't transpile since the program is cloned
     let borrowed_program = program.clone();
-    let result =
-      program.transpile_owned(&Default::default(), &Default::default());
+    let result = program.transpile_owned(
+      &Default::default(),
+      &Default::default(),
+      &Default::default(),
+    );
     let program = result.err().unwrap();
     drop(borrowed_program);
 
     // won't transpile since the program is cloned
     let borrowed_program = program.program().clone();
-    let result =
-      program.transpile_owned(&Default::default(), &Default::default());
+    let result = program.transpile_owned(
+      &Default::default(),
+      &Default::default(),
+      &Default::default(),
+    );
     let program = result.err().unwrap();
     drop(borrowed_program);
 
@@ -1911,6 +2027,7 @@ const b = 1;
     let emit_result = program
       .transpile_owned(
         &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
         &EmitOptions {
           source_map: SourceMapOption::None,
           ..Default::default()
@@ -1941,6 +2058,7 @@ const b = 1;
     let emit_result = program
       .transpile(
         &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
         &EmitOptions {
           source_map: SourceMapOption::None,
           ..Default::default()
@@ -1957,6 +2075,7 @@ const b = 1;
     let emit_result = borrowed_program
       .transpile(
         &TranspileOptions::default(),
+        &TranspileModuleOptions::default(),
         &EmitOptions {
           source_map: SourceMapOption::None,
           ..Default::default()
@@ -1996,8 +2115,11 @@ export function formatter(record: Record) {
     })
     .unwrap();
 
-    let emit_result =
-      program.transpile(&TranspileOptions::default(), &EmitOptions::default());
+    let emit_result = program.transpile(
+      &TranspileOptions::default(),
+      &TranspileModuleOptions::default(),
+      &EmitOptions::default(),
+    );
     assert!(emit_result.is_ok());
   }
 }
