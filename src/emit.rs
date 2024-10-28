@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::string::FromUtf8Error;
-
 use base64::Engine;
 use thiserror::Error;
 
@@ -54,24 +52,6 @@ impl Default for EmitOptions {
 
 /// Source emitted based on the emit options.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
-pub struct EmittedSourceBytes {
-  /// Emitted text as utf8 bytes.
-  pub source: Vec<u8>,
-  /// Source map back to the original file.
-  pub source_map: Option<Vec<u8>>,
-}
-
-impl EmittedSourceBytes {
-  /// Convenience method to convert the emitted source bytes into a string.
-  pub fn into_string(self) -> Result<EmittedSourceText, FromUtf8Error> {
-    let text = String::from_utf8(self.source)?;
-    let source_map = self.source_map.map(String::from_utf8).transpose()?;
-    Ok(EmittedSourceText { text, source_map })
-  }
-}
-
-/// Source emitted based on the emit options.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
 pub struct EmittedSourceText {
   /// Emitted text as utf8 bytes.
   pub text: String,
@@ -96,7 +76,7 @@ pub fn emit(
   comments: &dyn crate::swc::common::comments::Comments,
   source_map: &SourceMap,
   emit_options: &EmitOptions,
-) -> Result<EmittedSourceBytes, EmitError> {
+) -> Result<EmittedSourceText, EmitError> {
   let source_map = source_map.inner();
   let mut src_map_buf = vec![];
   let mut src_buf = vec![];
@@ -174,9 +154,19 @@ pub fn emit(
     }
   }
 
-  Ok(EmittedSourceBytes {
-    source: src_buf,
-    source_map: map,
+  debug_assert!(std::str::from_utf8(&src_buf).is_ok(), "valid utf-8");
+  if let Some(map) = &map {
+    debug_assert!(std::str::from_utf8(&map).is_ok(), "valid utf-8");
+  }
+
+  // It's better to return a string here because then we can pass this to deno_core/v8
+  // as a known string, so it doesn't need to spend any time analyzing it.
+  Ok(EmittedSourceText {
+    // SAFETY: swc appends UTF-8 bytes to the JsWriter, so we can safely assume
+    // that the final string is UTF-8 (unchecked for performance reasons)
+    text: unsafe { String::from_utf8_unchecked(src_buf) },
+    // SAFETY: see above comment
+    source_map: map.map(|b| unsafe { String::from_utf8_unchecked(b) }),
   })
 }
 

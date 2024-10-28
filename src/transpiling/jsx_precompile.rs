@@ -3049,8 +3049,6 @@ const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className",
       },
     )
     .unwrap()
-    .into_string()
-    .unwrap()
     .text
   }
 }
