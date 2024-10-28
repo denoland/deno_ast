@@ -327,8 +327,8 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
     | MediaType::Jsx
     | MediaType::Json
     | MediaType::Wasm
-    | MediaType::TsBuildInfo
     | MediaType::SourceMap
+    | MediaType::Css
     | MediaType::Unknown => Syntax::Es(EsSyntax {
       allow_return_outside_function: true,
       allow_super_outside_method: true,
