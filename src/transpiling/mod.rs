@@ -104,7 +104,7 @@ pub struct TranspileOptions {
   /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
   /// or error (`Error`). Defaults to `Remove`.
   pub imports_not_used_as_values: ImportsNotUsedAsValues,
-  /// If CJS is being transpiled.
+  /// If CommonJS is being transpiled.
   pub is_cjs: bool,
   /// `true` if the program should use an implicit JSX import source/the "new"
   /// JSX transforms.
