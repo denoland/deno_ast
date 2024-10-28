@@ -28,6 +28,7 @@ use crate::EmitOptions;
 use crate::EmittedSourceText;
 use crate::Globals;
 use crate::Marks;
+use crate::ModuleKind;
 use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::ParseDiagnosticsError;
@@ -104,8 +105,10 @@ pub struct TranspileOptions {
   /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
   /// or error (`Error`). Defaults to `Remove`.
   pub imports_not_used_as_values: ImportsNotUsedAsValues,
-  /// If CommonJS is being transpiled.
-  pub is_cjs: bool,
+  /// The kind of module being transpiled.
+  ///
+  /// Defaults to being derived from the media type of the parsed source.
+  pub module_kind: Option<ModuleKind>,
   /// `true` if the program should use an implicit JSX import source/the "new"
   /// JSX transforms.
   pub jsx_automatic: bool,
@@ -144,7 +147,7 @@ pub struct TranspileOptions {
 impl Default for TranspileOptions {
   fn default() -> Self {
     TranspileOptions {
-      is_cjs: false,
+      module_kind: None,
       use_ts_decorators: false,
       use_decorators_proposal: false,
       emit_metadata: false,
@@ -230,6 +233,7 @@ impl ParsedSource {
     let program = (*self.program()).clone();
     transpile(
       self.specifier().clone(),
+      self.media_type(),
       self.text().to_string(),
       program,
       // we need the comments to be mutable, so make it single threaded
@@ -273,6 +277,7 @@ impl ParsedSource {
     };
     Ok(transpile(
       inner.specifier,
+      inner.media_type,
       inner.text.to_string(),
       program,
       // we need the comments to be mutable, so make it single threaded
@@ -308,6 +313,7 @@ fn resolve_transpile_options(
 #[allow(clippy::too_many_arguments)]
 fn transpile(
   specifier: ModuleSpecifier,
+  media_type: MediaType,
   source: String,
   program: Program,
   comments: SingleThreadedComments,
@@ -327,20 +333,28 @@ fn transpile(
   let program = match program {
     Program::Module(module) => Program::Module(module),
     Program::Script(script) => {
-      // force transpiling as a module so that the jsx import source is
-      // injected as an import declaration and not require
-      if !transpile_options.is_cjs {
-        Program::Module(crate::swc::ast::Module {
-          span: script.span,
-          body: script
-            .body
-            .into_iter()
-            .map(crate::swc::ast::ModuleItem::Stmt)
-            .collect(),
-          shebang: script.shebang,
-        })
-      } else {
-        Program::Script(script)
+      let module_kind = transpile_options.module_kind.unwrap_or({
+        if matches!(media_type, MediaType::Cjs | MediaType::Cts) {
+          ModuleKind::Cjs
+        } else {
+          ModuleKind::Es
+        }
+      });
+      match module_kind {
+        ModuleKind::Es => {
+          // force transpiling as a module so that the jsx import source is
+          // injected as an import declaration and not require
+          Program::Module(crate::swc::ast::Module {
+            span: script.span,
+            body: script
+              .body
+              .into_iter()
+              .map(crate::swc::ast::ModuleItem::Stmt)
+              .collect(),
+            shebang: script.shebang,
+          })
+        }
+        ModuleKind::Cjs => Program::Script(script),
       }
     }
   };
@@ -1115,7 +1129,7 @@ function App() {
     })
     .unwrap();
     let transpile_options = TranspileOptions {
-      is_cjs: true, // notice this
+      module_kind: Some(ModuleKind::Cjs), // notice this
       jsx_automatic: true,
       jsx_import_source: Some("jsx_lib".to_string()),
       ..Default::default()

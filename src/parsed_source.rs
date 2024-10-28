@@ -62,6 +62,13 @@ impl Globals {
   }
 }
 
+/// If the module is an Es module or CommonJs module.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModuleKind {
+  Es,
+  Cjs,
+}
+
 /// A reference to a Program.
 ///
 /// It is generally preferable for functions to accept this over `&Program`
