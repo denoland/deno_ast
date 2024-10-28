@@ -327,7 +327,6 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
     | MediaType::Jsx
     | MediaType::Json
     | MediaType::Wasm
-    | MediaType::TsBuildInfo
     | MediaType::SourceMap
     | MediaType::Css
     | MediaType::Unknown => Syntax::Es(EsSyntax {

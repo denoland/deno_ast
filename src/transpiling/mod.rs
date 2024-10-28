@@ -287,10 +287,7 @@ fn resolve_transpile_options(
   options: &TranspileOptions,
 ) -> Cow<TranspileOptions> {
   if options.transform_jsx {
-    let allows_jsx = match media_type {
-      MediaType::Jsx | MediaType::Tsx => true,
-      _ => false,
-    };
+    let allows_jsx = matches!(media_type, MediaType::Jsx | MediaType::Tsx);
     if !allows_jsx {
       return Cow::Owned(TranspileOptions {
         // there is no reason for jsx transforms to be turned on because
