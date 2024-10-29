@@ -26,10 +26,6 @@ impl ParsedSource {
   ///
   /// Note: This will panic if called on a non-script.
   pub fn analyze_cjs(&self) -> CjsAnalysis {
-    if !self.is_script() {
-      panic!("Cannot analyze non-script: {}", self.specifier())
-    }
-
     let mut visitor = CjsVisitor::default();
     match self.program_ref() {
       ProgramRef::Module(n) => visitor.visit_module(n),
