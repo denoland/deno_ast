@@ -69,6 +69,20 @@ pub enum ModuleKind {
   Cjs,
 }
 
+impl ModuleKind {
+  pub fn from_is_cjs(is_cjs: bool) -> Self {
+    if is_cjs {
+      ModuleKind::Cjs
+    } else {
+      ModuleKind::Esm
+    }
+  }
+
+  pub fn from_is_esm(is_esm: bool) -> Self {
+    ModuleKind::from_is_cjs(!is_esm)
+  }
+}
+
 /// A reference to a Program.
 ///
 /// It is generally preferable for functions to accept this over `&Program`
