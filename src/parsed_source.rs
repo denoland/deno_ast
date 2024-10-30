@@ -62,6 +62,39 @@ impl Globals {
   }
 }
 
+/// If the module is an Es module or CommonJs module.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModuleKind {
+  Esm,
+  Cjs,
+}
+
+impl ModuleKind {
+  #[inline(always)]
+  pub fn from_is_cjs(is_cjs: bool) -> Self {
+    if is_cjs {
+      ModuleKind::Cjs
+    } else {
+      ModuleKind::Esm
+    }
+  }
+
+  #[inline(always)]
+  pub fn from_is_esm(is_esm: bool) -> Self {
+    ModuleKind::from_is_cjs(!is_esm)
+  }
+
+  #[inline(always)]
+  pub fn is_cjs(&self) -> bool {
+    matches!(self, Self::Cjs)
+  }
+
+  #[inline(always)]
+  pub fn is_esm(&self) -> bool {
+    matches!(self, Self::Esm)
+  }
+}
+
 /// A reference to a Program.
 ///
 /// It is generally preferable for functions to accept this over `&Program`
