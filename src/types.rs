@@ -27,7 +27,7 @@ pub struct ParseDiagnostic {
   pub range: SourceRange,
   /// Swc syntax error
   pub kind: SyntaxError,
-  source: SourceTextInfo,
+  pub(crate) source: SourceTextInfo,
 }
 
 impl Eq for ParseDiagnostic {}

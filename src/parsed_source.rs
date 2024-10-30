@@ -106,6 +106,40 @@ pub enum ProgramRef<'a> {
 }
 
 impl<'a> ProgramRef<'a> {
+  /// Computes whether the program is a script.
+  pub fn compute_is_script(&self) -> bool {
+    // Necessary because swc will make a program a module when it contains
+    // typescript specific CJS imports/exports like `import add = require('./add');`.
+    match self {
+      ProgramRef::Module(m) => {
+        for m in m.body.iter() {
+          match m {
+            ModuleItem::ModuleDecl(m) => match m {
+              ModuleDecl::Import(_)
+              | ModuleDecl::ExportDecl(_)
+              | ModuleDecl::ExportNamed(_)
+              | ModuleDecl::ExportDefaultDecl(_)
+              | ModuleDecl::ExportDefaultExpr(_)
+              | ModuleDecl::ExportAll(_) => return false,
+              // the prescence of these means it's a script
+              ModuleDecl::TsImportEquals(_)
+              | ModuleDecl::TsExportAssignment(_) => {
+                return true;
+              }
+              ModuleDecl::TsNamespaceExport(_) => {
+                // ignore `export as namespace x;` as it's type only
+              }
+            },
+            ModuleItem::Stmt(_) => {}
+          }
+        }
+
+        false
+      }
+      ProgramRef::Script(_) => true,
+    }
+  }
+
   pub fn unwrap_module(&self) -> &Module {
     match self {
       ProgramRef::Module(m) => m,
@@ -386,13 +420,20 @@ impl ParsedSource {
   }
 
   /// Gets if this source is a module.
+  #[deprecated(note = "use compute_is_script() instead")]
   pub fn is_module(&self) -> bool {
     matches!(self.program_ref(), ProgramRef::Module(_))
   }
 
   /// Gets if this source is a script.
+  #[deprecated(note = "use compute_is_script() instead")]
   pub fn is_script(&self) -> bool {
     matches!(self.program_ref(), ProgramRef::Script(_))
+  }
+
+  /// Computes whether this program should be treated as a script.
+  pub fn compute_is_script(&self) -> bool {
+    self.program_ref().compute_is_script()
   }
 }
 
