@@ -7,23 +7,6 @@ use std::sync::Arc;
 use deno_media_type::MediaType;
 use dprint_swc_ext::common::SourceRangedForSpanned;
 use dprint_swc_ext::common::SourceTextInfo;
-use swc_common::SyntaxContext;
-use swc_common::DUMMY_SP;
-use swc_ecma_ast::AssignExpr;
-use swc_ecma_ast::Callee;
-use swc_ecma_ast::Decl;
-use swc_ecma_ast::Expr;
-use swc_ecma_ast::ExprOrSpread;
-use swc_ecma_ast::ExprStmt;
-use swc_ecma_ast::Ident;
-use swc_ecma_ast::IdentName;
-use swc_ecma_ast::MemberExpr;
-use swc_ecma_ast::ModuleDecl;
-use swc_ecma_ast::ModuleItem;
-use swc_ecma_ast::SimpleAssignTarget;
-use swc_ecma_ast::Stmt;
-use swc_ecma_ast::VarDecl;
-use swc_ecma_visit::as_folder;
 use thiserror::Error;
 
 use crate::emit;
@@ -40,6 +23,7 @@ use crate::swc::transforms::proposal;
 use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
+use crate::swc::visit::as_folder;
 use crate::swc::visit::FoldWith;
 use crate::EmitError;
 use crate::EmitOptions;
@@ -391,7 +375,11 @@ fn transpile(
           // injected as an import declaration and not require
           Program::Module(crate::swc::ast::Module {
             span: script.span,
-            body: script.body.into_iter().map(ModuleItem::Stmt).collect(),
+            body: script
+              .body
+              .into_iter()
+              .map(crate::swc::ast::ModuleItem::Stmt)
+              .collect(),
             shebang: script.shebang,
           })
         }
@@ -429,34 +417,34 @@ fn convert_script_module_to_swc_script(
   source: &str,
   module: crate::swc::ast::Module,
 ) -> Result<crate::swc::ast::Script, TranspileError> {
-  fn ts_entity_name_to_expr(
-    ts_entity_name: swc_ecma_ast::TsEntityName,
-  ) -> Expr {
+  use crate::swc::ast::*;
+  use crate::swc::common::SyntaxContext;
+  use crate::swc::common::DUMMY_SP;
+
+  fn ts_entity_name_to_expr(ts_entity_name: TsEntityName) -> Expr {
     match ts_entity_name {
-      swc_ecma_ast::TsEntityName::Ident(ident) => Expr::Ident(ident),
-      swc_ecma_ast::TsEntityName::TsQualifiedName(ts_qualified_name) => {
+      TsEntityName::Ident(ident) => Expr::Ident(ident),
+      TsEntityName::TsQualifiedName(ts_qualified_name) => {
         ts_qualified_name_to_expr(*ts_qualified_name)
       }
     }
   }
 
-  fn ts_qualified_name_to_expr(
-    ts_qualified_name: swc_ecma_ast::TsQualifiedName,
-  ) -> Expr {
+  fn ts_qualified_name_to_expr(ts_qualified_name: TsQualifiedName) -> Expr {
     match ts_qualified_name.left {
-      swc_ecma_ast::TsEntityName::Ident(ident) => Expr::Member(MemberExpr {
+      TsEntityName::Ident(ident) => Expr::Member(MemberExpr {
         span: DUMMY_SP,
         obj: Box::new(Expr::Ident(ident)),
-        prop: swc_ecma_ast::MemberProp::Ident(IdentName::new(
+        prop: MemberProp::Ident(IdentName::new(
           ts_qualified_name.right.sym,
           ts_qualified_name.right.span,
         )),
       }),
-      swc_ecma_ast::TsEntityName::TsQualifiedName(ts_qualified_name) => {
+      TsEntityName::TsQualifiedName(ts_qualified_name) => {
         Expr::Member(MemberExpr {
           span: DUMMY_SP,
           obj: Box::new(ts_entity_name_to_expr(ts_qualified_name.left)),
-          prop: swc_ecma_ast::MemberProp::Ident(IdentName::new(
+          prop: MemberProp::Ident(IdentName::new(
             ts_qualified_name.right.sym,
             ts_qualified_name.right.span,
           )),
@@ -472,12 +460,12 @@ fn convert_script_module_to_swc_script(
     stmts: &mut Vec<Stmt>,
   ) -> Result<(), TranspileError> {
     match decl {
-      swc_ecma_ast::ModuleDecl::Import(_)
-      | swc_ecma_ast::ModuleDecl::ExportDecl(_)
-      | swc_ecma_ast::ModuleDecl::ExportNamed(_)
-      | swc_ecma_ast::ModuleDecl::ExportDefaultDecl(_)
-      | swc_ecma_ast::ModuleDecl::ExportDefaultExpr(_)
-      | swc_ecma_ast::ModuleDecl::ExportAll(_) => {
+      ModuleDecl::Import(_)
+      | ModuleDecl::ExportDecl(_)
+      | ModuleDecl::ExportNamed(_)
+      | ModuleDecl::ExportDefaultDecl(_)
+      | ModuleDecl::ExportDefaultExpr(_)
+      | ModuleDecl::ExportAll(_) => {
         return Err(TranspileError::ParseErrors(ParseDiagnosticsError(vec![
           ParseDiagnostic {
             specifier: specifier.clone(),
@@ -487,7 +475,7 @@ fn convert_script_module_to_swc_script(
           },
         ])));
       }
-      swc_ecma_ast::ModuleDecl::TsImportEquals(ts_import_equals_decl) => {
+      ModuleDecl::TsImportEquals(ts_import_equals_decl) => {
         if ts_import_equals_decl.is_type_only {
           return Ok(());
         }
@@ -499,20 +487,18 @@ fn convert_script_module_to_swc_script(
         let var_decl = VarDecl {
           span: ts_import_equals_decl.span,
           ctxt: ts_import_equals_decl.id.ctxt,
-          kind: swc_ecma_ast::VarDeclKind::Const,
+          kind: VarDeclKind::Const,
           declare: false,
-          decls: Vec::from([swc_ecma_ast::VarDeclarator {
+          decls: Vec::from([VarDeclarator {
             span: ts_import_equals_decl.span,
             name: ts_import_equals_decl.id.into(),
             init: Some(match ts_import_equals_decl.module_ref {
-              swc_ecma_ast::TsModuleRef::TsEntityName(ts_entity_name) => {
+              TsModuleRef::TsEntityName(ts_entity_name) => {
                 Box::new(ts_entity_name_to_expr(ts_entity_name))
               }
-              swc_ecma_ast::TsModuleRef::TsExternalModuleRef(
-                ts_external_module_ref,
-              ) => {
+              TsModuleRef::TsExternalModuleRef(ts_external_module_ref) => {
                 // call expr for require(...)
-                Box::new(Expr::Call(swc_ecma_ast::CallExpr {
+                Box::new(Expr::Call(CallExpr {
                   span: DUMMY_SP,
                   callee: Callee::Expr(Box::new(Expr::Ident(Ident::new(
                     "require".into(),
@@ -521,13 +507,11 @@ fn convert_script_module_to_swc_script(
                   )))),
                   ctxt: SyntaxContext::empty(),
                   args: vec![ExprOrSpread {
-                    expr: Box::new(Expr::Lit(swc_ecma_ast::Lit::Str(
-                      swc_ecma_ast::Str {
-                        span: ts_external_module_ref.span,
-                        value: ts_external_module_ref.expr.value.clone(),
-                        raw: None,
-                      },
-                    ))),
+                    expr: Box::new(Expr::Lit(Lit::Str(Str {
+                      span: ts_external_module_ref.span,
+                      value: ts_external_module_ref.expr.value.clone(),
+                      raw: None,
+                    }))),
                     spread: None,
                   }],
                   type_args: None,
@@ -543,9 +527,9 @@ fn convert_script_module_to_swc_script(
             span: DUMMY_SP,
             expr: Box::new(Expr::Assign(AssignExpr {
               span: DUMMY_SP,
-              op: swc_ecma_ast::AssignOp::Assign,
-              left: swc_ecma_ast::AssignTarget::Simple(
-                SimpleAssignTarget::Member(MemberExpr {
+              op: AssignOp::Assign,
+              left: AssignTarget::Simple(SimpleAssignTarget::Member(
+                MemberExpr {
                   span: DUMMY_SP,
                   obj: Box::new(Expr::Ident(Ident {
                     span: DUMMY_SP,
@@ -553,12 +537,12 @@ fn convert_script_module_to_swc_script(
                     sym: "exports".into(),
                     optional: false,
                   })),
-                  prop: swc_ecma_ast::MemberProp::Ident(IdentName::new(
+                  prop: MemberProp::Ident(IdentName::new(
                     export_ident.sym.clone(),
                     export_ident.span,
                   )),
-                }),
-              ),
+                },
+              )),
               right: Box::new(Expr::Ident(Ident::new(
                 export_ident.sym,
                 export_ident.span,
@@ -568,32 +552,32 @@ fn convert_script_module_to_swc_script(
           }));
         }
       }
-      swc_ecma_ast::ModuleDecl::TsExportAssignment(ts_export_assignment) => {
+      ModuleDecl::TsExportAssignment(ts_export_assignment) => {
         // convert `export = ...` to `module.exports = ...`
         stmts.push(Stmt::Expr(ExprStmt {
           span: DUMMY_SP,
           expr: Box::new(Expr::Assign(AssignExpr {
             span: DUMMY_SP,
-            op: swc_ecma_ast::AssignOp::Assign,
-            left: swc_ecma_ast::AssignTarget::Simple(
-              SimpleAssignTarget::Member(MemberExpr {
+            op: AssignOp::Assign,
+            left: AssignTarget::Simple(SimpleAssignTarget::Member(
+              MemberExpr {
                 span: DUMMY_SP,
                 obj: Box::new(Expr::Ident(Ident::new(
                   "module".into(),
                   DUMMY_SP,
                   SyntaxContext::empty(),
                 ))),
-                prop: swc_ecma_ast::MemberProp::Ident(IdentName::new(
+                prop: MemberProp::Ident(IdentName::new(
                   "exports".into(),
                   DUMMY_SP,
                 )),
-              }),
-            ),
+              },
+            )),
             right: ts_export_assignment.expr,
           })),
         }))
       }
-      swc_ecma_ast::ModuleDecl::TsNamespaceExport(_) => {
+      ModuleDecl::TsNamespaceExport(_) => {
         // ignore as it's type only
       }
     }
@@ -610,7 +594,7 @@ fn convert_script_module_to_swc_script(
   let mut stmts = Vec::with_capacity(module.body.len() + module_decl_count);
   for module_item in module.body {
     match module_item {
-      crate::swc::ast::ModuleItem::Stmt(stmt) => {
+      ModuleItem::Stmt(stmt) => {
         stmts.push(stmt);
       }
       ModuleItem::ModuleDecl(decl) => {
@@ -619,7 +603,7 @@ fn convert_script_module_to_swc_script(
     }
   }
 
-  Ok(crate::swc::ast::Script {
+  Ok(Script {
     span: module.span,
     body: stmts,
     shebang: module.shebang,
