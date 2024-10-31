@@ -5,7 +5,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_media_type::MediaType;
-use swc_ecma_visit::as_folder;
+use dprint_swc_ext::common::SourceRangedForSpanned;
+use dprint_swc_ext::common::SourceTextInfo;
 use thiserror::Error;
 
 use crate::emit;
@@ -22,6 +23,7 @@ use crate::swc::transforms::proposal;
 use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
+use crate::swc::visit::as_folder;
 use crate::swc::visit::FoldWith;
 use crate::EmitError;
 use crate::EmitOptions;
@@ -33,6 +35,7 @@ use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
 use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
+use crate::ProgramRef;
 use crate::SourceMap;
 
 use std::cell::RefCell;
@@ -349,18 +352,23 @@ fn transpile(
     return Err(TranspileError::DecoratorOptionsConflict);
   }
 
-  let source_map = SourceMap::single(specifier, source);
-
+  let module_kind = transpile_module_options.module_kind.unwrap_or({
+    if matches!(media_type, MediaType::Cjs | MediaType::Cts) {
+      ModuleKind::Cjs
+    } else {
+      ModuleKind::Esm
+    }
+  });
   let program = match program {
-    Program::Module(module) => Program::Module(module),
+    Program::Module(module) => match module_kind {
+      ModuleKind::Cjs if ProgramRef::Module(&module).compute_is_script() => {
+        Program::Script(convert_script_module_to_swc_script(
+          &specifier, &source, module,
+        )?)
+      }
+      _ => Program::Module(module),
+    },
     Program::Script(script) => {
-      let module_kind = transpile_module_options.module_kind.unwrap_or({
-        if matches!(media_type, MediaType::Cjs | MediaType::Cts) {
-          ModuleKind::Cjs
-        } else {
-          ModuleKind::Esm
-        }
-      });
       match module_kind {
         ModuleKind::Esm => {
           // force transpiling as a module so that the jsx import source is
@@ -380,6 +388,7 @@ fn transpile(
     }
   };
 
+  let source_map = SourceMap::single(specifier, source);
   let program = globals.with(|marks| {
     fold_program(
       program,
@@ -397,6 +406,208 @@ fn transpile(
     &source_map,
     emit_options,
   )?)
+}
+
+/// swc treats any file with `import X = require("...")` or `export = ...` as a
+/// module, but we want these to be transpiled as a script with stuff like JSX import
+/// sources being imported with a require call, so we convert it here to a script
+/// before transpiling
+fn convert_script_module_to_swc_script(
+  specifier: &ModuleSpecifier,
+  source: &str,
+  module: crate::swc::ast::Module,
+) -> Result<crate::swc::ast::Script, TranspileError> {
+  use crate::swc::ast::*;
+  use crate::swc::common::SyntaxContext;
+  use crate::swc::common::DUMMY_SP;
+
+  fn ts_entity_name_to_expr(ts_entity_name: TsEntityName) -> Expr {
+    match ts_entity_name {
+      TsEntityName::Ident(ident) => Expr::Ident(ident),
+      TsEntityName::TsQualifiedName(ts_qualified_name) => {
+        ts_qualified_name_to_expr(*ts_qualified_name)
+      }
+    }
+  }
+
+  fn ts_qualified_name_to_expr(ts_qualified_name: TsQualifiedName) -> Expr {
+    match ts_qualified_name.left {
+      TsEntityName::Ident(ident) => Expr::Member(MemberExpr {
+        span: DUMMY_SP,
+        obj: Box::new(Expr::Ident(ident)),
+        prop: MemberProp::Ident(IdentName::new(
+          ts_qualified_name.right.sym,
+          ts_qualified_name.right.span,
+        )),
+      }),
+      TsEntityName::TsQualifiedName(ts_qualified_name) => {
+        Expr::Member(MemberExpr {
+          span: DUMMY_SP,
+          obj: Box::new(ts_entity_name_to_expr(ts_qualified_name.left)),
+          prop: MemberProp::Ident(IdentName::new(
+            ts_qualified_name.right.sym,
+            ts_qualified_name.right.span,
+          )),
+        })
+      }
+    }
+  }
+
+  fn module_decl_to_stmt(
+    specifier: &ModuleSpecifier,
+    source: &str,
+    decl: ModuleDecl,
+    stmts: &mut Vec<Stmt>,
+  ) -> Result<(), TranspileError> {
+    match decl {
+      ModuleDecl::Import(_)
+      | ModuleDecl::ExportDecl(_)
+      | ModuleDecl::ExportNamed(_)
+      | ModuleDecl::ExportDefaultDecl(_)
+      | ModuleDecl::ExportDefaultExpr(_)
+      | ModuleDecl::ExportAll(_) => {
+        return Err(TranspileError::ParseErrors(ParseDiagnosticsError(vec![
+          ParseDiagnostic {
+            specifier: specifier.clone(),
+            range: decl.range(),
+            kind: SyntaxError::ImportExportInScript,
+            source: SourceTextInfo::new(source.into()),
+          },
+        ])));
+      }
+      ModuleDecl::TsImportEquals(ts_import_equals_decl) => {
+        if ts_import_equals_decl.is_type_only {
+          return Ok(());
+        }
+        let export_ident = if ts_import_equals_decl.is_export {
+          Some(ts_import_equals_decl.id.clone())
+        } else {
+          None
+        };
+        let var_decl = VarDecl {
+          span: ts_import_equals_decl.span,
+          ctxt: ts_import_equals_decl.id.ctxt,
+          kind: VarDeclKind::Const,
+          declare: false,
+          decls: Vec::from([VarDeclarator {
+            span: ts_import_equals_decl.span,
+            name: ts_import_equals_decl.id.into(),
+            init: Some(match ts_import_equals_decl.module_ref {
+              TsModuleRef::TsEntityName(ts_entity_name) => {
+                Box::new(ts_entity_name_to_expr(ts_entity_name))
+              }
+              TsModuleRef::TsExternalModuleRef(ts_external_module_ref) => {
+                // call expr for require(...)
+                Box::new(Expr::Call(CallExpr {
+                  span: DUMMY_SP,
+                  callee: Callee::Expr(Box::new(Expr::Ident(Ident::new(
+                    "require".into(),
+                    DUMMY_SP,
+                    SyntaxContext::empty(),
+                  )))),
+                  ctxt: SyntaxContext::empty(),
+                  args: vec![ExprOrSpread {
+                    expr: Box::new(Expr::Lit(Lit::Str(Str {
+                      span: ts_external_module_ref.span,
+                      value: ts_external_module_ref.expr.value.clone(),
+                      raw: None,
+                    }))),
+                    spread: None,
+                  }],
+                  type_args: None,
+                }))
+              }
+            }),
+            definite: false,
+          }]),
+        };
+        stmts.push(Stmt::Decl(Decl::Var(Box::new(var_decl))));
+        if let Some(export_ident) = export_ident {
+          stmts.push(Stmt::Expr(ExprStmt {
+            span: DUMMY_SP,
+            expr: Box::new(Expr::Assign(AssignExpr {
+              span: DUMMY_SP,
+              op: AssignOp::Assign,
+              left: AssignTarget::Simple(SimpleAssignTarget::Member(
+                MemberExpr {
+                  span: DUMMY_SP,
+                  obj: Box::new(Expr::Ident(Ident {
+                    span: DUMMY_SP,
+                    ctxt: export_ident.ctxt,
+                    sym: "exports".into(),
+                    optional: false,
+                  })),
+                  prop: MemberProp::Ident(IdentName::new(
+                    export_ident.sym.clone(),
+                    export_ident.span,
+                  )),
+                },
+              )),
+              right: Box::new(Expr::Ident(Ident::new(
+                export_ident.sym,
+                export_ident.span,
+                export_ident.ctxt,
+              ))),
+            })),
+          }));
+        }
+      }
+      ModuleDecl::TsExportAssignment(ts_export_assignment) => {
+        // convert `export = ...` to `module.exports = ...`
+        stmts.push(Stmt::Expr(ExprStmt {
+          span: DUMMY_SP,
+          expr: Box::new(Expr::Assign(AssignExpr {
+            span: DUMMY_SP,
+            op: AssignOp::Assign,
+            left: AssignTarget::Simple(SimpleAssignTarget::Member(
+              MemberExpr {
+                span: DUMMY_SP,
+                obj: Box::new(Expr::Ident(Ident::new(
+                  "module".into(),
+                  DUMMY_SP,
+                  SyntaxContext::empty(),
+                ))),
+                prop: MemberProp::Ident(IdentName::new(
+                  "exports".into(),
+                  DUMMY_SP,
+                )),
+              },
+            )),
+            right: ts_export_assignment.expr,
+          })),
+        }))
+      }
+      ModuleDecl::TsNamespaceExport(_) => {
+        // ignore as it's type only
+      }
+    }
+
+    Ok(())
+  }
+
+  let module_decl_count = module
+    .body
+    .iter()
+    .filter(|m| matches!(m, ModuleItem::ModuleDecl(_)))
+    .count();
+  // a module decl could have two statements when an export, so reserve some extra capacity
+  let mut stmts = Vec::with_capacity(module.body.len() + module_decl_count);
+  for module_item in module.body {
+    match module_item {
+      ModuleItem::Stmt(stmt) => {
+        stmts.push(stmt);
+      }
+      ModuleItem::ModuleDecl(decl) => {
+        module_decl_to_stmt(specifier, source, decl, &mut stmts)?;
+      }
+    }
+  }
+
+  Ok(Script {
+    span: module.span,
+    body: stmts,
+    shebang: module.shebang,
+  })
 }
 
 #[derive(Default, Clone)]
@@ -1199,6 +1410,114 @@ function App() {
     children: _jsx(_Fragment, {})
   });
 }
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
+  fn test_transpile_jsx_import_source_cjs_with_import_export() {
+    let specifier = ModuleSpecifier::parse("file:///mod.tsx").unwrap();
+    let source = r#"
+import test = require('./test');
+export import other = require('./test');
+console.log(test);
+console.log(other);
+export import asdf = other.add;
+function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let program = parse_program(ParseParams {
+      specifier,
+      text: source.into(),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let transpile_options = TranspileOptions {
+      jsx_automatic: true,
+      jsx_import_source: Some("jsx_lib".to_string()),
+      ..Default::default()
+    };
+    let transpile_module_options = TranspileModuleOptions {
+      module_kind: Some(ModuleKind::Cjs), // notice this
+    };
+    let code = program
+      .transpile(
+        &transpile_options,
+        &transpile_module_options,
+        &EmitOptions {
+          remove_comments: true,
+          ..Default::default()
+        },
+      )
+      .unwrap()
+      .into_source()
+      .text;
+    let expected = r#"const { jsx: _jsx, Fragment: _Fragment } = require("jsx_lib/jsx-runtime");
+const test = require("./test");
+const other = require("./test");
+exports.other = other;
+console.log(test);
+console.log(other);
+const asdf = other.add;
+exports.asdf = asdf;
+function App() {
+  return _jsx("div", {
+    children: _jsx(_Fragment, {})
+  });
+}
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
+  fn test_transpile_jsx_import_source_cjs_with_ts_export_equals() {
+    let specifier = ModuleSpecifier::parse("file:///mod.tsx").unwrap();
+    let source = r#"
+export = function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let program = parse_program(ParseParams {
+      specifier,
+      text: source.into(),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let transpile_options = TranspileOptions {
+      jsx_automatic: true,
+      jsx_import_source: Some("jsx_lib".to_string()),
+      ..Default::default()
+    };
+    let transpile_module_options = TranspileModuleOptions {
+      module_kind: Some(ModuleKind::Cjs), // notice this
+    };
+    let code = program
+      .transpile(
+        &transpile_options,
+        &transpile_module_options,
+        &EmitOptions {
+          remove_comments: true,
+          ..Default::default()
+        },
+      )
+      .unwrap()
+      .into_source()
+      .text;
+    let expected = r#"const { jsx: _jsx, Fragment: _Fragment } = require("jsx_lib/jsx-runtime");
+module.exports = function App() {
+  return _jsx("div", {
+    children: _jsx(_Fragment, {})
+  });
+};
 "#;
     assert_eq!(&code[..expected.len()], expected);
   }
