@@ -1475,6 +1475,54 @@ function App() {
   }
 
   #[test]
+  fn test_transpile_jsx_import_source_cjs_with_ts_export_equals() {
+    let specifier = ModuleSpecifier::parse("file:///mod.tsx").unwrap();
+    let source = r#"
+export = function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let program = parse_program(ParseParams {
+      specifier,
+      text: source.into(),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let transpile_options = TranspileOptions {
+      jsx_automatic: true,
+      jsx_import_source: Some("jsx_lib".to_string()),
+      ..Default::default()
+    };
+    let transpile_module_options = TranspileModuleOptions {
+      module_kind: Some(ModuleKind::Cjs), // notice this
+    };
+    let code = program
+      .transpile(
+        &transpile_options,
+        &transpile_module_options,
+        &EmitOptions {
+          remove_comments: true,
+          ..Default::default()
+        },
+      )
+      .unwrap()
+      .into_source()
+      .text;
+    let expected = r#"const { jsx: _jsx, Fragment: _Fragment } = require("jsx_lib/jsx-runtime");
+module.exports = function App() {
+  return _jsx("div", {
+    children: _jsx(_Fragment, {})
+  });
+};
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
   fn test_transpile_decorators() {
     let specifier =
       ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
