@@ -138,7 +138,11 @@ fn refine_parse_mode(
 ) -> ParseMode {
   match (parse_mode, media_type) {
     (ParseMode::Program, MediaType::Cjs) => ParseMode::Script,
-    (ParseMode::Program, MediaType::Cts) => ParseMode::Script,
+    // cts files can contain module declarations like
+    // `import x = require("./x.ts");` or `export = 5;`, so we need to parse
+    // them as modules (this may change in the future once
+    // https://github.com/swc-project/swc/issues/9694 is resolved)
+    (ParseMode::Program, MediaType::Cts) => ParseMode::Module,
     (ParseMode::Program, MediaType::Mjs) => ParseMode::Module,
     (ParseMode::Program, MediaType::Mts) => ParseMode::Module,
     (parse_mode, _) => parse_mode,
@@ -525,6 +529,13 @@ mod test {
   }
 
   #[test]
+  fn test_parse_export_equals() {
+    assert!(
+      parse_program_with_media_type("export = 5;", MediaType::Cts).is_ok()
+    );
+  }
+
+  #[test]
   #[should_panic(
     expected = "Could not get syntax context because the source was not parsed with scope analysis."
   )]
@@ -770,6 +781,20 @@ function _bar(...Foo: Foo) {
       specifier: ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
       text: text.to_string().into(),
       media_type: MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+  }
+
+  fn parse_program_with_media_type(
+    text: &str,
+    media_type: MediaType,
+  ) -> Result<ParsedSource, ParseDiagnostic> {
+    parse_program(ParseParams {
+      specifier: ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
+      text: text.to_string().into(),
+      media_type,
       capture_tokens: false,
       maybe_syntax: None,
       scope_analysis: false,
