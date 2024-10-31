@@ -224,7 +224,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.43.2"
+version = "0.43.3"
 dependencies = [
  "base64",
  "deno_media_type",
