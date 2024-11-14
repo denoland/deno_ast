@@ -2,6 +2,7 @@
 
 #![deny(clippy::disallowed_methods)]
 #![deny(clippy::disallowed_types)]
+#![deny(clippy::unnecessary_wraps)]
 
 #[cfg(feature = "cjs")]
 mod cjs_parse;

@@ -1,5 +1,4 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-#![deny(clippy::unnecessary_wraps)]
 
 use std::borrow::Cow;
 use std::rc::Rc;
