@@ -64,6 +64,7 @@ pub enum EmitError {
   #[class(inherit)]
   #[error(transparent)]
   SwcEmit(#[inherit] std::io::Error),
+  #[class(TYPE)]
   #[error(transparent)]
   SourceMap(sourcemap::Error),
   #[class(TYPE)]

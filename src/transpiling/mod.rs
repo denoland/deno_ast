@@ -86,6 +86,7 @@ pub enum TranspileError {
     #[inherit]
     FoldProgramError,
   ),
+  #[class(TYPE)]
   #[error("{0}")]
   EmitDiagnostic(String),
   #[class(inherit)]
@@ -786,6 +787,7 @@ pub fn fold_program(
 }
 
 #[derive(Debug, JsError)]
+#[class(SYNTAX)]
 pub struct SwcFoldDiagnosticsError(Vec<String>);
 
 impl std::error::Error for SwcFoldDiagnosticsError {}
