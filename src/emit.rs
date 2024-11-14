@@ -59,12 +59,14 @@ pub struct EmittedSourceText {
   pub source_map: Option<String>,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, deno_error::JsError)]
 pub enum EmitError {
+  #[class(inherit)]
   #[error(transparent)]
-  SwcEmit(std::io::Error),
+  SwcEmit(#[inherit] std::io::Error),
   #[error(transparent)]
   SourceMap(sourcemap::Error),
+  #[class(TYPE)]
   #[error(transparent)]
   SourceMapEncode(base64::EncodeSliceError),
 }

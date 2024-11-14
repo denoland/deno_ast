@@ -34,6 +34,7 @@ visit = ["swc_ecma_visit", "swc_visit", "swc_visit_macros", "swc_macros_common"]
 base64 = { version = "0.21.6", optional = true }
 deno_media_type = "0.2.1"
 deno_terminal = "0.1.1"
+deno_error = "0.2.0"
 
 dprint-swc-ext = "0.20.0"
 once_cell = "1.19.0"

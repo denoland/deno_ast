@@ -227,6 +227,7 @@ name = "deno_ast"
 version = "0.43.3"
 dependencies = [
  "base64",
+ "deno_error",
  "deno_media_type",
  "deno_terminal",
  "dprint-swc-ext",
@@ -266,6 +267,27 @@ dependencies = [
  "thiserror",
  "unicode-width",
  "url",
+]
+
+[[package]]
+name = "deno_error"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "699681a535fd39d1bfc359a8b5b6543042c215afcdf2c806b09ed14a19705039"
+dependencies = [
+ "deno_error_macro",
+ "libc",
+]
+
+[[package]]
+name = "deno_error_macro"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aef127cf133df1912efda783e7a26320808c1eb0fd768f5b31c9ff5fc0c3e7f9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.72",
 ]
 
 [[package]]

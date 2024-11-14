@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::fmt;
-
+use deno_error::JsError;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticLevel;
 use crate::diagnostics::DiagnosticLocation;
@@ -19,7 +19,8 @@ use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
 
 /// Parsing diagnostic.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, JsError)]
+#[class(SYNTAX)]
 pub struct ParseDiagnostic {
   /// Specifier of the source the diagnostic occurred in.
   pub specifier: ModuleSpecifier,
@@ -368,7 +369,8 @@ impl fmt::Display for ParseDiagnostic {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, JsError)]
+#[class(SYNTAX)]
 pub struct ParseDiagnosticsError(pub Vec<ParseDiagnostic>);
 
 impl std::error::Error for ParseDiagnosticsError {}
