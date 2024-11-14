@@ -39,8 +39,8 @@ use crate::ParsedSource;
 use crate::ProgramRef;
 use crate::SourceMap;
 
-use std::cell::RefCell;
 use deno_error::JsError;
+use std::cell::RefCell;
 
 mod jsx_precompile;
 mod transforms;
@@ -75,15 +75,27 @@ pub enum TranspileError {
   /// Parse errors that prevent transpiling.
   #[class(inherit)]
   #[error(transparent)]
-  ParseErrors(#[from] #[inherit] ParseDiagnosticsError),
+  ParseErrors(
+    #[from]
+    #[inherit]
+    ParseDiagnosticsError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
-  FoldProgram(#[from] #[inherit] FoldProgramError),
+  FoldProgram(
+    #[from]
+    #[inherit]
+    FoldProgramError,
+  ),
   #[error("{0}")]
   EmitDiagnostic(String),
   #[class(inherit)]
   #[error(transparent)]
-  Emit(#[from] #[inherit] EmitError),
+  Emit(
+    #[from]
+    #[inherit]
+    EmitError,
+  ),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -642,10 +654,18 @@ impl crate::swc::common::errors::Emitter for DiagnosticCollector {
 pub enum FoldProgramError {
   #[class(inherit)]
   #[error(transparent)]
-  ParseDiagnostics(#[from] #[inherit] ParseDiagnosticsError),
+  ParseDiagnostics(
+    #[from]
+    #[inherit]
+    ParseDiagnosticsError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
-  Swc(#[from] #[inherit] SwcFoldDiagnosticsError),
+  Swc(
+    #[from]
+    #[inherit]
+    SwcFoldDiagnosticsError,
+  ),
 }
 
 /// Low level function for transpiling a program.
