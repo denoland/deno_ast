@@ -68,34 +68,22 @@ impl TranspileResult {
 
 #[derive(Debug, Error, JsError)]
 pub enum TranspileError {
-  #[class(TYPE)]
+  #[class(type)]
   #[error("Can't use TranspileOptions::use_decorators_proposal and TranspileOptions::use_ts_decorators together.")]
   DecoratorOptionsConflict,
   /// Parse errors that prevent transpiling.
   #[class(inherit)]
   #[error(transparent)]
-  ParseErrors(
-    #[from]
-    #[inherit]
-    ParseDiagnosticsError,
-  ),
+  ParseErrors(#[from] ParseDiagnosticsError),
   #[class(inherit)]
   #[error(transparent)]
-  FoldProgram(
-    #[from]
-    #[inherit]
-    FoldProgramError,
-  ),
-  #[class(TYPE)]
+  FoldProgram(#[from] FoldProgramError),
+  #[class(type)]
   #[error("{0}")]
   EmitDiagnostic(String),
   #[class(inherit)]
   #[error(transparent)]
-  Emit(
-    #[from]
-    #[inherit]
-    EmitError,
-  ),
+  Emit(#[from] EmitError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -654,18 +642,10 @@ impl crate::swc::common::errors::Emitter for DiagnosticCollector {
 pub enum FoldProgramError {
   #[class(inherit)]
   #[error(transparent)]
-  ParseDiagnostics(
-    #[from]
-    #[inherit]
-    ParseDiagnosticsError,
-  ),
+  ParseDiagnostics(#[from] ParseDiagnosticsError),
   #[class(inherit)]
   #[error(transparent)]
-  Swc(
-    #[from]
-    #[inherit]
-    SwcFoldDiagnosticsError,
-  ),
+  Swc(#[from] SwcFoldDiagnosticsError),
 }
 
 /// Low level function for transpiling a program.
@@ -787,7 +767,7 @@ pub fn fold_program(
 }
 
 #[derive(Debug, JsError)]
-#[class(SYNTAX)]
+#[class(syntax)]
 pub struct SwcFoldDiagnosticsError(Vec<String>);
 
 impl std::error::Error for SwcFoldDiagnosticsError {}

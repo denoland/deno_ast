@@ -20,7 +20,7 @@ use std::fmt;
 
 /// Parsing diagnostic.
 #[derive(Debug, Clone, JsError)]
-#[class(SYNTAX)]
+#[class(syntax)]
 pub struct ParseDiagnostic {
   /// Specifier of the source the diagnostic occurred in.
   pub specifier: ModuleSpecifier,
@@ -370,7 +370,7 @@ impl fmt::Display for ParseDiagnostic {
 }
 
 #[derive(Debug, JsError)]
-#[class(SYNTAX)]
+#[class(syntax)]
 pub struct ParseDiagnosticsError(pub Vec<ParseDiagnostic>);
 
 impl std::error::Error for ParseDiagnosticsError {}
