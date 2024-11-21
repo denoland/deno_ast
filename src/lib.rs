@@ -3,6 +3,8 @@
 #![deny(clippy::disallowed_methods)]
 #![deny(clippy::disallowed_types)]
 #![deny(clippy::unnecessary_wraps)]
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
 
 #[cfg(feature = "cjs")]
 mod cjs_parse;
