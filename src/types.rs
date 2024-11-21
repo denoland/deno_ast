@@ -1,8 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
-use std::fmt;
-
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticLevel;
 use crate::diagnostics::DiagnosticLocation;
@@ -17,9 +14,13 @@ use crate::ModuleSpecifier;
 use crate::SourceRange;
 use crate::SourceRangedForSpanned;
 use crate::SourceTextInfo;
+use deno_error::JsError;
+use std::borrow::Cow;
+use std::fmt;
 
 /// Parsing diagnostic.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, JsError)]
+#[class(syntax)]
 pub struct ParseDiagnostic {
   /// Specifier of the source the diagnostic occurred in.
   pub specifier: ModuleSpecifier,
@@ -368,7 +369,8 @@ impl fmt::Display for ParseDiagnostic {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, JsError)]
+#[class(syntax)]
 pub struct ParseDiagnosticsError(pub Vec<ParseDiagnostic>);
 
 impl std::error::Error for ParseDiagnosticsError {}

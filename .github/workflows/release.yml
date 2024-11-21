@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       releaseKind:
-        description: 'Kind of release'
+        description: "Kind of release"
         type: choice
         options:
           - patch
