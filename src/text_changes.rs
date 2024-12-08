@@ -3,6 +3,8 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
+use string_capacity::StringBuilder;
+
 #[derive(Clone, Debug)]
 pub struct TextChange {
   /// Range start to end byte index.
@@ -30,34 +32,32 @@ pub fn apply_text_changes(
     ordering => ordering,
   });
 
-  let mut last_index = 0;
-  let mut final_text = String::new();
-
-  for (i, change) in changes.iter().enumerate() {
-    if change.range.start > change.range.end {
-      panic!(
-        "Text change had start index {} greater than end index {}.\n\n{:?}",
-        change.range.start,
-        change.range.end,
-        &changes[0..i + 1],
-      )
+  StringBuilder::build(|builder| {
+    let mut last_index = 0;
+    for (i, change) in changes.iter().enumerate() {
+      if change.range.start > change.range.end {
+        panic!(
+          "Text change had start index {} greater than end index {}.\n\n{:?}",
+          change.range.start,
+          change.range.end,
+          &changes[0..i + 1],
+        )
+      }
+      if change.range.start < last_index {
+        panic!("Text changes were overlapping. Past index was {}, but new change had index {}.\n\n{:?}", last_index, change.range.start, &changes[0..i + 1]);
+      } else if change.range.start > last_index && last_index < source.len() {
+        builder.append(
+          &source[last_index..std::cmp::min(source.len(), change.range.start)],
+        );
+      }
+      builder.append(&change.new_text);
+      last_index = change.range.end;
     }
-    if change.range.start < last_index {
-      panic!("Text changes were overlapping. Past index was {}, but new change had index {}.\n\n{:?}", last_index, change.range.start, &changes[0..i + 1]);
-    } else if change.range.start > last_index && last_index < source.len() {
-      final_text.push_str(
-        &source[last_index..std::cmp::min(source.len(), change.range.start)],
-      );
+
+    if last_index < source.len() {
+      builder.append(&source[last_index..]);
     }
-    final_text.push_str(&change.new_text);
-    last_index = change.range.end;
-  }
-
-  if last_index < source.len() {
-    final_text.push_str(&source[last_index..]);
-  }
-
-  final_text
+  }).unwrap()
 }
 
 #[cfg(test)]
