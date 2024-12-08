@@ -76,6 +76,7 @@ swc_visit = { version = "=0.6.2", optional = true }
 swc_visit_macros = { version = "=0.5.13", optional = true }
 # just for error handling
 sourcemap = { version = "9.0.0", optional = true }
+string_capacity = "0.1.4"
 thiserror = "1.0.58"
 
 [dev-dependencies]
