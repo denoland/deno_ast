@@ -674,7 +674,6 @@ pub fn fold_program(
       proposal::decorator_2022_03::decorator_2022_03(),
       options.use_decorators_proposal,
     ),
-    proposal::explicit_resource_management::explicit_resource_management(),
     helpers::inject_helpers(marks.top_level),
     // transform imports to var decls before doing the typescript pass
     // so that swc doesn't do any optimizations on the import declarations
@@ -981,105 +980,6 @@ export class A {
       .text
       .contains("\n//# sourceMappingURL=data:application/json;base64,"));
     assert!(transpiled_source.source_map.is_none());
-  }
-
-  #[test]
-  fn test_explicit_resource_management() {
-    let specifier =
-      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
-    let source = "using data = create();\nconsole.log(data);";
-    let program = parse_program(ParseParams {
-      specifier,
-      text: source.into(),
-      media_type: MediaType::TypeScript,
-      capture_tokens: false,
-      maybe_syntax: None,
-      scope_analysis: false,
-    })
-    .unwrap();
-    let transpiled_source = program
-      .transpile(
-        &TranspileOptions::default(),
-        &TranspileModuleOptions::default(),
-        &EmitOptions::default(),
-      )
-      .unwrap()
-      .into_source();
-    let expected_text = r#"function _using_ctx() {
-  var _disposeSuppressedError = typeof SuppressedError === "function" ? SuppressedError : function(error, suppressed) {
-    var err = new Error();
-    err.name = "SuppressedError";
-    err.suppressed = suppressed;
-    err.error = error;
-    return err;
-  }, empty = {}, stack = [];
-  function using(isAwait, value) {
-    if (value != null) {
-      if (Object(value) !== value) {
-        throw new TypeError("using declarations can only be used with objects, functions, null, or undefined.");
-      }
-      if (isAwait) {
-        var dispose = value[Symbol.asyncDispose || Symbol.for("Symbol.asyncDispose")];
-      }
-      if (dispose == null) {
-        dispose = value[Symbol.dispose || Symbol.for("Symbol.dispose")];
-      }
-      if (typeof dispose !== "function") {
-        throw new TypeError(`Property [Symbol.dispose] is not a function.`);
-      }
-      stack.push({
-        v: value,
-        d: dispose,
-        a: isAwait
-      });
-    } else if (isAwait) {
-      stack.push({
-        d: value,
-        a: isAwait
-      });
-    }
-    return value;
-  }
-  return {
-    e: empty,
-    u: using.bind(null, false),
-    a: using.bind(null, true),
-    d: function() {
-      var error = this.e;
-      function next() {
-        while(resource = stack.pop()){
-          try {
-            var resource, disposalResult = resource.d && resource.d.call(resource.v);
-            if (resource.a) {
-              return Promise.resolve(disposalResult).then(next, err);
-            }
-          } catch (e) {
-            return err(e);
-          }
-        }
-        if (error !== empty) throw error;
-      }
-      function err(e) {
-        error = error !== empty ? new _disposeSuppressedError(error, e) : e;
-        return next();
-      }
-      return next();
-    }
-  };
-}
-try {
-  var _usingCtx = _using_ctx();
-  var data = _usingCtx.u(create());
-  console.log(data);
-} catch (_) {
-  _usingCtx.e = _;
-} finally{
-  _usingCtx.d();
-}"#;
-    assert_eq!(
-      &transpiled_source.text[..expected_text.len()],
-      expected_text
-    );
   }
 
   #[test]
