@@ -157,6 +157,7 @@ impl Default for TranspileOptions {
     TranspileOptions {
       use_ts_decorators: false,
       use_decorators_proposal: false,
+      use_explicit_resource_management: false,
       emit_metadata: false,
       verbatim_module_syntax: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
@@ -1005,7 +1006,10 @@ export class A {
     .unwrap();
     let transpiled_source = program
       .transpile(
-        &TranspileOptions::default(),
+        &TranspileOptions {
+          use_explicit_resource_management: true,
+          ..Default::default()
+        },
         &TranspileModuleOptions::default(),
         &EmitOptions::default(),
       )
