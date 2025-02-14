@@ -104,6 +104,9 @@ pub struct TranspileOptions {
   /// TC39 Decorators Proposal - https://github.com/tc39/proposal-decorators
   pub use_decorators_proposal: bool,
 
+  // Explicit resource management proposal - https://github.com/tc39/proposal-explicit-resource-management
+  pub use_explicit_resource_management: bool,
+
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
@@ -674,7 +677,10 @@ pub fn fold_program(
       proposal::decorator_2022_03::decorator_2022_03(),
       options.use_decorators_proposal,
     ),
-    proposal::explicit_resource_management::explicit_resource_management(),
+    Optional::new(
+      proposal::explicit_resource_management::explicit_resource_management(),
+      options.use_explicit_resource_management
+    ),
     helpers::inject_helpers(marks.top_level),
     // transform imports to var decls before doing the typescript pass
     // so that swc doesn't do any optimizations on the import declarations
