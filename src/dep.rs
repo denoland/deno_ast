@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use ast::BinExpr;
 use serde::Deserialize;
 use serde::Serialize;
+use swc_ecma_ast::{Ident, IdentName, MemberExpr, MemberProp};
 
 use crate::swc::ast;
 use crate::swc::ast::Callee;
@@ -173,6 +174,8 @@ pub enum DynamicArgument {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DynamicTemplatePart {
   String(Atom),
+  /// An member expression that may be analyzed.
+  MemberExpr(Atom, Atom, Atom),
   /// An expression that could not be analyzed.
   Expr,
 }
@@ -330,8 +333,36 @@ impl<'a> Visit for DependencyCollector<'a> {
             if cooked.len() > 0 {
               parts.push(DynamicTemplatePart::String(cooked.clone()));
             }
-            if tpl.exprs.get(i).is_some() {
-              parts.push(DynamicTemplatePart::Expr);
+
+            let mut is_member_expr = false;
+
+            if let Some(expr) = tpl.exprs.get(i) {
+              if let Expr::Member(MemberExpr {
+                prop: MemberProp::Ident(IdentName { sym: ref sym2, .. }),
+                ref obj,
+                ..
+              }) = **expr
+              {
+                if let Expr::Member(MemberExpr {
+                  prop: MemberProp::Ident(IdentName { sym: ref sym1, .. }),
+                  obj: ref obj1,
+                  ..
+                }) = **obj
+                {
+                  if let Expr::Ident(Ident { ref sym, .. }) = **obj1 {
+                    parts.push(DynamicTemplatePart::MemberExpr(
+                      sym.clone(),
+                      sym1.clone(),
+                      sym2.clone(),
+                    ));
+                    is_member_expr = true;
+                  }
+                }
+              }
+
+              if !is_member_expr {
+                parts.push(DynamicTemplatePart::Expr);
+              }
             }
           }
           DynamicArgument::Template(parts)
@@ -944,6 +975,7 @@ const d9 = await import("./foo/" + value + ".ts");
 const d10 = await import(value + ".ts");
 const d11 = await import("./foo/" - value);
 const d12 = await import(expr);
+const d13 = await import(`${Deno.build.target}/test`);
 "#;
     let (start_pos, dependencies) = helper("file:///test.ts", source);
     assert_eq!(
@@ -1080,6 +1112,27 @@ const d12 = await import(expr);
           range: SourceRange::new(start_pos + 511, start_pos + 523),
           argument: DynamicArgument::Expr,
           argument_range: SourceRange::new(start_pos + 518, start_pos + 522),
+          import_attributes: ImportAttributes::None,
+        }
+        .into(),
+        DynamicDependencyDescriptor {
+          leading_comments: Vec::new(),
+          range: SourceRange {
+            start: start_pos + 543,
+            end: start_pos + 578,
+          },
+          argument: DynamicArgument::Template(vec![
+            DynamicTemplatePart::MemberExpr(
+              JsWord::from("Deno"),
+              JsWord::from("build"),
+              JsWord::from("target")
+            ),
+            DynamicTemplatePart::String(JsWord::from("/test")),
+          ]),
+          argument_range: SourceRange {
+            start: start_pos + 550,
+            end: start_pos + 577,
+          },
           import_attributes: ImportAttributes::None,
         }
         .into(),
