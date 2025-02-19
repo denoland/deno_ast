@@ -401,6 +401,21 @@ mod test {
   }
 
   #[test]
+  fn should_get_leading_comments_after_hashbang() {
+    let program = parse_program(ParseParams {
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
+      text: "#!/bin/sh deno\n// 1\n".into(),
+      media_type: MediaType::JavaScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    assert_eq!(program.get_leading_comments().unwrap().len(), 1);
+    assert_eq!(program.get_leading_comments().unwrap()[0].text, " 1");
+  }
+
+  #[test]
   fn should_parse_module() {
     let program = parse_module(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
