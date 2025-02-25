@@ -74,7 +74,7 @@ pub enum DiagnosticLocation<'a> {
   },
 }
 
-impl<'a> DiagnosticLocation<'a> {
+impl DiagnosticLocation<'_> {
   /// Return the line and column number of the diagnostic.
   ///
   /// The line number is 1-indexed.

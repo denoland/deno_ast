@@ -7,10 +7,10 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::swc::ast::*;
-use crate::swc::atoms::JsWord;
-use crate::swc::visit::noop_visit_type;
-use crate::swc::visit::Visit;
-use crate::swc::visit::VisitWith;
+use crate::swc::atoms::Atom;
+use crate::swc::ecma_visit::noop_visit_type;
+use crate::swc::ecma_visit::Visit;
+use crate::swc::ecma_visit::VisitWith;
 use crate::ParsedSource;
 use crate::ProgramRef;
 
@@ -88,7 +88,7 @@ impl CjsVisitor {
   fn get_member_require_value(
     &self,
     member: &MemberExpr,
-    key: &JsWord,
+    key: &Atom,
   ) -> Option<String> {
     let obj_ident = member.obj.as_ident()?;
     let require_value = self.var_assignments.get(&*obj_ident.sym).cloned()?;

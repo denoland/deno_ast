@@ -5,14 +5,15 @@ use std::collections::HashMap;
 use ast::BinExpr;
 use serde::Deserialize;
 use serde::Serialize;
+use swc_ecma_ast::ObjectLit;
 
 use crate::swc::ast;
 use crate::swc::ast::Callee;
 use crate::swc::ast::Expr;
 use crate::swc::atoms::Atom;
 use crate::swc::common::comments::CommentKind;
-use crate::swc::visit::Visit;
-use crate::swc::visit::VisitWith;
+use crate::swc::ecma_visit::Visit;
+use crate::swc::ecma_visit::VisitWith;
 use crate::MultiThreadedComments;
 use crate::ParsedSource;
 use crate::ProgramRef;
@@ -182,7 +183,7 @@ struct DependencyCollector<'a> {
   pub items: Vec<DependencyDescriptor>,
 }
 
-impl<'a> DependencyCollector<'a> {
+impl DependencyCollector<'_> {
   fn get_leading_comments(&self, start: SourcePos) -> Vec<DependencyComment> {
     match self.comments.get_leading(start) {
       Some(leading) => leading
@@ -211,7 +212,7 @@ impl<'a> DependencyCollector<'a> {
   }
 }
 
-impl<'a> Visit for DependencyCollector<'a> {
+impl Visit for DependencyCollector<'_> {
   fn visit_import_decl(&mut self, node: &ast::ImportDecl) {
     let specifier = node.src.value.clone();
     let leading_comments = self.get_leading_comments(node.start());
@@ -287,7 +288,11 @@ impl<'a> Visit for DependencyCollector<'a> {
         range: node.range(),
         specifier,
         specifier_range: node.arg.range(),
-        import_attributes: Default::default(),
+        import_attributes: node
+          .attributes
+          .as_ref()
+          .map(|a| parse_import_attributes_from_object_lit(&a.with))
+          .unwrap_or_default(),
       }
       .into(),
     );
@@ -479,9 +484,9 @@ fn parse_dynamic_import_attributes(
     ast::Expr::Object(object_lit) => object_lit,
     _ => return ImportAttributes::Unknown,
   };
-
   let mut attributes_map = HashMap::new();
   let mut had_attributes_key = false;
+  let mut had_with_key = false;
 
   for prop in object_lit.props.iter() {
     let prop = match prop {
@@ -497,39 +502,18 @@ fn parse_dynamic_import_attributes(
       ast::PropName::Ident(ident) => ident.sym.to_string(),
       _ => return ImportAttributes::Unknown,
     };
-    if key == "assert" || key == "with" {
+    if key == "with" || key == "assert" && !had_with_key {
       had_attributes_key = true;
+      had_with_key = key == "with";
       let attributes_lit = match &*key_value.value {
         ast::Expr::Object(lit) => lit,
         _ => return ImportAttributes::Unknown,
       };
-
-      for prop in attributes_lit.props.iter() {
-        let prop = match prop {
-          ast::PropOrSpread::Prop(prop) => prop,
-          _ => return ImportAttributes::Unknown,
-        };
-        let key_value = match &**prop {
-          ast::Prop::KeyValue(key_value) => key_value,
-          _ => return ImportAttributes::Unknown,
-        };
-        let key = match &key_value.key {
-          ast::PropName::Str(key) => key.value.to_string(),
-          ast::PropName::Ident(ident) => ident.sym.to_string(),
-          _ => return ImportAttributes::Unknown,
-        };
-        if let ast::Expr::Lit(value_lit) = &*key_value.value {
-          attributes_map.insert(
-            key,
-            if let ast::Lit::Str(str_) = value_lit {
-              ImportAttribute::Known(str_.value.to_string())
-            } else {
-              ImportAttribute::Unknown
-            },
-          );
-        } else {
-          attributes_map.insert(key, ImportAttribute::Unknown);
+      match parse_import_attributes_from_object_lit(attributes_lit) {
+        ImportAttributes::Known(hash_map) => {
+          attributes_map = hash_map;
         }
+        value => return value,
       }
     }
   }
@@ -541,9 +525,44 @@ fn parse_dynamic_import_attributes(
   }
 }
 
+fn parse_import_attributes_from_object_lit(
+  attributes_lit: &ObjectLit,
+) -> ImportAttributes {
+  let mut attributes_map = HashMap::with_capacity(attributes_lit.props.len());
+
+  for prop in attributes_lit.props.iter() {
+    let prop = match prop {
+      ast::PropOrSpread::Prop(prop) => prop,
+      _ => return ImportAttributes::Unknown,
+    };
+    let key_value = match &**prop {
+      ast::Prop::KeyValue(key_value) => key_value,
+      _ => return ImportAttributes::Unknown,
+    };
+    let key = match &key_value.key {
+      ast::PropName::Str(key) => key.value.to_string(),
+      ast::PropName::Ident(ident) => ident.sym.to_string(),
+      _ => return ImportAttributes::Unknown,
+    };
+    if let ast::Expr::Lit(value_lit) = &*key_value.value {
+      attributes_map.insert(
+        key,
+        if let ast::Lit::Str(str_) = value_lit {
+          ImportAttribute::Known(str_.value.to_string())
+        } else {
+          ImportAttribute::Unknown
+        },
+      );
+    } else {
+      attributes_map.insert(key, ImportAttribute::Unknown);
+    }
+  }
+  ImportAttributes::Known(attributes_map)
+}
+
 #[cfg(test)]
 mod tests {
-  use crate::swc::atoms::JsWord;
+  use crate::swc::atoms::Atom;
   use crate::swc::common::comments::CommentKind;
   use crate::ModuleSpecifier;
   use crate::SourcePos;
@@ -613,7 +632,7 @@ try {
           kind: StaticDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos, start_pos + 33),
-          specifier: JsWord::from("./test.ts"),
+          specifier: Atom::from("./test.ts"),
           specifier_range: SourceRange::new(start_pos + 21, start_pos + 32),
           import_attributes: Default::default(),
         }
@@ -626,7 +645,7 @@ try {
             range: SourceRange::new(start_pos + 34, start_pos + 46),
           }],
           range: SourceRange::new(start_pos + 47, start_pos + 85),
-          specifier: JsWord::from("./foo.d.ts"),
+          specifier: Atom::from("./foo.d.ts"),
           specifier_range: SourceRange::new(start_pos + 72, start_pos + 84),
           import_attributes: Default::default(),
         }
@@ -639,7 +658,7 @@ try {
             range: SourceRange::new(start_pos + 86, start_pos + 113),
           }],
           range: SourceRange::new(start_pos + 114, start_pos + 148),
-          specifier: JsWord::from("./buzz.ts"),
+          specifier: Atom::from("./buzz.ts"),
           specifier_range: SourceRange::new(start_pos + 136, start_pos + 147),
           import_attributes: Default::default(),
         }
@@ -659,7 +678,7 @@ try {
             }
           ],
           range: SourceRange::new(start_pos + 180, start_pos + 220),
-          specifier: JsWord::from("./fizz.d.ts"),
+          specifier: Atom::from("./fizz.d.ts"),
           specifier_range: SourceRange::new(start_pos + 206, start_pos + 219),
           import_attributes: Default::default(),
         }
@@ -667,7 +686,7 @@ try {
         DynamicDependencyDescriptor {
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 238, start_pos + 253),
-          argument: DynamicArgument::String(JsWord::from("path")),
+          argument: DynamicArgument::String(Atom::from("path")),
           argument_range: SourceRange::new(start_pos + 246, start_pos + 252),
           import_attributes: Default::default(),
           kind: DynamicDependencyKind::Require,
@@ -677,7 +696,7 @@ try {
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 272, start_pos + 291),
-          argument: DynamicArgument::String(JsWord::from("./foo1.ts")),
+          argument: DynamicArgument::String(Atom::from("./foo1.ts")),
           argument_range: SourceRange::new(start_pos + 279, start_pos + 290),
           import_attributes: Default::default(),
         }
@@ -686,7 +705,7 @@ try {
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 321, start_pos + 339),
-          argument: DynamicArgument::String(JsWord::from("./foo.ts")),
+          argument: DynamicArgument::String(Atom::from("./foo.ts")),
           argument_range: SourceRange::new(start_pos + 328, start_pos + 338),
           import_attributes: Default::default(),
         }
@@ -695,7 +714,7 @@ try {
           kind: DynamicDependencyKind::Require,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 391, start_pos + 414),
-          argument: DynamicArgument::String(JsWord::from("some_package")),
+          argument: DynamicArgument::String(Atom::from("some_package")),
           argument_range: SourceRange::new(start_pos + 399, start_pos + 413),
           import_attributes: Default::default(),
         }
@@ -704,7 +723,7 @@ try {
           kind: StaticDependencyKind::ImportEquals,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 444, start_pos + 486),
-          specifier: JsWord::from("some_package_foo"),
+          specifier: Atom::from("some_package_foo"),
           specifier_range: SourceRange::new(start_pos + 466, start_pos + 484),
           import_attributes: Default::default(),
         }
@@ -713,7 +732,7 @@ try {
           kind: StaticDependencyKind::ImportType,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 487, start_pos + 542),
-          specifier: JsWord::from("some_package_foo_type"),
+          specifier: Atom::from("some_package_foo_type"),
           specifier_range: SourceRange::new(start_pos + 517, start_pos + 540),
           import_attributes: Default::default(),
         }
@@ -722,7 +741,7 @@ try {
           kind: StaticDependencyKind::ExportEquals,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 543, start_pos + 592),
-          specifier: JsWord::from("some_package_bar"),
+          specifier: Atom::from("some_package_bar"),
           specifier_range: SourceRange::new(start_pos + 572, start_pos + 590),
           import_attributes: Default::default(),
         }
@@ -782,7 +801,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: StaticDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos, start_pos + 63),
-          specifier: JsWord::from("./test.ts"),
+          specifier: Atom::from("./test.ts"),
           specifier_range: SourceRange::new(start_pos + 21, start_pos + 32),
           import_attributes: expected_attributes1.clone(),
         }
@@ -791,7 +810,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: StaticDependencyKind::Export,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 64, start_pos + 120),
-          specifier: JsWord::from("./test.ts"),
+          specifier: Atom::from("./test.ts"),
           specifier_range: SourceRange::new(start_pos + 78, start_pos + 89),
           import_attributes: expected_attributes1,
         }
@@ -800,7 +819,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: StaticDependencyKind::Export,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 121, start_pos + 179),
-          specifier: JsWord::from("./test.json"),
+          specifier: Atom::from("./test.json"),
           specifier_range: SourceRange::new(start_pos + 141, start_pos + 154),
           import_attributes: expected_attributes2.clone(),
         }
@@ -809,7 +828,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: StaticDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 180, start_pos + 231),
-          specifier: JsWord::from("./foo.json"),
+          specifier: Atom::from("./foo.json"),
           specifier_range: SourceRange::new(start_pos + 196, start_pos + 208),
           import_attributes: expected_attributes2,
         }
@@ -818,7 +837,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 251, start_pos + 302),
-          argument: DynamicArgument::String(JsWord::from("./fizz.json")),
+          argument: DynamicArgument::String(Atom::from("./fizz.json")),
           argument_range: SourceRange::new(start_pos + 258, start_pos + 271),
           import_attributes: dynamic_expected_attributes2.clone(),
         }
@@ -827,7 +846,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 323, start_pos + 374),
-          argument: DynamicArgument::String(JsWord::from("./buzz.json")),
+          argument: DynamicArgument::String(Atom::from("./buzz.json")),
           argument_range: SourceRange::new(start_pos + 330, start_pos + 343),
           import_attributes: dynamic_expected_attributes2,
         }
@@ -836,7 +855,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 393, start_pos + 412),
-          argument: DynamicArgument::String(JsWord::from("./d1.json")),
+          argument: DynamicArgument::String(Atom::from("./d1.json")),
           argument_range: SourceRange::new(start_pos + 400, start_pos + 411),
           import_attributes: Default::default(),
         }
@@ -845,7 +864,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 431, start_pos + 454),
-          argument: DynamicArgument::String(JsWord::from("./d2.json")),
+          argument: DynamicArgument::String(Atom::from("./d2.json")),
           argument_range: SourceRange::new(start_pos + 438, start_pos + 449),
           import_attributes: Default::default(),
         }
@@ -854,7 +873,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 473, start_pos + 497),
-          argument: DynamicArgument::String(JsWord::from("./d3.json")),
+          argument: DynamicArgument::String(Atom::from("./d3.json")),
           argument_range: SourceRange::new(start_pos + 480, start_pos + 491),
           import_attributes: ImportAttributes::Unknown,
         }
@@ -863,7 +882,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 516, start_pos + 549),
-          argument: DynamicArgument::String(JsWord::from("./d4.json")),
+          argument: DynamicArgument::String(Atom::from("./d4.json")),
           argument_range: SourceRange::new(start_pos + 523, start_pos + 534),
           import_attributes: ImportAttributes::Known(HashMap::new()),
         }
@@ -872,7 +891,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 568, start_pos + 602),
-          argument: DynamicArgument::String(JsWord::from("./d5.json")),
+          argument: DynamicArgument::String(Atom::from("./d5.json")),
           argument_range: SourceRange::new(start_pos + 575, start_pos + 586),
           import_attributes: ImportAttributes::Unknown,
         }
@@ -881,7 +900,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 621, start_pos + 662),
-          argument: DynamicArgument::String(JsWord::from("./d6.json")),
+          argument: DynamicArgument::String(Atom::from("./d6.json")),
           argument_range: SourceRange::new(start_pos + 628, start_pos + 639),
           import_attributes: ImportAttributes::Unknown,
         }
@@ -890,7 +909,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 681, start_pos + 733),
-          argument: DynamicArgument::String(JsWord::from("./d7.json")),
+          argument: DynamicArgument::String(Atom::from("./d7.json")),
           argument_range: SourceRange::new(start_pos + 688, start_pos + 699),
           import_attributes: ImportAttributes::Unknown,
         }
@@ -899,7 +918,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 752, start_pos + 796),
-          argument: DynamicArgument::String(JsWord::from("./d8.json")),
+          argument: DynamicArgument::String(Atom::from("./d8.json")),
           argument_range: SourceRange::new(start_pos + 759, start_pos + 770),
           import_attributes: ImportAttributes::Known({
             let mut map = HashMap::new();
@@ -912,7 +931,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 815, start_pos + 870),
-          argument: DynamicArgument::String(JsWord::from("./d9.json")),
+          argument: DynamicArgument::String(Atom::from("./d9.json")),
           argument_range: SourceRange::new(start_pos + 822, start_pos + 833),
           import_attributes: ImportAttributes::Unknown,
         }
@@ -921,7 +940,7 @@ const d10 = await import("./d10.json", { with: { type: "json", ["type"]: "bad" }
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 890, start_pos + 955),
-          argument: DynamicArgument::String(JsWord::from("./d10.json")),
+          argument: DynamicArgument::String(Atom::from("./d10.json")),
           argument_range: SourceRange::new(start_pos + 897, start_pos + 909),
           import_attributes: ImportAttributes::Unknown,
         }
@@ -953,7 +972,7 @@ const d12 = await import(expr);
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 17, start_pos + 36),
-          argument: DynamicArgument::String(JsWord::from("./d1.json")),
+          argument: DynamicArgument::String(Atom::from("./d1.json")),
           argument_range: SourceRange::new(start_pos + 24, start_pos + 35),
           import_attributes: ImportAttributes::None,
         }
@@ -972,7 +991,7 @@ const d12 = await import(expr);
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 92, start_pos + 117),
           argument: DynamicArgument::Template(vec![
-            DynamicTemplatePart::String(JsWord::from("./test/")),
+            DynamicTemplatePart::String(Atom::from("./test/")),
             DynamicTemplatePart::Expr,
           ]),
           argument_range: SourceRange::new(start_pos + 99, start_pos + 116),
@@ -985,7 +1004,7 @@ const d12 = await import(expr);
           range: SourceRange::new(start_pos + 136, start_pos + 159),
           argument: DynamicArgument::Template(vec![
             DynamicTemplatePart::Expr,
-            DynamicTemplatePart::String(JsWord::from("/test")),
+            DynamicTemplatePart::String(Atom::from("/test")),
           ]),
           argument_range: SourceRange::new(start_pos + 143, start_pos + 158),
           import_attributes: ImportAttributes::None,
@@ -1009,7 +1028,7 @@ const d12 = await import(expr);
           range: SourceRange::new(start_pos + 224, start_pos + 257),
           argument: DynamicArgument::Template(vec![
             DynamicTemplatePart::Expr,
-            DynamicTemplatePart::String(JsWord::from("/test/")),
+            DynamicTemplatePart::String(Atom::from("/test/")),
             DynamicTemplatePart::Expr,
           ]),
           argument_range: SourceRange::new(start_pos + 231, start_pos + 256),
@@ -1021,11 +1040,11 @@ const d12 = await import(expr);
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 276, start_pos + 312),
           argument: DynamicArgument::Template(vec![
-            DynamicTemplatePart::String(JsWord::from("./")),
+            DynamicTemplatePart::String(Atom::from("./")),
             DynamicTemplatePart::Expr,
-            DynamicTemplatePart::String(JsWord::from("/test/")),
+            DynamicTemplatePart::String(Atom::from("/test/")),
             DynamicTemplatePart::Expr,
-            DynamicTemplatePart::String(JsWord::from("/")),
+            DynamicTemplatePart::String(Atom::from("/")),
           ]),
           argument_range: SourceRange::new(start_pos + 283, start_pos + 311),
           import_attributes: ImportAttributes::None,
@@ -1036,7 +1055,7 @@ const d12 = await import(expr);
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 331, start_pos + 355),
           argument: DynamicArgument::Template(vec![
-            DynamicTemplatePart::String(JsWord::from("./foo/")),
+            DynamicTemplatePart::String(Atom::from("./foo/")),
             DynamicTemplatePart::Expr,
           ]),
           argument_range: SourceRange::new(start_pos + 338, start_pos + 354),
@@ -1048,9 +1067,9 @@ const d12 = await import(expr);
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 374, start_pos + 406),
           argument: DynamicArgument::Template(vec![
-            DynamicTemplatePart::String(JsWord::from("./foo/")),
+            DynamicTemplatePart::String(Atom::from("./foo/")),
             DynamicTemplatePart::Expr,
-            DynamicTemplatePart::String(JsWord::from(".ts")),
+            DynamicTemplatePart::String(Atom::from(".ts")),
           ]),
           argument_range: SourceRange::new(start_pos + 381, start_pos + 405),
           import_attributes: ImportAttributes::None,
@@ -1092,7 +1111,7 @@ const d12 = await import(expr);
     let source = r#"
 export declare const SomeValue: typeof Core & import("./a.d.ts").Constructor<{
     paginate: import("./b.d.ts").PaginateInterface;
-} & import("./c.d.ts").RestEndpointMethods>;
+} & import("./c.d.ts", { with: { "resolution-mode": "import" } }).RestEndpointMethods>;
 "#;
     let (start_pos, dependencies) = helper("file:///test.ts", source);
     assert_eq!(
@@ -1101,8 +1120,8 @@ export declare const SomeValue: typeof Core & import("./a.d.ts").Constructor<{
         StaticDependencyDescriptor {
           kind: StaticDependencyKind::ImportType,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 46, start_pos + 174),
-          specifier: JsWord::from("./a.d.ts"),
+          range: SourceRange::new(start_pos + 46, start_pos + 217),
+          specifier: Atom::from("./a.d.ts"),
           specifier_range: SourceRange::new(start_pos + 53, start_pos + 63),
           import_attributes: ImportAttributes::None,
         }
@@ -1111,7 +1130,7 @@ export declare const SomeValue: typeof Core & import("./a.d.ts").Constructor<{
           kind: StaticDependencyKind::ImportType,
           leading_comments: Vec::new(),
           range: SourceRange::new(start_pos + 93, start_pos + 129),
-          specifier: JsWord::from("./b.d.ts"),
+          specifier: Atom::from("./b.d.ts"),
           specifier_range: SourceRange::new(start_pos + 100, start_pos + 110),
           import_attributes: ImportAttributes::None,
         }
@@ -1119,10 +1138,13 @@ export declare const SomeValue: typeof Core & import("./a.d.ts").Constructor<{
         StaticDependencyDescriptor {
           kind: StaticDependencyKind::ImportType,
           leading_comments: Vec::new(),
-          range: SourceRange::new(start_pos + 135, start_pos + 173),
-          specifier: JsWord::from("./c.d.ts"),
+          range: SourceRange::new(start_pos + 135, start_pos + 216),
+          specifier: Atom::from("./c.d.ts"),
           specifier_range: SourceRange::new(start_pos + 142, start_pos + 152),
-          import_attributes: ImportAttributes::None,
+          import_attributes: ImportAttributes::Known(HashMap::from([(
+            "resolution-mode".to_string(),
+            ImportAttribute::Known("import".to_string())
+          )])),
         }
         .into()
       ]

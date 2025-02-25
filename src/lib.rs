@@ -68,7 +68,6 @@ pub mod swc {
     pub use swc_ecma_transforms_base::fixer;
     pub use swc_ecma_transforms_base::helpers;
     pub use swc_ecma_transforms_base::hygiene;
-    pub use swc_ecma_transforms_base::pass;
     pub use swc_ecma_transforms_base::perf;
     pub use swc_ecma_transforms_base::resolver;
 
@@ -84,5 +83,7 @@ pub mod swc {
   #[cfg(feature = "utils")]
   pub use swc_ecma_utils as utils;
   #[cfg(feature = "visit")]
-  pub use swc_ecma_visit as visit;
+  pub use swc_ecma_visit as ecma_visit;
+  #[cfg(feature = "visit")]
+  pub use swc_visit as visit;
 }

@@ -181,8 +181,8 @@ pub struct SourceMapConfig<'a> {
   pub maybe_base: Option<&'a ModuleSpecifier>,
 }
 
-impl<'a> crate::swc::common::source_map::SourceMapGenConfig
-  for SourceMapConfig<'a>
+impl crate::swc::common::source_map::SourceMapGenConfig
+  for SourceMapConfig<'_>
 {
   fn file_name_to_source(&self, f: &FileName) -> String {
     match f {
