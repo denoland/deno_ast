@@ -363,7 +363,15 @@ impl ParsedSource {
   /// Get the source's leading comments, where triple slash directives might
   /// be located.
   pub fn get_leading_comments(&self) -> Option<&Vec<Comment>> {
-    self.0.comments.get_leading(self.0.program.start())
+    let comments = &self.0.comments;
+    let program = self.program_ref();
+    match program.body().next() {
+      Some(item) => comments.get_leading(item.start()),
+      None => match program.shebang() {
+        Some(_) => comments.get_trailing(program.end()),
+        None => comments.get_leading(program.start()),
+      },
+    }
   }
 
   /// Gets the tokens found in the source file.

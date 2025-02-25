@@ -1,6 +1,6 @@
 [package]
 name = "deno_ast"
-version = "0.44.0"
+version = "0.45.1"
 authors = ["the Deno authors"]
 documentation = "https://docs.rs/deno_ast"
 edition = "2021"
@@ -77,6 +77,7 @@ swc_visit = { version = "=2.0.0", optional = true }
 swc_visit_macros = { version = "=0.5.13", optional = true }
 # just for error handling
 sourcemap = { version = "9.0.0", optional = true }
+string_capacity = "0.1.4"
 thiserror = "2"
 
 [dev-dependencies]
