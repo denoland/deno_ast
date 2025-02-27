@@ -575,7 +575,7 @@ mod tests {
     assert_eq!(display_width("\t\t123"), 7);
     assert_eq!(display_width("🎄"), 2);
     assert_eq!(display_width("🎄🎄"), 4);
-    assert_eq!(display_width("🧑‍🦰"), 4);
+    assert_eq!(display_width("🧑‍🦰"), 2);
   }
 
   #[test]

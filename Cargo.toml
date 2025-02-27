@@ -42,7 +42,7 @@ percent-encoding = "2.3.1"
 serde = { version = "1.0.144", features = ["derive"] }
 text_lines = { version = "0.6.0", features = ["serialization"] }
 url = { version = "2.3.1", features = ["serde"] }
-unicode-width = "0.1.13" # 0.1.13 because control characters have a width of 1 there
+unicode-width = "0.2.0"
 
 # swc's version bumping is very buggy and there will often be patch versions
 # published that break our build, so we pin all swc versions to prevent
