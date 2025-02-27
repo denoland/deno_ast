@@ -121,7 +121,7 @@ impl<'a> ProgramRef<'a> {
               | ModuleDecl::ExportDefaultDecl(_)
               | ModuleDecl::ExportDefaultExpr(_)
               | ModuleDecl::ExportAll(_) => return false,
-              // the prescence of these means it's a script
+              // the presence of these means it's a script
               ModuleDecl::TsImportEquals(_)
               | ModuleDecl::TsExportAssignment(_) => {
                 return true;
@@ -441,7 +441,13 @@ impl ParsedSource {
 
   /// Computes whether this program should be treated as a script.
   pub fn compute_is_script(&self) -> bool {
-    self.program_ref().compute_is_script()
+    if self.media_type().is_typed() {
+      // for typescript, we need to compute whether it's a script
+      // because swc parses TsImportEquals as a module
+      self.program_ref().compute_is_script()
+    } else {
+      matches!(self.program_ref(), ProgramRef::Script(_))
+    }
   }
 }
 
@@ -506,15 +512,15 @@ impl ParsedSource {
 
 #[cfg(test)]
 mod test {
+  use super::*;
+  use crate::parse_program;
+  use crate::ParseParams;
+
   #[cfg(feature = "view")]
   #[test]
   fn should_parse_program() {
-    use crate::parse_program;
     use crate::view::NodeTrait;
     use crate::ModuleSpecifier;
-    use crate::ParseParams;
-
-    use super::*;
 
     let program = parse_program(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
@@ -534,5 +540,58 @@ mod test {
     });
 
     assert_eq!(result, 2);
+  }
+
+  #[test]
+  fn compute_is_script() {
+    fn get(text: &str, ext: &str) -> bool {
+      let specifier =
+        ModuleSpecifier::parse(&format!("file:///my_file.{}", ext)).unwrap();
+      let media_type = MediaType::from_specifier(&specifier);
+      let program = parse_program(ParseParams {
+        specifier,
+        text: text.into(),
+        media_type,
+        capture_tokens: true,
+        maybe_syntax: None,
+        scope_analysis: false,
+      })
+      .unwrap();
+      let is_script = program.compute_is_script();
+      assert_eq!(
+        program.program_ref().compute_is_script(),
+        is_script,
+        "text: {}",
+        text
+      );
+      is_script
+    }
+
+    // false, tla
+    assert_eq!(
+      get(
+        "const mod = await import('./soljson.js');\nconsole.log(mod)",
+        "js"
+      ),
+      false
+    );
+    assert_eq!(
+      get(
+        "const mod = await import('./soljson.js');\nconsole.log(mod)",
+        "js"
+      ),
+      false
+    );
+
+    // false, import
+    assert_eq!(get("import './test';", "js"), false);
+    assert_eq!(get("import './test';", "ts"), false);
+
+    // true, require
+    assert_eq!(get("require('test')", "js"), true);
+    assert_eq!(get("require('test')", "ts"), true);
+
+    // true, ts import equals
+    assert_eq!(get("import value = require('test');", "ts"), true);
   }
 }
