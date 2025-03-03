@@ -14,6 +14,8 @@ pub mod dep;
 pub mod diagnostics;
 #[cfg(feature = "emit")]
 mod emit;
+#[cfg(feature = "utils")]
+mod exports;
 mod lexing;
 mod parsed_source;
 mod parsing;
@@ -36,6 +38,8 @@ pub use comments::*;
 pub use deno_media_type::*;
 #[cfg(feature = "emit")]
 pub use emit::*;
+#[cfg(feature = "utils")]
+pub use exports::*;
 pub use lexing::*;
 pub use parsed_source::*;
 pub use parsing::*;
