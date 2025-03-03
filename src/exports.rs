@@ -11,8 +11,8 @@ use crate::swc::utils::find_pat_ids;
 use crate::ParsedSource;
 use crate::ProgramRef;
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct ModuleExports {
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModuleExportsAndReExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
 }
@@ -24,8 +24,8 @@ impl ParsedSource {
   /// re-exports an ESM module and the original CJS module needs
   /// to know the exports of the ESM module so it can create its
   /// wrapper ESM module.
-  pub fn analyze_es_runtime_exports(&self) -> ModuleExports {
-    let mut result = ModuleExports::default();
+  pub fn analyze_es_runtime_exports(&self) -> ModuleExportsAndReExports {
+    let mut result = ModuleExportsAndReExports::default();
     if let ProgramRef::Module(n) = self.program_ref() {
       for m in &n.body {
         match m {
@@ -125,10 +125,10 @@ mod test {
   use crate::ModuleSpecifier;
   use crate::ParseParams;
 
-  use super::ModuleExports;
+  use super::ModuleExportsAndReExports;
 
   struct Tester {
-    analysis: RefCell<ModuleExports>,
+    analysis: RefCell<ModuleExportsAndReExports>,
   }
 
   impl Tester {
@@ -192,6 +192,12 @@ export function d() {}
 export const e = 1, f = 2;
 export { g, h1 as h, other as 'testing-this' };
 export { z } from './other.js';
+class Ignored1 {}
+enum Ignored2 {}
+module Ignored3 {}
+namespace Ignored4 {}
+function Ignored5() {}
+const Ignored6 = 1;
 ",
     );
     tester.assert_exports(vec![

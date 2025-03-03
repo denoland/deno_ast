@@ -11,7 +11,7 @@ use crate::swc::ecma_visit::VisitWith;
 use crate::ParsedSource;
 use crate::ProgramRef;
 
-pub type CjsAnalysis = crate::ModuleExports;
+pub type CjsAnalysis = crate::ModuleExportsAndReExports;
 
 impl ParsedSource {
   /// Analyzes the script for CommonJS exports and re-exports based on similar
