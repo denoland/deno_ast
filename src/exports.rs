@@ -18,6 +18,12 @@ pub struct ModuleExports {
 }
 
 impl ParsedSource {
+  /// Analyzes the ES runtime exports for require ESM.
+  ///
+  /// This is used during CJS export analysis when a CJS module
+  /// re-exports an ESM module and the original CJS module needs
+  /// to know the exports of the ESM module so it can create its
+  /// wrapper ESM module.
   pub fn analyze_es_runtime_exports(&self) -> ModuleExports {
     let mut result = ModuleExports::default();
     if let ProgramRef::Module(n) = self.program_ref() {
