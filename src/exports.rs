@@ -191,6 +191,7 @@ export namespace C2.Test {}
 export function d() {}
 export const e = 1, f = 2;
 export { g, h1 as h, other as 'testing-this' };
+export * as y from './other.js';
 export { z } from './other.js';
 class Ignored1 {}
 enum Ignored2 {}
@@ -211,6 +212,7 @@ const Ignored6 = 1;
       "g",
       "h",
       "testing-this",
+      "y",
       "z",
     ]);
   }
