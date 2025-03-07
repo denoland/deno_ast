@@ -1244,6 +1244,7 @@ dependencies = [
  "new_debug_unreachable",
  "num-bigint",
  "once_cell",
+ "parking_lot",
  "rustc-hash 2.1.1",
  "serde",
  "siphasher",

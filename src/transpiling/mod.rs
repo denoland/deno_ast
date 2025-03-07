@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_media_type::MediaType;
@@ -14,6 +13,8 @@ use crate::emit;
 use crate::swc::ast::Program;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::errors::Diagnostic as SwcDiagnostic;
+use crate::swc::common::sync::Lock;
+use crate::swc::common::sync::Lrc;
 use crate::swc::ecma_visit::visit_mut_pass;
 use crate::swc::parser::error::SyntaxError;
 use crate::swc::transforms::fixer;
@@ -39,7 +40,6 @@ use crate::ProgramRef;
 use crate::SourceMap;
 
 use deno_error::JsError;
-use std::cell::RefCell;
 
 mod jsx_precompile;
 mod transforms;
@@ -53,7 +53,7 @@ pub enum TranspileResult {
   ///
   /// This is a performance issue and you should strive to get an `Owned` result.
   Cloned(EmittedSourceText),
-  /// The emit occured consuming the `ParsedSource` without cloning.
+  /// The emit occurred consuming the `ParsedSource` without cloning.
   Owned(EmittedSourceText),
 }
 
@@ -174,8 +174,8 @@ impl Default for TranspileOptions {
 impl TranspileOptions {
   fn as_tsx_config(&self) -> typescript::TsxConfig {
     typescript::TsxConfig {
-      pragma: Some(Rc::new(self.jsx_factory.clone())),
-      pragma_frag: Some(Rc::new(self.jsx_fragment_factory.clone())),
+      pragma: Some(Lrc::new(self.jsx_factory.clone())),
+      pragma_frag: Some(Lrc::new(self.jsx_fragment_factory.clone())),
     }
   }
 
@@ -196,7 +196,7 @@ impl TranspileOptions {
       },
       // no need for this to be false because we treat all files as modules
       no_empty_export: true,
-      // we don't suport this, so leave it as-is so it errors in v8
+      // we don't support this, so leave it as-is so it errors in v8
       import_export_assign_config:
         typescript::TsImportExportAssignConfig::Preserve,
       // Do not opt into swc's optimization to inline enum member values
@@ -619,7 +619,7 @@ fn convert_script_module_to_swc_script(
 
 #[derive(Default, Clone)]
 struct DiagnosticCollector {
-  diagnostics_cell: Rc<RefCell<Vec<SwcDiagnostic>>>,
+  diagnostics: Lrc<Lock<Vec<SwcDiagnostic>>>,
 }
 
 impl DiagnosticCollector {
@@ -635,7 +635,8 @@ impl DiagnosticCollector {
 impl crate::swc::common::errors::Emitter for DiagnosticCollector {
   fn emit(&mut self, db: &crate::swc::common::errors::DiagnosticBuilder<'_>) {
     use std::ops::Deref;
-    self.diagnostics_cell.borrow_mut().push(db.deref().clone());
+    let mut diagnostics = self.diagnostics.lock();
+    diagnostics.push(db.deref().clone());
   }
 }
 
@@ -720,8 +721,8 @@ pub fn fold_program<'a>(
         Some(comments),
         #[allow(deprecated)]
         react::Options {
-          pragma: Some(Rc::new(options.jsx_factory.clone())),
-          pragma_frag: Some(Rc::new(options.jsx_fragment_factory.clone())),
+          pragma: Some(Lrc::new(options.jsx_factory.clone())),
+          pragma_frag: Some(Lrc::new(options.jsx_fragment_factory.clone())),
           // This will use `Object.assign()` instead of the `_extends` helper
           // when spreading props (Note: this property is deprecated)
           use_builtins: Some(true),
@@ -755,7 +756,7 @@ pub fn fold_program<'a>(
   );
 
   let emitter = DiagnosticCollector::default();
-  let diagnostics_cell = emitter.diagnostics_cell.clone();
+  let diagnostics_cell = emitter.diagnostics.clone();
   let handler = emitter.into_handler();
   let result = crate::swc::common::errors::HANDLER.set(&handler, || {
     helpers::HELPERS
