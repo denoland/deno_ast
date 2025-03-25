@@ -82,4 +82,4 @@ thiserror = "2"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
-serde_json = { version = "1.0.87", features = ["preserve_order"] }
+serde_json = { version = "1.0.140", features = ["preserve_order"] }
