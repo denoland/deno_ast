@@ -1140,9 +1140,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "string_capacity"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d66c912ea6a5e9d1b1cc1be9c72325a5502f0b868578a7dd0fa97bb710626c2"
+checksum = "fcd14cb3a5abda6d2626370785f5f788b22e95476f597159faa4a2cc2966961a"
 dependencies = [
  "itoa",
 ]
