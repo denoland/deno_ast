@@ -951,7 +951,6 @@ export class A {
   D[D["B"] = 1] = "B";
   return D;
 }(D || {});
-;
 console.log(0);
 (function(N) {
   (function(D) {
@@ -1077,7 +1076,7 @@ const env = {
   hasError: false
 };
 try {
-  const data = _ts_add_disposable_resource(env, create(), false);
+  var data = _ts_add_disposable_resource(env, create(), false);
   console.log(data);
 } catch (e) {
   env.error = e;
