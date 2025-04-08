@@ -33,6 +33,23 @@ parsed_source.module();
 parsed_source.text_info();
 ```
 
+## Versioning Strategy
+
+This crate does not follow semver so make sure to pin it to a patch version.
+Instead a versioning strategy that optimizes for more efficient maintenance is
+used:
+
+- Does [deno_graph](https://github.com/denoland/deno_graph),
+  [deno_doc](https://github.com/denoland/deno_doc),
+  [deno_lint](https://github.com/denoland/deno_lint),
+  [eszip](https://github.com/denoland/eszip), and
+  [dprint-plugin-typescript](https://github.com/dprint/dprint-plugin-typescript)
+  still compile in the [Deno](https://github.com/denoland/deno) repo?
+  - If yes, is this a change that would break something at runtime?
+    - If yes, it's a minor release.
+    - If no, it's a patch release.
+  - If no, it's a minor release.
+
 ## swc upgrades
 
 We upgrade swc about once a month. Upgrading swc is a very involved process that
