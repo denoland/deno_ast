@@ -598,30 +598,18 @@ mod test {
     }
 
     // false, tla
-    assert_eq!(
-      get(
-        "const mod = await import('./soljson.js');\nconsole.log(mod)",
-        "js"
-      ),
-      false
-    );
-    assert_eq!(
-      get(
-        "const mod = await import('./soljson.js');\nconsole.log(mod)",
-        "js"
-      ),
-      false
-    );
+    assert!(!get("const mod = await import('./soljson.js');\nconsole.log(mod)", "js"));
+    assert!(!get("const mod = await import('./soljson.js');\nconsole.log(mod)", "js"));
 
     // false, import
-    assert_eq!(get("import './test';", "js"), false);
-    assert_eq!(get("import './test';", "ts"), false);
+    assert!(!get("import './test';", "js"));
+    assert!(!get("import './test';", "ts"));
 
     // true, require
-    assert_eq!(get("require('test')", "js"), true);
-    assert_eq!(get("require('test')", "ts"), true);
+    assert!(get("require('test')", "js"));
+    assert!(get("require('test')", "ts"));
 
     // true, ts import equals
-    assert_eq!(get("import value = require('test');", "ts"), true);
+    assert!(get("import value = require('test');", "ts"));
   }
 }
