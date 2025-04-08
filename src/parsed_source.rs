@@ -598,8 +598,14 @@ mod test {
     }
 
     // false, tla
-    assert!(!get("const mod = await import('./soljson.js');\nconsole.log(mod)", "js"));
-    assert!(!get("const mod = await import('./soljson.js');\nconsole.log(mod)", "js"));
+    assert!(!get(
+      "const mod = await import('./soljson.js');\nconsole.log(mod)",
+      "js"
+    ));
+    assert!(!get(
+      "const mod = await import('./soljson.js');\nconsole.log(mod)",
+      "js"
+    ));
 
     // false, import
     assert!(!get("import './test';", "js"));
