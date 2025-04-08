@@ -74,7 +74,7 @@ pub enum DiagnosticLocation<'a> {
   },
 }
 
-impl<'a> DiagnosticLocation<'a> {
+impl DiagnosticLocation<'_> {
   /// Return the line and column number of the diagnostic.
   ///
   /// The line number is 1-indexed.
@@ -575,7 +575,7 @@ mod tests {
     assert_eq!(display_width("\t\t123"), 7);
     assert_eq!(display_width("🎄"), 2);
     assert_eq!(display_width("🎄🎄"), 4);
-    assert_eq!(display_width("🧑‍🦰"), 4);
+    assert_eq!(display_width("🧑‍🦰"), 2);
   }
 
   #[test]

@@ -1642,19 +1642,16 @@ fn new_ident(name: Atom) -> Ident {
 mod tests {
   use std::collections::HashMap;
 
-  use crate::swc::ast::Module;
   use crate::swc::parser::Parser;
   use crate::swc::parser::StringInput;
   use crate::swc::parser::Syntax;
   use crate::swc::parser::TsSyntax;
-  use crate::swc::visit::FoldWith;
   use crate::EmitOptions;
   use crate::ModuleSpecifier;
-  use crate::ProgramRef;
   use crate::SourceMap;
   use pretty_assertions::assert_eq;
   use swc_common::comments::SingleThreadedComments;
-  use swc_ecma_visit::as_folder;
+  use swc_ecma_visit::visit_mut_pass;
 
   use super::*;
 
@@ -3017,13 +3014,13 @@ const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className",
     src: &str,
     expected_output: &str,
   ) {
-    let (source_map, module) = parse(src);
-    let mut transform_folder = as_folder(transform);
-    let output = print(&source_map, &module.fold_with(&mut transform_folder));
+    let (source_map, program) = parse(src);
+    let mut transform_folder = visit_mut_pass(transform);
+    let output = print(&source_map, &program.apply(&mut transform_folder));
     assert_eq!(output, format!("{}\n", expected_output));
   }
 
-  fn parse(src: &str) -> (SourceMap, Module) {
+  fn parse(src: &str) -> (SourceMap, Program) {
     let source_map = SourceMap::default();
     let source_file = source_map.new_source_file(
       ModuleSpecifier::parse("file:///test.ts").unwrap(),
@@ -3035,12 +3032,12 @@ const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className",
       ..Default::default()
     });
     let mut parser = Parser::new(syntax, input, None);
-    (source_map, parser.parse_module().unwrap())
+    (source_map, Program::Module(parser.parse_module().unwrap()))
   }
 
-  fn print(source_map: &SourceMap, module: &Module) -> String {
+  fn print(source_map: &SourceMap, program: &Program) -> String {
     crate::emit::emit(
-      ProgramRef::Module(module),
+      program.into(),
       &SingleThreadedComments::default(),
       source_map,
       &EmitOptions {

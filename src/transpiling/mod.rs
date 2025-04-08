@@ -1,30 +1,30 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_media_type::MediaType;
 use dprint_swc_ext::common::SourceRangedForSpanned;
 use dprint_swc_ext::common::SourceTextInfo;
+use swc_ecma_visit::fold_pass;
 use thiserror::Error;
 
 use crate::emit;
 use crate::swc::ast::Program;
-use crate::swc::common::chain;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::errors::Diagnostic as SwcDiagnostic;
+use crate::swc::common::sync::Lock;
+use crate::swc::common::sync::Lrc;
+use crate::swc::ecma_visit::visit_mut_pass;
 use crate::swc::parser::error::SyntaxError;
 use crate::swc::transforms::fixer;
 use crate::swc::transforms::helpers;
 use crate::swc::transforms::hygiene;
-use crate::swc::transforms::pass::Optional;
 use crate::swc::transforms::proposal;
 use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
-use crate::swc::visit::as_folder;
-use crate::swc::visit::FoldWith;
+use crate::swc::visit::Optional;
 use crate::EmitError;
 use crate::EmitOptions;
 use crate::EmittedSourceText;
@@ -33,13 +33,13 @@ use crate::Marks;
 use crate::ModuleKind;
 use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
+use crate::ParseDiagnostics;
 use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
 use crate::ProgramRef;
 use crate::SourceMap;
 
 use deno_error::JsError;
-use std::cell::RefCell;
 
 mod jsx_precompile;
 mod transforms;
@@ -53,7 +53,7 @@ pub enum TranspileResult {
   ///
   /// This is a performance issue and you should strive to get an `Owned` result.
   Cloned(EmittedSourceText),
-  /// The emit occured consuming the `ParsedSource` without cloning.
+  /// The emit occurred consuming the `ParsedSource` without cloning.
   Owned(EmittedSourceText),
 }
 
@@ -174,8 +174,8 @@ impl Default for TranspileOptions {
 impl TranspileOptions {
   fn as_tsx_config(&self) -> typescript::TsxConfig {
     typescript::TsxConfig {
-      pragma: Some(self.jsx_factory.clone()),
-      pragma_frag: Some(self.jsx_fragment_factory.clone()),
+      pragma: Some(Lrc::new(self.jsx_factory.clone())),
+      pragma_frag: Some(Lrc::new(self.jsx_fragment_factory.clone())),
     }
   }
 
@@ -196,7 +196,7 @@ impl TranspileOptions {
       },
       // no need for this to be false because we treat all files as modules
       no_empty_export: true,
-      // we don't suport this, so leave it as-is so it errors in v8
+      // we don't support this, so leave it as-is so it errors in v8
       import_export_assign_config:
         typescript::TsImportExportAssignConfig::Preserve,
       // Do not opt into swc's optimization to inline enum member values
@@ -272,7 +272,7 @@ impl ParsedSource {
       &resolve_transpile_options(self.0.media_type, transpile_options),
       transpile_module_options,
       emit_options,
-      self.diagnostics(),
+      &self.0.diagnostics,
     )
   }
 
@@ -350,7 +350,7 @@ fn transpile(
   transpile_options: &TranspileOptions,
   transpile_module_options: &TranspileModuleOptions,
   emit_options: &EmitOptions,
-  diagnostics: &[ParseDiagnostic],
+  diagnostics: &ParseDiagnostics,
 ) -> Result<EmittedSourceText, TranspileError> {
   if transpile_options.use_decorators_proposal
     && transpile_options.use_ts_decorators
@@ -395,6 +395,7 @@ fn transpile(
   };
 
   let source_map = SourceMap::single(specifier, source);
+  let diagnostics = diagnostics.for_module_kind(module_kind);
   let program = globals.with(|marks| {
     fold_program(
       program,
@@ -618,7 +619,7 @@ fn convert_script_module_to_swc_script(
 
 #[derive(Default, Clone)]
 struct DiagnosticCollector {
-  diagnostics_cell: Rc<RefCell<Vec<SwcDiagnostic>>>,
+  diagnostics: Lrc<Lock<Vec<SwcDiagnostic>>>,
 }
 
 impl DiagnosticCollector {
@@ -634,7 +635,8 @@ impl DiagnosticCollector {
 impl crate::swc::common::errors::Emitter for DiagnosticCollector {
   fn emit(&mut self, db: &crate::swc::common::errors::DiagnosticBuilder<'_>) {
     use std::ops::Deref;
-    self.diagnostics_cell.borrow_mut().push(db.deref().clone());
+    let mut diagnostics = self.diagnostics.lock();
+    diagnostics.push(db.deref().clone());
   }
 }
 
@@ -649,18 +651,20 @@ pub enum FoldProgramError {
 }
 
 /// Low level function for transpiling a program.
-pub fn fold_program(
+pub fn fold_program<'a>(
   program: Program,
   options: &TranspileOptions,
   source_map: &SourceMap,
   comments: &SingleThreadedComments,
   marks: &Marks,
-  diagnostics: &[ParseDiagnostic],
+  diagnostics: Box<dyn Iterator<Item = &'a ParseDiagnostic> + 'a>,
 ) -> Result<Program, FoldProgramError> {
   ensure_no_fatal_diagnostics(diagnostics)?;
-
-  let mut passes = chain!(
-    Optional::new(transforms::StripExportsFolder, options.var_decl_imports),
+  let passes = (
+    Optional::new(
+      fold_pass(transforms::StripExportsFolder),
+      options.var_decl_imports,
+    ),
     resolver(marks.unresolved, marks.top_level, true),
     Optional::new(
       proposal::decorators::decorators(proposal::decorators::Config {
@@ -679,16 +683,16 @@ pub fn fold_program(
     // transform imports to var decls before doing the typescript pass
     // so that swc doesn't do any optimizations on the import declarations
     Optional::new(
-      transforms::ImportDeclsToVarDeclsFolder,
-      options.var_decl_imports
+      fold_pass(transforms::ImportDeclsToVarDeclsFolder),
+      options.var_decl_imports,
     ),
     Optional::new(
       typescript::typescript(
         options.as_typescript_config(),
         marks.unresolved,
-        marks.top_level
+        marks.top_level,
       ),
-      !options.transform_jsx
+      !options.transform_jsx,
     ),
     Optional::new(
       typescript::tsx(
@@ -699,17 +703,17 @@ pub fn fold_program(
         marks.unresolved,
         marks.top_level,
       ),
-      options.transform_jsx
+      options.transform_jsx,
     ),
     Optional::new(
-      as_folder(jsx_precompile::JsxPrecompile::new(
+      visit_mut_pass(jsx_precompile::JsxPrecompile::new(
         options.jsx_import_source.clone().unwrap_or_default(),
         options.precompile_jsx_skip_elements.clone(),
         options.precompile_jsx_dynamic_props.clone(),
       )),
       options.jsx_import_source.is_some()
         && !options.transform_jsx
-        && options.precompile_jsx
+        && options.precompile_jsx,
     ),
     Optional::new(
       react::react(
@@ -717,8 +721,8 @@ pub fn fold_program(
         Some(comments),
         #[allow(deprecated)]
         react::Options {
-          pragma: Some(options.jsx_factory.clone()),
-          pragma_frag: Some(options.jsx_fragment_factory.clone()),
+          pragma: Some(Lrc::new(options.jsx_factory.clone())),
+          pragma_frag: Some(Lrc::new(options.jsx_fragment_factory.clone())),
           // This will use `Object.assign()` instead of the `_extends` helper
           // when spreading props (Note: this property is deprecated)
           use_builtins: Some(true),
@@ -729,7 +733,7 @@ pub fn fold_program(
           },
           development: Some(options.jsx_development),
           import_source: Some(
-            options.jsx_import_source.clone().unwrap_or_default()
+            options.jsx_import_source.clone().unwrap_or_default().into(),
           ),
           next: None,
           refresh: None,
@@ -739,25 +743,24 @@ pub fn fold_program(
         marks.top_level,
         marks.unresolved,
       ),
-      options.transform_jsx
+      options.transform_jsx,
     ),
     // if using var decl imports, do another pass in order to transform the
     // automatically inserted jsx runtime import to a var decl
     Optional::new(
-      transforms::ImportDeclsToVarDeclsFolder,
-      options.var_decl_imports && options.transform_jsx
+      fold_pass(transforms::ImportDeclsToVarDeclsFolder),
+      options.var_decl_imports && options.transform_jsx,
     ),
-    fixer(Some(comments)),
-    hygiene(),
+    // nested tuple because swc only supports up to 13 items
+    (fixer(Some(comments)), hygiene()),
   );
 
   let emitter = DiagnosticCollector::default();
-  let diagnostics_cell = emitter.diagnostics_cell.clone();
+  let diagnostics_cell = emitter.diagnostics.clone();
   let handler = emitter.into_handler();
   let result = crate::swc::common::errors::HANDLER.set(&handler, || {
-    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
-      program.fold_with(&mut passes)
-    })
+    helpers::HELPERS
+      .set(&helpers::Helpers::new(false), || program.apply(passes))
   });
 
   let mut diagnostics = diagnostics_cell.borrow_mut();
@@ -838,11 +841,10 @@ fn format_swc_diagnostic(
   }
 }
 
-fn ensure_no_fatal_diagnostics(
-  diagnostics: &[ParseDiagnostic],
+fn ensure_no_fatal_diagnostics<'a>(
+  diagnostics: Box<dyn Iterator<Item = &'a ParseDiagnostic> + 'a>,
 ) -> Result<(), ParseDiagnosticsError> {
   let fatal_diagnostics = diagnostics
-    .iter()
     .filter(|d| is_fatal_syntax_error(&d.kind))
     .map(ToOwned::to_owned)
     .collect::<Vec<_>>();
@@ -944,19 +946,16 @@ export class A {
       )
       .unwrap()
       .into_source();
-    let expected_text = r#"var D;
-(function(D) {
+    let expected_text = r#"var D = /*#__PURE__*/ function(D) {
   D[D["A"] = 0] = "A";
   D[D["B"] = 1] = "B";
-})(D || (D = {}));
-var E;
+  return D;
+}(D || {});
 console.log(0);
-var N;
 (function(N) {
-  let D;
   (function(D) {
     D["A"] = "value";
-  })(D = N.D || (N.D = {}));
+  })(N.D || (N.D = {}));
   N.Value = 5;
 })(N || (N = {}));
 export class A {
@@ -972,6 +971,7 @@ export class A {
     console.log(N.Value);
   }
 }
+var N;
 "#;
     assert_eq!(
       &transpiled_source.text[..expected_text.len()],
@@ -1005,76 +1005,84 @@ export class A {
       )
       .unwrap()
       .into_source();
-    let expected_text = r#"function _using_ctx() {
-  var _disposeSuppressedError = typeof SuppressedError === "function" ? SuppressedError : function(error, suppressed) {
-    var err = new Error();
-    err.name = "SuppressedError";
-    err.suppressed = suppressed;
-    err.error = error;
-    return err;
-  }, empty = {}, stack = [];
-  function using(isAwait, value) {
-    if (value != null) {
-      if (Object(value) !== value) {
-        throw new TypeError("using declarations can only be used with objects, functions, null, or undefined.");
-      }
-      if (isAwait) {
-        var dispose = value[Symbol.asyncDispose || Symbol.for("Symbol.asyncDispose")];
-      }
-      if (dispose == null) {
-        dispose = value[Symbol.dispose || Symbol.for("Symbol.dispose")];
-      }
-      if (typeof dispose !== "function") {
-        throw new TypeError(`Property [Symbol.dispose] is not a function.`);
-      }
-      stack.push({
-        v: value,
-        d: dispose,
-        a: isAwait
-      });
-    } else if (isAwait) {
-      stack.push({
-        d: value,
-        a: isAwait
-      });
+    let expected_text = r#"function _ts_add_disposable_resource(env, value, async) {
+  if (value !== null && value !== void 0) {
+    if (typeof value !== "object" && typeof value !== "function") throw new TypeError("Object expected.");
+    var dispose, inner;
+    if (async) {
+      if (!Symbol.asyncDispose) throw new TypeError("Symbol.asyncDispose is not defined.");
+      dispose = value[Symbol.asyncDispose];
     }
-    return value;
+    if (dispose === void 0) {
+      if (!Symbol.dispose) throw new TypeError("Symbol.dispose is not defined.");
+      dispose = value[Symbol.dispose];
+      if (async) inner = dispose;
+    }
+    if (typeof dispose !== "function") throw new TypeError("Object not disposable.");
+    if (inner) dispose = function() {
+      try {
+        inner.call(this);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    };
+    env.stack.push({
+      value: value,
+      dispose: dispose,
+      async: async
+    });
+  } else if (async) {
+    env.stack.push({
+      async: true
+    });
   }
-  return {
-    e: empty,
-    u: using.bind(null, false),
-    a: using.bind(null, true),
-    d: function() {
-      var error = this.e;
-      function next() {
-        while(resource = stack.pop()){
-          try {
-            var resource, disposalResult = resource.d && resource.d.call(resource.v);
-            if (resource.a) {
-              return Promise.resolve(disposalResult).then(next, err);
-            }
-          } catch (e) {
-            return err(e);
-          }
-        }
-        if (error !== empty) throw error;
-      }
-      function err(e) {
-        error = error !== empty ? new _disposeSuppressedError(error, e) : e;
-        return next();
-      }
-      return next();
-    }
-  };
+  return value;
 }
+function _ts_dispose_resources(env) {
+  var _SuppressedError = typeof SuppressedError === "function" ? SuppressedError : function(error, suppressed, message) {
+    var e = new Error(message);
+    return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+  };
+  return (_ts_dispose_resources = function _ts_dispose_resources(env) {
+    function fail(e) {
+      env.error = env.hasError ? new _SuppressedError(e, env.error, "An error was suppressed during disposal.") : e;
+      env.hasError = true;
+    }
+    var r, s = 0;
+    function next() {
+      while(r = env.stack.pop()){
+        try {
+          if (!r.async && s === 1) return s = 0, env.stack.push(r), Promise.resolve().then(next);
+          if (r.dispose) {
+            var result = r.dispose.call(r.value);
+            if (r.async) return s |= 2, Promise.resolve(result).then(next, function(e) {
+              fail(e);
+              return next();
+            });
+          } else s |= 1;
+        } catch (e) {
+          fail(e);
+        }
+      }
+      if (s === 1) return env.hasError ? Promise.reject(env.error) : Promise.resolve();
+      if (env.hasError) throw env.error;
+    }
+    return next();
+  })(env);
+}
+const env = {
+  stack: [],
+  error: void 0,
+  hasError: false
+};
 try {
-  var _usingCtx = _using_ctx();
-  var data = _usingCtx.u(create());
+  var data = _ts_add_disposable_resource(env, create(), false);
   console.log(data);
-} catch (_) {
-  _usingCtx.e = _;
+} catch (e) {
+  env.error = e;
+  env.hasError = true;
 } finally{
-  _usingCtx.d();
+  _ts_dispose_resources(env);
 }"#;
     assert_eq!(
       &transpiled_source.text[..expected_text.len()],
@@ -1831,19 +1839,18 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
 
   #[test]
   fn diagnostic_octal_and_leading_zero_num_literals() {
-    // todo(dsherret): remove export {} after https://github.com/swc-project/swc/pull/9682
-    assert_eq!(get_diagnostic("077;\n\nexport {};"), concat!(
+    assert_eq!(get_diagnostic("077"), concat!(
       "Legacy octal literals are not available when targeting ECMAScript 5 and higher ",
       "at https://deno.land/x/mod.ts:1:1\n\n",
-      "  077;\n",
+      "  077\n",
       "  ~~~\n\n",
       "Legacy octal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-      "  077;\n",
+      "  077\n",
       "  ~~~",
     ));
-    assert_eq!(get_diagnostic("099;\n\nexport {};"), concat!(
+    assert_eq!(get_diagnostic("099"), concat!(
       "Legacy decimal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-      "  099;\n",
+      "  099\n",
       "  ~~~",
     ));
   }

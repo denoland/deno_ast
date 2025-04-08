@@ -14,6 +14,8 @@ pub mod dep;
 pub mod diagnostics;
 #[cfg(feature = "emit")]
 mod emit;
+#[cfg(feature = "utils")]
+mod exports;
 mod lexing;
 mod parsed_source;
 mod parsing;
@@ -36,6 +38,8 @@ pub use comments::*;
 pub use deno_media_type::*;
 #[cfg(feature = "emit")]
 pub use emit::*;
+#[cfg(feature = "utils")]
+pub use exports::*;
 pub use lexing::*;
 pub use parsed_source::*;
 pub use parsing::*;
@@ -68,7 +72,6 @@ pub mod swc {
     pub use swc_ecma_transforms_base::fixer;
     pub use swc_ecma_transforms_base::helpers;
     pub use swc_ecma_transforms_base::hygiene;
-    pub use swc_ecma_transforms_base::pass;
     pub use swc_ecma_transforms_base::perf;
     pub use swc_ecma_transforms_base::resolver;
 
@@ -84,5 +87,7 @@ pub mod swc {
   #[cfg(feature = "utils")]
   pub use swc_ecma_utils as utils;
   #[cfg(feature = "visit")]
-  pub use swc_ecma_visit as visit;
+  pub use swc_ecma_visit as ecma_visit;
+  #[cfg(feature = "visit")]
+  pub use swc_visit as visit;
 }

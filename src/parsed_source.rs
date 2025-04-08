@@ -191,9 +191,7 @@ impl<'a> From<&'a Program> for ProgramRef<'a> {
 }
 
 #[cfg(feature = "visit")]
-impl<'a, T: swc_ecma_visit::Visit> swc_ecma_visit::VisitWith<T>
-  for ProgramRef<'a>
-{
+impl<T: swc_ecma_visit::Visit> swc_ecma_visit::VisitWith<T> for ProgramRef<'_> {
   fn visit_with(&self, visitor: &mut T) {
     match self {
       ProgramRef::Module(n) => n.visit_with(visitor),
@@ -258,6 +256,32 @@ pub(crate) struct SyntaxContexts {
   pub top_level: SyntaxContext,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ParseDiagnostics {
+  pub diagnostics: Vec<ParseDiagnostic>,
+  /// Diagnostics that should be surfaced when transpiling if the
+  /// file parsed as a script is discovered to be a module.
+  pub script_module_diagnostics: Vec<ParseDiagnostic>,
+}
+
+impl ParseDiagnostics {
+  #[cfg(feature = "transpiling")]
+  pub fn for_module_kind<'a>(
+    &'a self,
+    module_kind: ModuleKind,
+  ) -> Box<dyn Iterator<Item = &'a ParseDiagnostic> + 'a> {
+    match module_kind {
+      ModuleKind::Esm => Box::new(
+        self
+          .diagnostics
+          .iter()
+          .chain(self.script_module_diagnostics.iter()),
+      ),
+      ModuleKind::Cjs => Box::new(self.diagnostics.iter()),
+    }
+  }
+}
+
 pub(crate) struct ParsedSourceInner {
   pub specifier: ModuleSpecifier,
   pub media_type: MediaType,
@@ -268,7 +292,7 @@ pub(crate) struct ParsedSourceInner {
   pub tokens: Option<Arc<Vec<TokenAndSpan>>>,
   pub globals: Globals,
   pub syntax_contexts: Option<SyntaxContexts>,
-  pub diagnostics: Vec<ParseDiagnostic>,
+  pub diagnostics: ParseDiagnostics,
 }
 
 /// A parsed source containing an AST, comments, and possibly tokens.
@@ -424,7 +448,13 @@ impl ParsedSource {
 
   /// Gets extra non-fatal diagnostics found while parsing.
   pub fn diagnostics(&self) -> &Vec<ParseDiagnostic> {
-    &self.0.diagnostics
+    &self.0.diagnostics.diagnostics
+  }
+
+  /// Diagnostics that should be surfaced when transpiling if the
+  /// file parsed as a script is discovered to be a module.
+  pub fn script_module_diagnostics(&self) -> &Vec<ParseDiagnostic> {
+    &self.0.diagnostics.script_module_diagnostics
   }
 
   /// Gets if this source is a module.

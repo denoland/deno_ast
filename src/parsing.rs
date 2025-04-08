@@ -22,6 +22,7 @@ use crate::Globals;
 use crate::MediaType;
 use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
+use crate::ParseDiagnostics;
 use crate::ParsedSource;
 
 /// Ecmascript version used for lexing and parsing.
@@ -173,20 +174,11 @@ fn parse(
         ParseDiagnostic::from_swc_error(err, &specifier, source_text_info)
       })?;
   let (diagnostics, maybe_text_info) = if errors.is_empty() {
-    (Vec::new(), None)
+    (ParseDiagnostics::default(), None)
   } else {
     let source_text_info = SourceTextInfo::new(source.clone());
     (
-      errors
-        .into_iter()
-        .map(|err| {
-          ParseDiagnostic::from_swc_error(
-            err,
-            &specifier,
-            source_text_info.clone(),
-          )
-        })
-        .collect(),
+      errors.into_parse_diagnostics(&specifier, &source_text_info),
       Some(source_text_info),
     )
   };
@@ -240,11 +232,10 @@ fn scope_analysis_transform_inner(
 ) -> (Program, Option<crate::SyntaxContexts>) {
   use crate::swc::common::SyntaxContext;
   use crate::swc::transforms::resolver;
-  use crate::swc::visit::FoldWith;
 
   globals.with(|marks| {
     let program =
-      program.fold_with(&mut resolver(marks.unresolved, marks.top_level, true));
+      program.apply(&mut resolver(marks.unresolved, marks.top_level, true));
 
     (
       program,
@@ -254,6 +245,35 @@ fn scope_analysis_transform_inner(
       }),
     )
   })
+}
+
+struct SwcErrors {
+  errors: Vec<SwcError>,
+  script_module_errors: Vec<SwcError>,
+}
+
+impl SwcErrors {
+  pub fn is_empty(&self) -> bool {
+    self.errors.is_empty() && self.script_module_errors.is_empty()
+  }
+
+  pub fn into_parse_diagnostics(
+    self,
+    specifier: &ModuleSpecifier,
+    source_text_info: &SourceTextInfo,
+  ) -> ParseDiagnostics {
+    let create_diagnostic = |err: SwcError| {
+      ParseDiagnostic::from_swc_error(err, specifier, source_text_info.clone())
+    };
+    ParseDiagnostics {
+      diagnostics: self.errors.into_iter().map(create_diagnostic).collect(),
+      script_module_diagnostics: self
+        .script_module_errors
+        .into_iter()
+        .map(create_diagnostic)
+        .collect(),
+    }
+  }
 }
 
 #[allow(clippy::type_complexity)]
@@ -267,7 +287,7 @@ fn parse_string_input(
     SingleThreadedComments,
     Program,
     Option<Vec<TokenAndSpan>>,
-    Vec<SwcError>,
+    SwcErrors,
   ),
   SwcError,
 > {
@@ -284,8 +304,17 @@ fn parse_string_input(
     };
     let tokens = parser.input().take();
     let errors = parser.take_errors();
+    let script_module_errors = parser.take_script_module_errors();
 
-    Ok((comments, program, Some(tokens), errors))
+    Ok((
+      comments,
+      program,
+      Some(tokens),
+      SwcErrors {
+        errors,
+        script_module_errors,
+      },
+    ))
   } else {
     let mut parser = crate::swc::parser::Parser::new_from(lexer);
     let program = match parse_mode {
@@ -294,8 +323,17 @@ fn parse_string_input(
       ParseMode::Script => Program::Script(parser.parse_script()?),
     };
     let errors = parser.take_errors();
+    let script_module_errors = parser.take_script_module_errors();
 
-    Ok((comments, program, None, errors))
+    Ok((
+      comments,
+      program,
+      None,
+      SwcErrors {
+        errors,
+        script_module_errors,
+      },
+    ))
   }
 }
 
@@ -333,6 +371,8 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
     | MediaType::Wasm
     | MediaType::SourceMap
     | MediaType::Css
+    | MediaType::Sql
+    | MediaType::Html
     | MediaType::Unknown => Syntax::Es(EsSyntax {
       allow_return_outside_function: true,
       allow_super_outside_method: true,

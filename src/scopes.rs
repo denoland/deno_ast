@@ -8,17 +8,17 @@ use crate::swc::ast::{
   Param, Pat, SwitchStmt, TsInterfaceDecl, TsTypeAliasDecl, VarDecl,
   VarDeclKind, WhileStmt, WithStmt,
 };
-use crate::swc::atoms::JsWord;
+use crate::swc::atoms::Atom;
+use crate::swc::ecma_visit::Visit;
+use crate::swc::ecma_visit::VisitWith;
 use crate::swc::utils::find_pat_ids;
-use crate::swc::visit::Visit;
-use crate::swc::visit::VisitWith;
 use crate::view;
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Scope {
   vars: HashMap<Id, Var>,
-  symbols: HashMap<JsWord, Vec<Id>>,
+  symbols: HashMap<Atom, Vec<Id>>,
 }
 
 impl Scope {
@@ -48,7 +48,7 @@ impl Scope {
   }
 
   // Get all declarations with a symbol.
-  pub fn ids_with_symbol(&self, sym: &JsWord) -> Option<&Vec<Id>> {
+  pub fn ids_with_symbol(&self, sym: &Atom) -> Option<&Vec<Id>> {
     self.symbols.get(sym)
   }
 
