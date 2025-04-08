@@ -46,7 +46,7 @@ used:
   [dprint-plugin-typescript](https://github.com/dprint/dprint-plugin-typescript)
   still compile in the [Deno](https://github.com/denoland/deno) repo?
   - If yes, is this a change that would break something at runtime?
-    - If yes, it's a minor release.
+    - If yes, it's recommended to do a minor release.
     - If no, it's a patch release.
   - If no, it's a minor release.
 
