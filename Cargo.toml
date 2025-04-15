@@ -51,21 +51,21 @@ unicode-width = "0.2.0"
 #
 # NOTE: You can automatically update these dependencies by running ./scripts/update_swc_deps.ts
 swc_atoms = "=5.0.0"
-swc_common = "=8.0.1"
+swc_common = "=8.1.0"
 swc_config = { version = "=2.0.0", optional = true }
 swc_config_macro = { version = "=1.0.0", optional = true }
-swc_ecma_ast = { version = "=8.1.0", features = ["serde-impl"] }
+swc_ecma_ast = { version = "=8.1.2", features = ["serde-impl"] }
 swc_ecma_codegen = { version = "=10.0.0", optional = true }
 swc_ecma_codegen_macros = { version = "=2.0.0", optional = true }
 swc_ecma_loader = { version = "=8.0.0", optional = true }
-swc_ecma_parser = "=11.0.0"
-swc_ecma_transforms_base = { version = "=12.0.0", optional = true }
+swc_ecma_parser = "=11.1.2"
+swc_ecma_transforms_base = { version = "=12.2.0", optional = true }
 swc_ecma_transforms_classes = { version = "=12.0.0", optional = true }
 swc_ecma_transforms_compat = { version = "=13.0.0", optional = true }
 swc_ecma_transforms_macros = { version = "=1.0.0", optional = true }
 swc_ecma_transforms_optimization = { version = "=12.0.0", optional = true }
-swc_ecma_transforms_proposal = { version = "=12.0.0", optional = true }
-swc_ecma_transforms_react = { version = "=13.0.0", optional = true }
+swc_ecma_transforms_proposal = { version = "=12.0.1", optional = true }
+swc_ecma_transforms_react = { version = "=13.0.1", optional = true }
 swc_ecma_transforms_typescript = { version = "=13.0.0", optional = true }
 swc_ecma_utils = { version = "=12.0.0", optional = true }
 swc_ecma_visit = { version = "=8.0.0", optional = true }
