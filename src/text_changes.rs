@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
-use string_capacity::StringBuilder;
+use capacity_builder::StringBuilder;
 
 #[derive(Clone, Debug)]
 pub struct TextChange {
