@@ -543,7 +543,7 @@ fn merge_serializable_children(
                 }
                 // Can be flattened
                 Lit::Str(str_lit) => {
-                  buf.push_str(str_lit.value.as_ref());
+                  buf.push_str(&escape_html(str_lit.value.as_ref()));
                   continue;
                 }
                 _ => {}
@@ -2050,6 +2050,16 @@ const $$_tpl_1 = [
   "</div>"
 ];
 const a = _jsxTemplate($$_tpl_1, _jsxEscape(foo), _jsxEscape(bar));"#,
+    );
+
+    test_transform(
+      JsxPrecompile::default(),
+      r#"const a = <div>{"\"a&>'"}</div>;"#,
+      r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
+const $$_tpl_1 = [
+  "<div>&quot;a&amp;&gt;&#39;</div>"
+];
+const a = _jsxTemplate($$_tpl_1);"#,
     );
   }
 
