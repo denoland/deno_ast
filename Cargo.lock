@@ -279,7 +279,6 @@ dependencies = [
  "deno_media_type",
  "deno_terminal",
  "dprint-swc-ext",
- "once_cell",
  "percent-encoding",
  "pretty_assertions",
  "serde",
