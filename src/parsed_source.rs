@@ -2,6 +2,7 @@
 
 use std::fmt;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use dprint_swc_ext::common::SourceRange;
 use dprint_swc_ext::common::SourceRanged;
@@ -286,7 +287,7 @@ pub(crate) struct ParsedSourceInner {
   pub specifier: ModuleSpecifier,
   pub media_type: MediaType,
   pub text: Arc<str>,
-  pub source_text_info: Arc<once_cell::sync::OnceCell<SourceTextInfo>>,
+  pub source_text_info: Arc<OnceLock<SourceTextInfo>>,
   pub comments: MultiThreadedComments,
   pub program: Arc<Program>,
   pub tokens: Option<Arc<Vec<TokenAndSpan>>>,
