@@ -1,7 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::fmt;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
+use std::sync::OnceLock;
 
 use dprint_swc_ext::common::SourceRange;
 use dprint_swc_ext::common::SourceRanged;
