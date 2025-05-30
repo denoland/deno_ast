@@ -9,8 +9,6 @@
 #[cfg(feature = "cjs")]
 mod cjs_parse;
 mod comments;
-#[cfg(feature = "dep_analysis")]
-pub mod dep;
 pub mod diagnostics;
 #[cfg(feature = "emit")]
 mod emit;
