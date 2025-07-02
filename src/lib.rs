@@ -6,6 +6,9 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
+/// Version of this crate, which may be useful for emit caches.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[cfg(feature = "cjs")]
 mod cjs_parse;
 mod comments;
