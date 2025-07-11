@@ -11,10 +11,11 @@ use swc_ecma_visit::noop_visit_mut_type;
 use swc_ecma_visit::VisitMut;
 use swc_ecma_visit::VisitMutWith;
 
+#[derive(Debug, Default)]
 pub struct JsxPrecompile {
   // The import path to import the jsx runtime from. Will be
   // `<import_source>/jsx-runtime`.
-  import_source: String,
+  import_source: Option<String>,
   // List of HTML elements which should not be serialized
   skip_serialize: Option<Vec<String>>,
   // List of props/attributes that should not be serialized and
@@ -38,25 +39,9 @@ pub struct JsxPrecompile {
   import_jsx_escape: Option<Ident>,
 }
 
-impl Default for JsxPrecompile {
-  fn default() -> Self {
-    Self {
-      next_index: 0,
-      templates: vec![],
-      import_source: "react".to_string(),
-      skip_serialize: None,
-      skip_prop_serialize: None,
-      import_jsx: None,
-      import_jsx_ssr: None,
-      import_jsx_attr: None,
-      import_jsx_escape: None,
-    }
-  }
-}
-
 impl JsxPrecompile {
   pub fn new(
-    import_source: String,
+    import_source: Option<String>,
     skip_serialize: Option<Vec<String>>,
     skip_prop_serialize: Option<Vec<String>>,
   ) -> Self {
@@ -1461,7 +1446,10 @@ impl JsxPrecompile {
     }
 
     if !imports.is_empty() {
-      let src = format!("{}/jsx-runtime", self.import_source);
+      let src = format!(
+        "{}/jsx-runtime",
+        self.import_source.as_deref().unwrap_or("react")
+      );
 
       let specifiers = imports
         .into_iter()
@@ -2238,8 +2226,8 @@ const a = _jsxTemplate($$_tpl_1);"#,
       JsxPrecompile::default(),
       // force tab indentation
       r#"const result = <div>
-			foo		
-			bar		
+			foo
+			bar
 </div>;"#,
       r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -2252,8 +2240,8 @@ const result = _jsxTemplate($$_tpl_1);"#,
       JsxPrecompile::default(),
       // force space indentation
       r#"const result = <div>
-  foo    
-  bar    
+  foo
+  bar
 </div>;"#,
       r#"import { jsxTemplate as _jsxTemplate } from "react/jsx-runtime";
 const $$_tpl_1 = [
@@ -2659,7 +2647,7 @@ const a = _jsx(MyIsland.Foo, {
   #[test]
   fn import_source_option_test() {
     test_transform(
-      JsxPrecompile::new("foobar".to_string(), None, None),
+      JsxPrecompile::new(Some("foobar".to_string()), None, None),
       r#"const a = <div>foo</div>;"#,
       r#"import { jsxTemplate as _jsxTemplate } from "foobar/jsx-runtime";
 const $$_tpl_1 = [
@@ -2807,7 +2795,7 @@ const a = _jsxTemplate($$_tpl_1);"#,
   fn skip_serialization_test() {
     test_transform(
       JsxPrecompile::new(
-        "react".to_string(),
+        None,
         Some(vec!["a".to_string(), "img".to_string()]),
         None,
       ),
@@ -2831,7 +2819,7 @@ const a = _jsxTemplate($$_tpl_1, _jsx("img", {
   fn skip_prop_serialization_test() {
     test_transform(
       JsxPrecompile::new(
-        "react".to_string(),
+        None,
         None,
         Some(vec!["class".to_string(), "className".to_string()]),
       ),
@@ -3010,11 +2998,7 @@ const a = _jsxTemplate($$_tpl_1, _jsxAttr("class", "foo"), _jsxAttr("className",
         "const a = _jsxTemplate($$_tpl_1);",
       ]
       .join("\n");
-      test_transform(
-        JsxPrecompile::new("react".to_string(), None, None),
-        &input,
-        &expected,
-      );
+      test_transform(JsxPrecompile::new(None, None, None), &input, &expected);
     }
   }
 
