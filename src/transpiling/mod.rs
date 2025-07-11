@@ -708,13 +708,11 @@ pub fn fold_program<'a>(
     ),
     Optional::new(
       visit_mut_pass(jsx_precompile::JsxPrecompile::new(
-        options.jsx_import_source.clone().unwrap_or_default(),
+        options.jsx_import_source.clone(),
         options.precompile_jsx_skip_elements.clone(),
         options.precompile_jsx_dynamic_props.clone(),
       )),
-      options.jsx_import_source.is_some()
-        && !options.transform_jsx
-        && options.precompile_jsx,
+      !options.transform_jsx && options.precompile_jsx,
     ),
     Optional::new(
       react::react(
@@ -733,9 +731,7 @@ pub fn fold_program<'a>(
             None
           },
           development: Some(options.jsx_development),
-          import_source: Some(
-            options.jsx_import_source.clone().unwrap_or_default().into(),
-          ),
+          import_source: options.jsx_import_source.as_deref().map(From::from),
           next: None,
           refresh: None,
           throw_if_namespace: Some(false),
@@ -1923,7 +1919,7 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       precompile_jsx: true,
       precompile_jsx_skip_elements: Some(vec!["p".to_string()]),
       precompile_jsx_dynamic_props: Some(vec!["class".to_string()]),
-      jsx_import_source: Some("react".to_string()),
+      jsx_import_source: None, // Should default to "react".
       ..Default::default()
     };
     let code = program
