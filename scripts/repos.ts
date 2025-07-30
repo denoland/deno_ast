@@ -11,7 +11,6 @@ const repoNames = [
   "dprint-plugin-typescript",
   "deno_doc",
   "eszip",
-  "deno_emit",
   "deno",
 ];
 
@@ -60,9 +59,7 @@ export class Repos {
         crates.push(repo.getCrate("deno"));
       } else {
         crates.push(
-          ...repo.crates.filter((c) =>
-            c.name !== "eszip_wasm" && c.name !== "deno_emit_wasm"
-          ),
+          ...repo.crates.filter((c) => !c.name.endsWith("_wasm")),
         );
       }
     }
@@ -123,7 +120,6 @@ export class Repos {
     const dprint_plugin_typescript = this.getCrate("dprint-plugin-typescript");
     const deno_cli = this.getCrate("deno");
     const eszip = this.getCrate("eszip");
-    const deno_emit = this.getCrate("deno_emit");
 
     return [
       [deno_graph, deno_ast],
@@ -133,15 +129,12 @@ export class Repos {
       [eszip, deno_graph],
       [deno_lint, deno_ast],
       [dprint_plugin_typescript, deno_ast],
-      [deno_emit, deno_graph],
-      [deno_emit, deno_ast],
       [deno_cli, deno_ast],
       [deno_cli, deno_graph],
       [deno_cli, deno_doc],
       [deno_cli, deno_lint],
       [deno_cli, eszip],
       [deno_cli, dprint_plugin_typescript],
-      [deno_cli, deno_emit],
     ] as [Crate, Crate][];
   }
 }

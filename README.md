@@ -69,7 +69,6 @@ To upgrade swc:
    - https://github.com/denoland/deno_lint
    - https://github.com/denoland/eszip
    - https://github.com/denoland/deno_doc
-   - https://github.com/denoland/deno_emit
    - https://github.com/dprint/dprint-plugin-typescript
    - https://github.com/denoland/deno
 1. Ensure they all have `upstream` remotes set for the urls specified above. For
@@ -88,7 +87,7 @@ To upgrade swc:
    might be helpful to automate some of this. Read its source code to understand
    it so that you can deal with any problems that may arise).
 1. Merge the PR deno_graph and publish using its release workflow.
-1. Open PRs to deno_emit, deno_doc, and eszip.
+1. Open PRs to deno_doc and eszip.
 1. Merge those PRs and do releases. Also merge and release deno_lint and
    dprint-plugin-typescript (Bartek and David have access to publish
    dprint-plugin-typescript).
