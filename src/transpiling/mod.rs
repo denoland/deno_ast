@@ -93,6 +93,77 @@ pub enum ImportsNotUsedAsValues {
   Error,
 }
 
+#[derive(Debug, Clone, Hash)]
+pub struct JsxAutomaticOptions {
+  /// If it is in development mode, meaning that it should import `jsx-dev-runtime`
+  /// and transform JSX using `jsxDEV` import from the JSX import source as well as
+  /// provide additional debug information to the JSX factory.
+  pub development: bool,
+  /// The string module specifier to implicitly import JSX factories from when
+  /// transpiling JSX.
+  pub import_source: Option<String>,
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct JsxPrecompileOptions {
+  pub automatic: JsxAutomaticOptions,
+  /// List of elements that should not be precompiled when the JSX precompile
+  /// transform is used.
+  pub skip_elements: Option<Vec<String>>,
+  /// List of properties/attributes that should always be treated as
+  /// dynamic.
+  pub dynamic_props: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Hash)]
+pub enum JsxRuntime {
+  Classic,
+  Automatic(JsxAutomaticOptions),
+  /// Transforms JSX into static strings that need to be concatenated
+  /// with dynamic content.
+  Precompile(JsxPrecompileOptions),
+}
+
+impl JsxRuntime {
+  pub fn automatic(&self) -> Option<&JsxAutomaticOptions> {
+    match self {
+      JsxRuntime::Classic => None,
+      JsxRuntime::Automatic(o) => Some(o),
+      JsxRuntime::Precompile(o) => Some(&o.automatic),
+    }
+  }
+
+  pub fn precompile(&self) -> Option<&JsxPrecompileOptions> {
+    match self {
+      JsxRuntime::Classic | JsxRuntime::Automatic(_) => None,
+      JsxRuntime::Precompile(o) => Some(o),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct JsxOptions {
+  /// `true` if the program should use an implicit JSX import source/the "new"
+  /// JSX transforms.
+  pub runtime: JsxRuntime,
+  /// When transforming JSX, what value should be used for the JSX factory.
+  /// Defaults to `React.createElement`.
+  pub factory: String,
+  /// When transforming JSX, what value should be used for the JSX fragment
+  /// factory.  Defaults to `React.Fragment`.
+  pub fragment_factory: String,
+}
+
+impl Default for JsxOptions {
+  fn default() -> Self {
+    Self {
+      runtime: JsxRuntime::Classic,
+      factory: "React.createElement".into(),
+      fragment_factory: "React.Fragment".into(),
+    }
+  }
+}
+
 /// Options which can be adjusted when transpiling a module.
 ///
 /// This implements `Hash` so the CLI can use it to bust the emit cache.
@@ -114,35 +185,8 @@ pub struct TranspileOptions {
   /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
   /// or error (`Error`). Defaults to `Remove`.
   pub imports_not_used_as_values: ImportsNotUsedAsValues,
-  /// `true` if the program should use an implicit JSX import source/the "new"
-  /// JSX transforms.
-  pub jsx_automatic: bool,
-  /// If JSX is automatic, if it is in development mode, meaning that it should
-  /// import `jsx-dev-runtime` and transform JSX using `jsxDEV` import from the
-  /// JSX import source as well as provide additional debug information to the
-  /// JSX factory.
-  pub jsx_development: bool,
-  /// When transforming JSX, what value should be used for the JSX factory.
-  /// Defaults to `React.createElement`.
-  pub jsx_factory: String,
-  /// When transforming JSX, what value should be used for the JSX fragment
-  /// factory.  Defaults to `React.Fragment`.
-  pub jsx_fragment_factory: String,
-  /// The string module specifier to implicitly import JSX factories from when
-  /// transpiling JSX.
-  pub jsx_import_source: Option<String>,
-  /// Should JSX be transformed. Defaults to `true`.
-  pub transform_jsx: bool,
-  /// Should JSX be precompiled into static strings that need to be concatenated
-  /// with dynamic content. Defaults to `false`, mutually exclusive with
-  /// `transform_jsx`.
-  pub precompile_jsx: bool,
-  /// List of elements that should not be precompiled when the JSX precompile
-  /// transform is used.
-  pub precompile_jsx_skip_elements: Option<Vec<String>>,
-  /// List of properties/attributes that should always be treated as
-  /// dynamic.
-  pub precompile_jsx_dynamic_props: Option<Vec<String>>,
+  /// Options for transforming JSX. Will not transform when `None`.
+  pub jsx: Option<JsxOptions>,
   /// Should import declarations be transformed to variable declarations using
   /// a dynamic import. This is useful for import & export declaration support
   /// in script contexts such as the Deno REPL.  Defaults to `false`.
@@ -157,15 +201,7 @@ impl Default for TranspileOptions {
       emit_metadata: false,
       verbatim_module_syntax: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
-      jsx_automatic: false,
-      jsx_development: false,
-      jsx_factory: "React.createElement".into(),
-      jsx_fragment_factory: "React.Fragment".into(),
-      jsx_import_source: None,
-      transform_jsx: true,
-      precompile_jsx: false,
-      precompile_jsx_skip_elements: None,
-      precompile_jsx_dynamic_props: None,
+      jsx: Some(JsxOptions::default()),
       var_decl_imports: false,
     }
   }
@@ -174,8 +210,11 @@ impl Default for TranspileOptions {
 impl TranspileOptions {
   fn as_tsx_config(&self) -> typescript::TsxConfig {
     typescript::TsxConfig {
-      pragma: Some(Lrc::new(self.jsx_factory.clone())),
-      pragma_frag: Some(Lrc::new(self.jsx_fragment_factory.clone())),
+      pragma: self.jsx.as_ref().map(|jsx| Lrc::new(jsx.factory.clone())),
+      pragma_frag: self
+        .jsx
+        .as_ref()
+        .map(|jsx| Lrc::new(jsx.fragment_factory.clone())),
     }
   }
 
@@ -323,14 +362,14 @@ fn resolve_transpile_options(
   media_type: MediaType,
   options: &TranspileOptions,
 ) -> Cow<TranspileOptions> {
-  if options.transform_jsx {
+  if options.jsx.is_some() {
     let allows_jsx = matches!(media_type, MediaType::Jsx | MediaType::Tsx);
     if !allows_jsx {
       return Cow::Owned(TranspileOptions {
         // there is no reason for jsx transforms to be turned on because
         // the source cannot possibly allow jsx, so we can get a perf
         // improvement by turning it off
-        transform_jsx: false,
+        jsx: None,
         ..(options.clone())
       });
     }
@@ -693,7 +732,7 @@ pub fn fold_program<'a>(
         marks.unresolved,
         marks.top_level,
       ),
-      !options.transform_jsx,
+      options.jsx.is_none(),
     ),
     Optional::new(
       typescript::tsx(
@@ -704,15 +743,31 @@ pub fn fold_program<'a>(
         marks.unresolved,
         marks.top_level,
       ),
-      options.transform_jsx,
+      options.jsx.is_some(),
     ),
     Optional::new(
       visit_mut_pass(jsx_precompile::JsxPrecompile::new(
-        options.jsx_import_source.clone(),
-        options.precompile_jsx_skip_elements.clone(),
-        options.precompile_jsx_dynamic_props.clone(),
+        options
+          .jsx
+          .as_ref()
+          .and_then(|jsx| jsx.runtime.automatic())
+          .and_then(|a| a.import_source.clone()),
+        options
+          .jsx
+          .as_ref()
+          .and_then(|jsx| jsx.runtime.precompile())
+          .and_then(|p| p.skip_elements.clone()),
+        options
+          .jsx
+          .as_ref()
+          .and_then(|jsx| jsx.runtime.precompile())
+          .and_then(|p| p.dynamic_props.clone()),
       )),
-      !options.transform_jsx && options.precompile_jsx,
+      options
+        .jsx
+        .as_ref()
+        .map(|jsx| jsx.runtime.precompile().is_some())
+        .unwrap_or(false),
     ),
     Optional::new(
       react::react(
@@ -720,18 +775,38 @@ pub fn fold_program<'a>(
         Some(comments),
         #[allow(deprecated)]
         react::Options {
-          pragma: Some(Lrc::new(options.jsx_factory.clone())),
-          pragma_frag: Some(Lrc::new(options.jsx_fragment_factory.clone())),
+          pragma: options
+            .jsx
+            .as_ref()
+            .map(|jsx| Lrc::new(jsx.factory.clone())),
+          pragma_frag: options
+            .jsx
+            .as_ref()
+            .map(|jsx| Lrc::new(jsx.fragment_factory.clone())),
           // This will use `Object.assign()` instead of the `_extends` helper
           // when spreading props (Note: this property is deprecated)
           use_builtins: Some(true),
-          runtime: if options.jsx_automatic {
+          runtime: if options
+            .jsx
+            .as_ref()
+            .map(|jsx| matches!(jsx.runtime, JsxRuntime::Automatic(..)))
+            .unwrap_or(false)
+          {
             Some(react::Runtime::Automatic)
           } else {
             None
           },
-          development: Some(options.jsx_development),
-          import_source: options.jsx_import_source.as_deref().map(From::from),
+          development: options
+            .jsx
+            .as_ref()
+            .and_then(|o| o.runtime.automatic())
+            .map(|o| o.development),
+          import_source: options
+            .jsx
+            .as_ref()
+            .and_then(|o| o.runtime.automatic())
+            .and_then(|o| o.import_source.as_deref())
+            .map(From::from),
           next: None,
           refresh: None,
           throw_if_namespace: Some(false),
@@ -740,13 +815,13 @@ pub fn fold_program<'a>(
         marks.top_level,
         marks.unresolved,
       ),
-      options.transform_jsx,
+      options.jsx.is_some(),
     ),
     // if using var decl imports, do another pass in order to transform the
     // automatically inserted jsx runtime import to a var decl
     Optional::new(
       fold_pass(transforms::ImportDeclsToVarDeclsFolder),
-      options.var_decl_imports && options.transform_jsx,
+      options.var_decl_imports && options.jsx.is_some(),
     ),
     // nested tuple because swc only supports up to 13 items
     (fixer(Some(comments)), hygiene()),
@@ -1194,8 +1269,13 @@ function App() {
     })
     .unwrap();
     let transpile_options = TranspileOptions {
-      jsx_automatic: true,
-      jsx_import_source: Some("jsx_lib".to_string()),
+      jsx: Some(JsxOptions {
+        runtime: JsxRuntime::Automatic(JsxAutomaticOptions {
+          import_source: Some("jsx_lib".to_string()),
+          development: false,
+        }),
+        ..Default::default()
+      }),
       ..Default::default()
     };
     let code = program
@@ -1239,9 +1319,13 @@ function App() {
     })
     .unwrap();
     let transpile_options = TranspileOptions {
-      jsx_automatic: true,
-      jsx_import_source: Some("jsx_lib".to_string()),
-      jsx_development: true,
+      jsx: Some(JsxOptions {
+        runtime: JsxRuntime::Automatic(JsxAutomaticOptions {
+          import_source: Some("jsx_lib".to_string()),
+          development: true,
+        }),
+        ..Default::default()
+      }),
       ..Default::default()
     };
     let code = program
@@ -1335,8 +1419,13 @@ function App() {
     })
     .unwrap();
     let transpile_options = TranspileOptions {
-      jsx_automatic: true,
-      jsx_import_source: Some("jsx_lib".to_string()),
+      jsx: Some(JsxOptions {
+        runtime: JsxRuntime::Automatic(JsxAutomaticOptions {
+          import_source: Some("jsx_lib".to_string()),
+          development: false,
+        }),
+        ..Default::default()
+      }),
       ..Default::default()
     };
     let transpile_module_options = TranspileModuleOptions {
@@ -1388,8 +1477,13 @@ function App() {
     })
     .unwrap();
     let transpile_options = TranspileOptions {
-      jsx_automatic: true,
-      jsx_import_source: Some("jsx_lib".to_string()),
+      jsx: Some(JsxOptions {
+        runtime: JsxRuntime::Automatic(JsxAutomaticOptions {
+          import_source: Some("jsx_lib".to_string()),
+          development: false,
+        }),
+        ..Default::default()
+      }),
       ..Default::default()
     };
     let transpile_module_options = TranspileModuleOptions {
@@ -1443,8 +1537,13 @@ export = function App() {
     })
     .unwrap();
     let transpile_options = TranspileOptions {
-      jsx_automatic: true,
-      jsx_import_source: Some("jsx_lib".to_string()),
+      jsx: Some(JsxOptions {
+        runtime: JsxRuntime::Automatic(JsxAutomaticOptions {
+          import_source: Some("jsx_lib".to_string()),
+          development: false,
+        }),
+        ..Default::default()
+      }),
       ..Default::default()
     };
     let transpile_module_options = TranspileModuleOptions {
@@ -1695,7 +1794,7 @@ export function g() {
     })
     .unwrap();
     let transpile_options = TranspileOptions {
-      transform_jsx: true,
+      jsx: Some(Default::default()),
       ..Default::default()
     };
     let code = program
@@ -1915,11 +2014,17 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     })
     .unwrap();
     let transpile_options = TranspileOptions {
-      transform_jsx: false,
-      precompile_jsx: true,
-      precompile_jsx_skip_elements: Some(vec!["p".to_string()]),
-      precompile_jsx_dynamic_props: Some(vec!["class".to_string()]),
-      jsx_import_source: None, // Should default to "react".
+      jsx: Some(JsxOptions {
+        runtime: JsxRuntime::Precompile(JsxPrecompileOptions {
+          automatic: JsxAutomaticOptions {
+            development: false,
+            import_source: None, // Should default to "react".
+          },
+          skip_elements: Some(vec!["p".to_string()]),
+          dynamic_props: Some(vec!["class".to_string()]),
+        }),
+        ..Default::default()
+      }),
       ..Default::default()
     };
     let code = program
