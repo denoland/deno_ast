@@ -526,7 +526,7 @@ mod test {
     })
     .err()
     .unwrap();
-    assert_eq!(diagnostic.specifier.as_str(), "file:///my_file.js");
+    assert_eq!(diagnostic.specifier().as_str(), "file:///my_file.js");
     assert_eq!(
       diagnostic.display_position(),
       LineAndColumnDisplay {
@@ -757,7 +757,7 @@ function _bar(...Foo: Foo) {
     let diagnostic = parse_ts_module("test;\nas#;").err().unwrap();
     assert_eq!(
       diagnostic.message().to_string(),
-      concat!("Expected ';', '}' or <eof>")
+      "Expected ';', '}' or <eof>"
     );
   }
 

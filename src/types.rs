@@ -21,14 +21,14 @@ use std::fmt;
 /// Parsing diagnostic.
 #[derive(Debug, Clone, JsError)]
 #[class(syntax)]
-pub struct ParseDiagnostic {
-  /// Specifier of the source the diagnostic occurred in.
+pub struct ParseDiagnostic(pub(crate) Box<ParseDiagnosticInner>);
+
+#[derive(Debug, Clone)]
+pub(crate) struct ParseDiagnosticInner {
   pub specifier: ModuleSpecifier,
-  /// Range of the diagnostic.
   pub range: SourceRange,
-  /// Swc syntax error
   pub kind: SyntaxError,
-  pub(crate) source: SourceTextInfo,
+  pub source: SourceTextInfo,
 }
 
 impl Eq for ParseDiagnostic {}
@@ -36,16 +36,35 @@ impl Eq for ParseDiagnostic {}
 impl PartialEq for ParseDiagnostic {
   fn eq(&self, other: &Self) -> bool {
     // excludes the source
-    self.specifier == other.specifier
-      && self.range == other.range
-      && self.kind == other.kind
+    self.0.specifier == other.0.specifier
+      && self.0.range == other.0.range
+      && self.0.kind == other.0.kind
   }
 }
 
 impl ParseDiagnostic {
+  /// Specifier of the source the diagnostic occurred in.
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    &self.0.specifier
+  }
+
+  /// Range of the diagnostic.
+  pub fn range(&self) -> SourceRange {
+    self.0.range
+  }
+
+  /// Swc syntax error
+  pub fn kind(&self) -> &SyntaxError {
+    &self.0.kind
+  }
+
+  pub(crate) fn source(&self) -> &SourceTextInfo {
+    &self.0.source
+  }
+
   /// 1-indexed display position the diagnostic occurred at.
   pub fn display_position(&self) -> LineAndColumnDisplay {
-    self.source.line_and_column_display(self.range.start)
+    self.0.source.line_and_column_display(self.0.range.start)
   }
 }
 
@@ -55,7 +74,7 @@ impl Diagnostic for ParseDiagnostic {
   }
 
   fn code(&self) -> Cow<'_, str> {
-    Cow::Borrowed(match &self.kind {
+    Cow::Borrowed(match self.kind() {
       SyntaxError::Eof => "eof",
       SyntaxError::DeclNotAllowed => "decl-not-allowed",
       SyntaxError::UsingDeclNotAllowed => "using-decl-not-allowed",
@@ -277,25 +296,26 @@ impl Diagnostic for ParseDiagnostic {
   }
 
   fn message(&self) -> Cow<'_, str> {
-    self.kind.msg()
+    self.kind().msg()
   }
 
-  fn location(&self) -> DiagnosticLocation {
+  fn location(&self) -> DiagnosticLocation<'_> {
     DiagnosticLocation::ModulePosition {
-      specifier: Cow::Borrowed(&self.specifier),
-      source_pos: DiagnosticSourcePos::SourcePos(self.range.start),
-      text_info: Cow::Borrowed(&self.source),
+      specifier: Cow::Borrowed(self.specifier()),
+      source_pos: DiagnosticSourcePos::SourcePos(self.range().start),
+      text_info: Cow::Borrowed(self.source()),
     }
   }
 
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
+    let range = self.range();
     Some(DiagnosticSnippet {
-      source: Cow::Borrowed(&self.source),
+      source: Cow::Borrowed(self.source()),
       highlights: vec![DiagnosticSnippetHighlight {
         style: DiagnosticSnippetHighlightStyle::Error,
         range: DiagnosticSourceRange {
-          start: DiagnosticSourcePos::SourcePos(self.range.start),
-          end: DiagnosticSourcePos::SourcePos(self.range.end),
+          start: DiagnosticSourcePos::SourcePos(range.start),
+          end: DiagnosticSourcePos::SourcePos(range.end),
         },
         description: None,
       }],
@@ -325,12 +345,12 @@ impl ParseDiagnostic {
     specifier: &ModuleSpecifier,
     source: SourceTextInfo,
   ) -> ParseDiagnostic {
-    ParseDiagnostic {
+    ParseDiagnostic(Box::new(ParseDiagnosticInner {
       range: err.range(),
       specifier: specifier.clone(),
       kind: err.into_kind(),
       source,
-    }
+    }))
   }
 }
 
@@ -343,13 +363,13 @@ impl fmt::Display for ParseDiagnostic {
       f,
       "{} at {}:{}:{}\n\n{}",
       self.message(),
-      self.specifier,
+      self.specifier(),
       display_position.line_number,
       display_position.column_number,
       // todo(dsherret): remove this catch unwind once we've
       // tested this out a lot
       std::panic::catch_unwind(|| {
-        get_range_text_highlight(&self.source, self.range)
+        get_range_text_highlight(self.source(), self.range())
           .lines()
           // indent two spaces
           .map(|l| {

@@ -181,7 +181,7 @@ pub trait Diagnostic {
   fn message(&self) -> Cow<'_, str>;
 
   /// The location this diagnostic is associated with.
-  fn location(&self) -> DiagnosticLocation;
+  fn location(&self) -> DiagnosticLocation<'_>;
 
   /// A snippet showing the source code associated with the diagnostic.
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>>;
@@ -197,7 +197,7 @@ pub trait Diagnostic {
   /// An optional URL to the documentation for the diagnostic.
   fn docs_url(&self) -> Option<Cow<'_, str>>;
 
-  fn display(&self) -> DiagnosticDisplay<Self> {
+  fn display(&self) -> DiagnosticDisplay<'_, Self> {
     DiagnosticDisplay { diagnostic: self }
   }
 }
