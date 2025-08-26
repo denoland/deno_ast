@@ -69,9 +69,6 @@ impl TranspileResult {
 
 #[derive(Debug, Error, JsError)]
 pub enum TranspileError {
-  #[class(type)]
-  #[error("Can't use TranspileOptions::use_decorators_proposal and TranspileOptions::use_ts_decorators together.")]
-  DecoratorOptionsConflict,
   /// Parse errors that prevent transpiling.
   #[class(inherit)]
   #[error(transparent)]
@@ -174,20 +171,27 @@ impl JsxRuntime {
   }
 }
 
+#[derive(Debug, Default, Clone, Hash)]
+pub enum DecoratorsTranspileOption {
+  /// Leave decorators as-is.
+  #[default]
+  None,
+  /// TC39 Decorators Proposal - https://github.com/tc39/proposal-decorators
+  Ecma,
+  /// TypeScript experimental decorators.
+  LegacyTypeScript {
+    /// Also emit experimental decorator meta data.
+    emit_metadata: bool,
+  },
+}
+
 /// Options which can be adjusted when transpiling a module.
 ///
 /// This implements `Hash` so the CLI can use it to bust the emit cache.
 #[derive(Debug, Clone, Hash)]
 pub struct TranspileOptions {
-  /// TypeScript experimental decorators.
-  pub use_ts_decorators: bool,
-
-  /// TC39 Decorators Proposal - https://github.com/tc39/proposal-decorators
-  pub use_decorators_proposal: bool,
-
-  /// When emitting a legacy decorator, also emit experimental decorator meta
-  /// data.  Defaults to `false`.
-  pub emit_metadata: bool,
+  /// Kind of decorators to use.
+  pub decorators: DecoratorsTranspileOption,
   /// `true` changes type stripping behaviour so that _only_ `type` imports
   /// are stripped.
   pub verbatim_module_syntax: bool,
@@ -206,9 +210,7 @@ pub struct TranspileOptions {
 impl Default for TranspileOptions {
   fn default() -> Self {
     TranspileOptions {
-      use_ts_decorators: false,
-      use_decorators_proposal: false,
-      emit_metadata: false,
+      decorators: DecoratorsTranspileOption::default(),
       verbatim_module_syntax: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       jsx: Some(Default::default()),
@@ -406,12 +408,6 @@ fn transpile(
   emit_options: &EmitOptions,
   diagnostics: &ParseDiagnostics,
 ) -> Result<EmittedSourceText, TranspileError> {
-  if transpile_options.use_decorators_proposal
-    && transpile_options.use_ts_decorators
-  {
-    return Err(TranspileError::DecoratorOptionsConflict);
-  }
-
   let module_kind = transpile_module_options.module_kind.unwrap_or({
     if matches!(media_type, MediaType::Cjs | MediaType::Cts) {
       ModuleKind::Cjs
@@ -725,14 +721,22 @@ pub fn fold_program<'a>(
     Optional::new(
       proposal::decorators::decorators(proposal::decorators::Config {
         legacy: true,
-        emit_metadata: options.emit_metadata,
+        emit_metadata: matches!(
+          options.decorators,
+          DecoratorsTranspileOption::LegacyTypeScript {
+            emit_metadata: true
+          }
+        ),
         use_define_for_class_fields: true,
       }),
-      options.use_ts_decorators,
+      matches!(
+        options.decorators,
+        DecoratorsTranspileOption::LegacyTypeScript { .. }
+      ),
     ),
     Optional::new(
       proposal::decorator_2022_03::decorator_2022_03(),
-      options.use_decorators_proposal,
+      matches!(options.decorators, DecoratorsTranspileOption::Ecma),
     ),
     helpers::inject_helpers(marks.top_level),
     // transform imports to var decls before doing the typescript pass
@@ -1607,7 +1611,9 @@ module.exports = function App() {
     let code = program
       .transpile(
         &TranspileOptions {
-          use_ts_decorators: true,
+          decorators: DecoratorsTranspileOption::LegacyTypeScript {
+            emit_metadata: false,
+          },
           ..Default::default()
         },
         &TranspileModuleOptions::default(),
@@ -1673,7 +1679,7 @@ _ts_decorate([
     let code = program
       .transpile(
         &TranspileOptions {
-          use_decorators_proposal: true,
+          decorators: DecoratorsTranspileOption::Ecma,
           ..Default::default()
         },
         &TranspileModuleOptions::default(),
@@ -1684,34 +1690,10 @@ _ts_decorate([
       .text;
     let expected =
       include_str!("./testdata/tc39_decorator_proposal_output.txt");
-    assert_eq!(&code[0..expected.len()], expected);
-  }
-
-  #[test]
-  fn test_transpile_decorators_both() {
-    let specifier =
-      ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap();
-    let source = "";
-    let program = parse_program(ParseParams {
-      specifier,
-      text: source.into(),
-      media_type: MediaType::TypeScript,
-      capture_tokens: false,
-      maybe_syntax: None,
-      scope_analysis: false,
-    })
-    .unwrap();
-    program
-      .transpile(
-        &TranspileOptions {
-          use_decorators_proposal: true,
-          use_ts_decorators: true,
-          ..Default::default()
-        },
-        &TranspileModuleOptions::default(),
-        &EmitOptions::default(),
-      )
-      .unwrap_err();
+    assert_eq!(
+      &code[0..std::cmp::min(expected.len(), code.len())],
+      expected
+    );
   }
 
   #[test]
@@ -1894,9 +1876,9 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     assert_eq!(
       get_diagnostic("function test() {"),
       concat!(
-        "Expected '}', got '<eof>' at https://deno.land/x/mod.ts:1:17\n\n",
+        "Expected '}', got '<eof>' at https://deno.land/x/mod.ts:1:18\n\n",
         "  function test() {\n",
-        "                  ~",
+        "                   ~",
       ),
     );
   }

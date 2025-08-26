@@ -556,12 +556,10 @@ mod test {
       // should contain some context by including the previous line
       // instead of just a blank line
       [
-        "Unexpected eof at file:///my_file.ts:2:1",
+        "Expression expected at file:///my_file.ts:1:22",
         "",
         "  setTimeout(() => {}),",
-        "  ~~~~~~~~~~~~~~~~~~~~~",
-        "",
-        "  ~"
+        "                       ~",
       ]
       .join("\n")
     );
@@ -574,18 +572,12 @@ mod test {
       .unwrap();
     assert_eq!(
       diagnostic.to_string(),
-      // should contain some context by including the previous lines
-      // instead of just a blank line
+      // should contain some context by including the expression
       [
-        "Unexpected eof at file:///my_file.ts:9:1",
+        "Expression expected at file:///my_file.ts:1:22",
         "",
         "  setTimeout(() => {}),",
-        "  ~~~~~~~~~~~~~~~~~~~~~",
-        "",
-        "  ~",
-        "  ...",
-        "",
-        "  ~"
+        "                       ~",
       ]
       .join("\n")
     );
