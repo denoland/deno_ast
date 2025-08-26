@@ -7,10 +7,6 @@ name = "Inflector"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
-dependencies = [
- "lazy_static",
- "regex",
-]
 
 [[package]]
 name = "ahash"
@@ -64,7 +60,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1e2cddd48eafd883890770673b1971faceaf80a185445671abc3ea0c00593ee"
 dependencies = [
  "quote",
- "swc_macros_common 1.0.1",
+ "swc_macros_common",
  "syn",
 ]
 
@@ -322,11 +318,10 @@ dependencies = [
  "swc_ecma_visit",
  "swc_eq_ignore_macros",
  "swc_graph_analyzer",
- "swc_macros_common 1.0.1",
+ "swc_macros_common",
  "swc_sourcemap",
  "swc_trace_macro",
  "swc_visit",
- "swc_visit_macros",
  "text_lines",
  "thiserror",
  "unicode-width 0.2.0",
@@ -453,7 +448,7 @@ version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "308530a56b099da144ebc5d8e179f343ad928fa2b3558d1eb3db9af18d6eff43"
 dependencies = [
- "swc_macros_common 1.0.1",
+ "swc_macros_common",
  "syn",
 ]
 
@@ -680,12 +675,6 @@ name = "itoa"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
-
-[[package]]
-name = "lazy_static"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "libc"
@@ -1123,7 +1112,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae36a4951ca7bd1cfd991c241584a9824a70f6aff1e7d4f693fb3f2465e4030e"
 dependencies = [
  "quote",
- "swc_macros_common 1.0.1",
+ "swc_macros_common",
  "syn",
 ]
 
@@ -1229,7 +1218,7 @@ checksum = "7b416e8ce6de17dc5ea496e10c7012b35bbc0e3fef38d2e065eed936490db0b3"
 dependencies = [
  "proc-macro2",
  "quote",
- "swc_macros_common 1.0.1",
+ "swc_macros_common",
  "syn",
 ]
 
@@ -1284,7 +1273,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e276dc62c0a2625a560397827989c82a93fd545fcf6f7faec0935a82cc4ddbb8"
 dependencies = [
  "proc-macro2",
- "swc_macros_common 1.0.1",
+ "swc_macros_common",
  "syn",
 ]
 
@@ -1619,7 +1608,7 @@ checksum = "bc777288799bf6786e5200325a56e4fbabba590264a4a48a0c70b16ad0cf5cd8"
 dependencies = [
  "proc-macro2",
  "quote",
- "swc_macros_common 1.0.1",
+ "swc_macros_common",
  "syn",
 ]
 
@@ -1766,17 +1755,6 @@ dependencies = [
 
 [[package]]
 name = "swc_macros_common"
-version = "0.3.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f486687bfb7b5c560868f69ed2d458b880cebc9babebcb67e49f31b55c5bf847"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "swc_macros_common"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aae1efbaa74943dc5ad2a2fb16cbd78b77d7e4d63188f3c5b4df2b4dcd2faaae"
@@ -1823,19 +1801,6 @@ checksum = "62fb71484b486c185e34d2172f0eabe7f4722742aad700f426a494bb2de232a2"
 dependencies = [
  "either",
  "new_debug_unreachable",
-]
-
-[[package]]
-name = "swc_visit_macros"
-version = "0.5.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92807d840959f39c60ce8a774a3f83e8193c658068e6d270dbe0a05e40e90b41"
-dependencies = [
- "Inflector",
- "proc-macro2",
- "quote",
- "swc_macros_common 0.3.13",
- "syn",
 ]
 
 [[package]]
