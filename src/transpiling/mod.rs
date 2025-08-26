@@ -33,6 +33,7 @@ use crate::Marks;
 use crate::ModuleKind;
 use crate::ModuleSpecifier;
 use crate::ParseDiagnostic;
+use crate::ParseDiagnosticInner;
 use crate::ParseDiagnostics;
 use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
@@ -375,7 +376,7 @@ impl ParsedSource {
 fn resolve_transpile_options(
   media_type: MediaType,
   options: &TranspileOptions,
-) -> Cow<TranspileOptions> {
+) -> Cow<'_, TranspileOptions> {
   if options.jsx.is_some() {
     let allows_jsx = matches!(media_type, MediaType::Jsx | MediaType::Tsx);
     if !allows_jsx {
@@ -527,12 +528,12 @@ fn convert_script_module_to_swc_script(
       | ModuleDecl::ExportDefaultExpr(_)
       | ModuleDecl::ExportAll(_) => {
         return Err(TranspileError::ParseErrors(ParseDiagnosticsError(vec![
-          ParseDiagnostic {
+          ParseDiagnostic(Box::new(ParseDiagnosticInner {
             specifier: specifier.clone(),
             range: decl.range(),
             kind: SyntaxError::ImportExportInScript,
             source: SourceTextInfo::new(source.into()),
-          },
+          })),
         ])));
       }
       ModuleDecl::TsImportEquals(ts_import_equals_decl) => {
@@ -933,7 +934,7 @@ fn ensure_no_fatal_diagnostics<'a>(
   diagnostics: Box<dyn Iterator<Item = &'a ParseDiagnostic> + 'a>,
 ) -> Result<(), ParseDiagnosticsError> {
   let fatal_diagnostics = diagnostics
-    .filter(|d| is_fatal_syntax_error(&d.kind))
+    .filter(|d| is_fatal_syntax_error(d.kind()))
     .map(ToOwned::to_owned)
     .collect::<Vec<_>>();
   if !fatal_diagnostics.is_empty() {
