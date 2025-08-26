@@ -21,9 +21,9 @@ compat = ["transforms", "swc_ecma_transforms_compat", "swc_trace_macro", "swc_co
 proposal = ["transforms", "swc_ecma_transforms_proposal", "swc_ecma_transforms_classes", "swc_ecma_transforms_macros", "swc_macros_common"]
 react = ["transforms", "swc_ecma_transforms_react", "swc_ecma_transforms_macros", "swc_config", "swc_config_macro", "swc_macros_common"]
 scopes = ["view", "utils", "visit"]
-sourcemap = ["dprint-swc-ext/sourcemap"]
+sourcemap = ["dprint-swc-ext/sourcemap", "swc_sourcemap"]
 transforms = ["swc_ecma_loader", "swc_ecma_transforms_base"]
-emit = ["base64", "codegen", "sourcemap", "dep:sourcemap"]
+emit = ["base64", "codegen", "sourcemap"]
 transpiling = ["emit", "proposal", "react", "transforms", "typescript", "utils", "visit"]
 typescript = ["transforms", "swc_ecma_transforms_typescript"]
 utils = ["swc_ecma_utils"]
@@ -37,7 +37,7 @@ deno_media_type = "0.2.8"
 deno_terminal = "0.2.2"
 deno_error = "0.7.0"
 
-dprint-swc-ext = "0.24.0"
+dprint-swc-ext = "0.25.0"
 percent-encoding = "2.3.1"
 serde = { version = "1.0.219", features = ["derive"] }
 text_lines = { version = "0.6.0", features = ["serialization"] }
@@ -49,34 +49,34 @@ unicode-width = "0.2.0"
 # pulling in new versions of swc crates
 #
 # NOTE: You can automatically update these dependencies by running ./scripts/update_swc_deps.ts
-swc_atoms = "=5.0.0"
-swc_common = "=9.2.0"
-swc_config = { version = "=3.0.0", optional = true }
-swc_config_macro = { version = "=1.0.0", optional = true }
-swc_ecma_ast = { version = "=9.0.0", features = ["serde-impl"] }
-swc_ecma_codegen = { version = "=11.0.0", optional = true }
-swc_ecma_codegen_macros = { version = "=2.0.0", optional = true }
-swc_ecma_loader = { version = "=9.0.0", optional = true }
-swc_ecma_parser = "=12.0.0"
-swc_ecma_transforms_base = { version = "=13.0.0", optional = true }
-swc_ecma_transforms_classes = { version = "=13.0.0", optional = true }
-swc_ecma_transforms_compat = { version = "=15.0.0", optional = true }
-swc_ecma_transforms_macros = { version = "=1.0.0", optional = true }
-swc_ecma_transforms_optimization = { version = "=14.0.0", optional = true }
-swc_ecma_transforms_proposal = { version = "=13.0.0", optional = true }
-swc_ecma_transforms_react = { version = "=15.0.0", optional = true }
-swc_ecma_transforms_typescript = { version = "=15.0.0", optional = true }
-swc_ecma_utils = { version = "=13.1.0", optional = true }
-swc_ecma_visit = { version = "=9.0.0", optional = true }
-swc_eq_ignore_macros = "=1.0.0"
-swc_bundler = { version = "=17.0.0", optional = true }
-swc_graph_analyzer = { version = "=10.0.0", optional = true }
-swc_macros_common = { version = "=1.0.0", optional = true }
-swc_trace_macro = { version = "=2.0.1", optional = true }
-swc_visit = { version = "=2.0.0", optional = true }
+swc_atoms = "=7.0.0"
+swc_common = "=14.0.3"
+swc_config = { version = "=3.1.1", optional = true }
+swc_config_macro = { version = "=1.0.1", optional = true }
+swc_ecma_ast = { version = "=15.0.0", features = ["serde-impl"] }
+swc_ecma_codegen = { version = "=17.0.0", optional = true }
+swc_ecma_codegen_macros = { version = "=2.0.2", optional = true }
+swc_ecma_loader = { version = "=14.0.0", optional = true }
+swc_ecma_lexer = "=23.0.0"
+swc_ecma_parser = "=23.0.0"
+swc_ecma_transforms_base = { version = "=25.0.0", optional = true }
+swc_ecma_transforms_classes = { version = "=25.0.0", optional = true }
+swc_ecma_transforms_compat = { version = "=27.0.0", optional = true }
+swc_ecma_transforms_macros = { version = "=1.0.1", optional = true }
+swc_ecma_transforms_optimization = { version = "=26.0.0", optional = true }
+swc_ecma_transforms_proposal = { version = "=25.0.0", optional = true }
+swc_ecma_transforms_react = { version = "=28.0.0", optional = true }
+swc_ecma_transforms_typescript = { version = "=28.0.0", optional = true }
+swc_ecma_utils = { version = "=21.0.0", optional = true }
+swc_ecma_visit = { version = "=15.0.0", optional = true }
+swc_eq_ignore_macros = "=1.0.1"
+swc_bundler = { version = "=29.0.0", optional = true }
+swc_graph_analyzer = { version = "=14.0.1", optional = true }
+swc_macros_common = { version = "=1.0.1", optional = true }
+swc_sourcemap = { version = "9.3.4", optional = true }
+swc_trace_macro = { version = "=2.0.2", optional = true }
+swc_visit = { version = "=2.0.1", optional = true }
 swc_visit_macros = { version = "=0.5.13", optional = true }
-# just for error handling
-sourcemap = { version = "9.1.2", optional = true }
 thiserror = "2.0.12"
 
 [dev-dependencies]

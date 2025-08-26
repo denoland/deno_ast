@@ -62,9 +62,12 @@ pub mod swc {
   pub use swc_ecma_ast as ast;
   #[cfg(feature = "codegen")]
   pub use swc_ecma_codegen as codegen;
+  pub use swc_ecma_lexer as lexer;
   #[cfg(feature = "transforms")]
   pub use swc_ecma_loader as loader;
   pub use swc_ecma_parser as parser;
+  #[cfg(feature = "sourcemap")]
+  pub use swc_sourcemap as sourcemap;
   #[cfg(feature = "transforms")]
   pub mod transforms {
     pub use self::fixer::fixer;

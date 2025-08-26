@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use dprint_swc_ext::common::SourceTextInfo;
 use dprint_swc_ext::common::StartSourcePos;
+use swc_ecma_lexer::common::parser::Parser as _;
 
 use crate::comments::MultiThreadedComments;
 use crate::swc::ast::EsVersion;
@@ -13,7 +14,6 @@ use crate::swc::ast::Script;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
 use crate::swc::parser::error::Error as SwcError;
-use crate::swc::parser::lexer::Lexer;
 use crate::swc::parser::token::TokenAndSpan;
 use crate::swc::parser::EsSyntax;
 use crate::swc::parser::Syntax;
@@ -292,17 +292,19 @@ fn parse_string_input(
   SwcError,
 > {
   let comments = SingleThreadedComments::default();
-  let lexer = Lexer::new(syntax, ES_VERSION, input, Some(&comments));
 
   if capture_tokens {
-    let lexer = crate::swc::parser::Capturing::new(lexer);
-    let mut parser = crate::swc::parser::Parser::new_from(lexer);
+    let lexer =
+      crate::swc::lexer::Lexer::new(syntax, ES_VERSION, input, Some(&comments));
+    let lexer = crate::swc::lexer::Capturing::new(lexer);
+    let mut parser = crate::swc::lexer::Parser::new_from(lexer);
     let program = match parse_mode {
       ParseMode::Program => parser.parse_program()?,
       ParseMode::Module => Program::Module(parser.parse_module()?),
       ParseMode::Script => Program::Script(parser.parse_script()?),
     };
-    let tokens = parser.input().take();
+    let iter = &mut parser.input_mut().iter;
+    let tokens = crate::swc::lexer::Capturing::take(iter);
     let errors = parser.take_errors();
     let script_module_errors = parser.take_script_module_errors();
 
@@ -316,6 +318,12 @@ fn parse_string_input(
       },
     ))
   } else {
+    let lexer = crate::swc::parser::Lexer::new(
+      syntax,
+      ES_VERSION,
+      input,
+      Some(&comments),
+    );
     let mut parser = crate::swc::parser::Parser::new_from(lexer);
     let program = match parse_mode {
       ParseMode::Program => parser.parse_program()?,

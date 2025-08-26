@@ -66,7 +66,7 @@ pub enum EmitError {
   SwcEmit(std::io::Error),
   #[class(type)]
   #[error(transparent)]
-  SourceMap(sourcemap::Error),
+  SourceMap(crate::swc::sourcemap::Error),
   #[class(type)]
   #[error(transparent)]
   SourceMapEncode(base64::EncodeSliceError),
@@ -120,11 +120,8 @@ pub fn emit(
       inline_sources: emit_options.inline_sources,
       maybe_base: emit_options.source_map_base.as_ref(),
     };
-    let mut source_map = source_map.build_source_map_with_config(
-      &src_map_buf,
-      None,
-      source_map_config,
-    );
+    let mut source_map =
+      source_map.build_source_map(&src_map_buf, None, source_map_config);
     if let Some(file) = &emit_options.source_map_file {
       source_map.set_file(Some(file.to_string()));
     }

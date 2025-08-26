@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { $, Crate, Repo } from "./deps.ts";
+import { $, Crate, Repo } from "@deno/rust-automation";
 
 export const rootDir = $.path(import.meta).join("../../../").resolve();
 

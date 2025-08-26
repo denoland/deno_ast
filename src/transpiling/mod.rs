@@ -224,12 +224,12 @@ impl TranspileOptions {
         .jsx
         .as_ref()
         .and_then(|j| j.classic())
-        .map(|jsx| Lrc::new(jsx.factory.clone())),
+        .map(|jsx| jsx.factory.clone().into()),
       pragma_frag: self
         .jsx
         .as_ref()
         .and_then(|j| j.classic())
-        .map(|jsx| Lrc::new(jsx.fragment_factory.clone())),
+        .map(|jsx| jsx.fragment_factory.clone().into()),
     }
   }
 
@@ -794,12 +794,12 @@ pub fn fold_program<'a>(
             .jsx
             .as_ref()
             .and_then(|jsx| jsx.classic())
-            .map(|jsx| Lrc::new(jsx.factory.clone())),
+            .map(|jsx| jsx.factory.clone().into()),
           pragma_frag: options
             .jsx
             .as_ref()
             .and_then(|jsx| jsx.classic())
-            .map(|jsx| Lrc::new(jsx.fragment_factory.clone())),
+            .map(|jsx| jsx.fragment_factory.clone().into()),
           // This will use `Object.assign()` instead of the `_extends` helper
           // when spreading props (Note: this property is deprecated)
           use_builtins: Some(true),
