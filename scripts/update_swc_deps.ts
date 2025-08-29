@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run -A
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { $, Crate, Repo } from "./deps.ts";
+import { $, Crate, Repo } from "@deno/rust-automation";
 
 const repo = await Repo.load({
   name: "deno_ast",
