@@ -57,7 +57,7 @@ swc_ecma_ast = { version = "=15.0.0", features = ["serde-impl"] }
 swc_ecma_codegen = { version = "=17.0.0", optional = true }
 swc_ecma_codegen_macros = { version = "=2.0.2", optional = true }
 swc_ecma_loader = { version = "=14.0.0", optional = true }
-swc_ecma_lexer = "=23.0.0"
+swc_ecma_lexer = "=23.0.1"
 swc_ecma_parser = "=23.0.0"
 swc_ecma_transforms_base = { version = "=25.0.0", features = ["inline-helpers"], optional = true }
 swc_ecma_transforms_classes = { version = "=25.0.0", optional = true }

@@ -2,7 +2,7 @@
 
 import { $, Crate, Repo } from "@deno/rust-automation";
 
-export const rootDir = $.path(import.meta).join("../../../").resolve();
+export const rootDir = $.path(import.meta.url).join("../../../").resolve();
 
 const repoNames = [
   "deno_ast",
