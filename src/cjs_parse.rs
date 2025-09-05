@@ -104,18 +104,17 @@ impl CjsVisitor {
       }
       // Object.defineProperty(exports, key, { ... });
       Expr::Ident(object_define_prop_ident) => {
-        if let Some(obj_lit) = call_expr.args[2].expr.as_object() {
-          if let Some(get_prop) = get_object_define_get_prop(obj_lit) {
-            // get: function () {
-            //   return _external002[key];
-            // }
-            if let Some(Expr::Member(member)) = get_prop_return_expr(get_prop) {
-              if let Some(require_value) = self
-                .get_member_require_value(member, &object_define_prop_ident.sym)
-              {
-                self.add_reexport(&require_value);
-              }
-            }
+        if let Some(obj_lit) = call_expr.args[2].expr.as_object()
+          && let Some(get_prop) = get_object_define_get_prop(obj_lit)
+        {
+          // get: function () {
+          //   return _external002[key];
+          // }
+          if let Some(Expr::Member(member)) = get_prop_return_expr(get_prop)
+            && let Some(require_value) = self
+              .get_member_require_value(member, &object_define_prop_ident.sym)
+          {
+            self.add_reexport(&require_value);
           }
         }
       }
@@ -167,14 +166,13 @@ impl Visit for CjsVisitor {
 
   fn visit_var_decl(&mut self, stmt: &VarDecl) {
     for decl in &stmt.decls {
-      if let Some(id) = decl.name.as_ident() {
-        if let Some(init) = &decl.init {
-          if let Some(require_value) = get_expr_require_value(init) {
-            self
-              .var_assignments
-              .insert(id.id.sym.to_string(), require_value.to_string());
-          }
-        }
+      if let Some(id) = decl.name.as_ident()
+        && let Some(init) = &decl.init
+        && let Some(require_value) = get_expr_require_value(init)
+      {
+        self
+          .var_assignments
+          .insert(id.id.sym.to_string(), require_value.to_string());
       }
     }
     stmt.visit_children_with(self);
@@ -214,10 +212,10 @@ impl Visit for CjsVisitor {
     fn is_export_callee(callee: &Callee) -> bool {
       if let Some(member) = get_callee_member_expr(callee) {
         // ex. tslib.__exportStar
-        if member.obj.as_ident().is_some() {
-          if let Some(right_side) = get_member_prop_ident_text(&member.prop) {
-            return matches!(right_side, "__exportStar" | "__export");
-          }
+        if member.obj.as_ident().is_some()
+          && let Some(right_side) = get_member_prop_ident_text(&member.prop)
+        {
+          return matches!(right_side, "__exportStar" | "__export");
         }
       } else if let Some(ident) = get_callee_ident(callee) {
         return matches!(&*ident.sym, "__exportStar" | "__export");
@@ -273,12 +271,11 @@ impl Visit for CjsVisitor {
             // * `exports[key] = _something[key];
             let computed = left_member.prop.as_computed();
             let computed_ident = computed.and_then(|c| c.expr.as_ident());
-            if let Some(computed_ident) = computed_ident {
-              if let Some(require_value) =
+            if let Some(computed_ident) = computed_ident
+              && let Some(require_value) =
                 self.get_member_require_value(right_member, &computed_ident.sym)
-              {
-                self.add_reexport(&require_value);
-              }
+            {
+              self.add_reexport(&require_value);
             }
           }
         } else if let Some(right_expr) = assign_expr.right.as_assign() {
@@ -307,10 +304,10 @@ fn is_module_exports_expr(expr: &Expr) -> bool {
 }
 
 fn is_module_exports_member(member_expr: &MemberExpr) -> bool {
-  if let Some(obj_ident) = member_expr.obj.as_ident() {
-    if obj_ident.sym == *"module" {
-      return get_member_prop_text(&member_expr.prop) == Some("exports");
-    }
+  if let Some(obj_ident) = member_expr.obj.as_ident()
+    && obj_ident.sym == *"module"
+  {
+    return get_member_prop_text(&member_expr.prop) == Some("exports");
   }
   false
 }

@@ -417,10 +417,10 @@ fn is_serializable(
         return false;
       }
 
-      if let Some(skip_elements) = skip_serialize {
-        if skip_elements.contains(&name) {
-          return false;
-        }
+      if let Some(skip_elements) = skip_serialize
+        && skip_elements.contains(&name)
+      {
+        return false;
       }
 
       if opening.attrs.is_empty() {
@@ -822,11 +822,11 @@ impl JsxPrecompile {
 
         // Flatten to a single child call when children
         // array only contains one element
-        if elems.len() == 1 {
-          if let Some(first) = &elems[0] {
-            let expr = &*first.expr;
-            return Some(expr.clone());
-          }
+        if elems.len() == 1
+          && let Some(first) = &elems[0]
+        {
+          let expr = &*first.expr;
+          return Some(expr.clone());
         }
 
         Some(Expr::Array(ArrayLit {
@@ -1293,19 +1293,19 @@ impl JsxPrecompile {
                       _ => {}
                     },
                     Expr::Unary(unary_expr) => {
-                      if unary_expr.op == UnaryOp::Minus {
-                        if let Expr::Lit(Lit::Num(num_lit)) = &*unary_expr.arg {
-                          let value = format!("-{}", &num_lit.value);
-                          let serialized_attr =
-                            serialize_attr(&attr_name, &value);
+                      if unary_expr.op == UnaryOp::Minus
+                        && let Expr::Lit(Lit::Num(num_lit)) = &*unary_expr.arg
+                      {
+                        let value = format!("-{}", &num_lit.value);
+                        let serialized_attr =
+                          serialize_attr(&attr_name, &value);
 
-                          strings
-                            .last_mut()
-                            .unwrap()
-                            .push_str(serialized_attr.as_str());
-                          continue;
-                        };
-                      }
+                        strings
+                          .last_mut()
+                          .unwrap()
+                          .push_str(serialized_attr.as_str());
+                        continue;
+                      };
                     }
                     _ => {}
                   }

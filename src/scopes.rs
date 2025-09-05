@@ -204,19 +204,16 @@ impl Visit for Analyzer<'_> {
 
       // If the class name and the variable name are the same like `let Foo = class Foo {}`,
       // this binding should be treated as `BindingKind::Class`.
-      if let Some(expr) = &v.init {
-        if let Expr::Class(ClassExpr {
+      if let Some(expr) = &v.init
+        && let Expr::Class(ClassExpr {
           ident: Some(class_name),
           ..
         }) = &**expr
-        {
-          if let Pat::Ident(var_name) = &v.name {
-            if var_name.id.sym == class_name.sym {
-              self.declare(BindingKind::Class, class_name);
-              return;
-            }
-          }
-        }
+        && let Pat::Ident(var_name) = &v.name
+        && var_name.id.sym == class_name.sym
+      {
+        self.declare(BindingKind::Class, class_name);
+        return;
       }
 
       self.declare_pat(
