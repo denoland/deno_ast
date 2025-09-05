@@ -1,5 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::LineAndColumnDisplay;
+use crate::ModuleSpecifier;
+use crate::SourceRange;
+use crate::SourceRangedForSpanned;
+use crate::SourceTextInfo;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticLevel;
 use crate::diagnostics::DiagnosticLocation;
@@ -9,11 +14,6 @@ use crate::diagnostics::DiagnosticSnippetHighlightStyle;
 use crate::diagnostics::DiagnosticSourcePos;
 use crate::diagnostics::DiagnosticSourceRange;
 use crate::swc::parser::error::SyntaxError;
-use crate::LineAndColumnDisplay;
-use crate::ModuleSpecifier;
-use crate::SourceRange;
-use crate::SourceRangedForSpanned;
-use crate::SourceTextInfo;
 use deno_error::JsError;
 use std::borrow::Cow;
 use std::fmt;

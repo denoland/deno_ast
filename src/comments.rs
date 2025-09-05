@@ -4,12 +4,12 @@
 // implement swc's `Comments` trait
 #![allow(clippy::disallowed_types)]
 
+use crate::SourcePos;
+use crate::swc::common::BytePos as SwcBytePos;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::Comments as SwcComments;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::comments::SingleThreadedCommentsMapInner;
-use crate::swc::common::BytePos as SwcBytePos;
-use crate::SourcePos;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -196,13 +196,13 @@ fn panic_readonly() -> ! {
 
 #[cfg(test)]
 mod test {
-  use crate::parse_module;
-  use crate::swc::common::comments::SingleThreadedComments;
   use crate::MediaType;
   use crate::ModuleSpecifier;
   use crate::MultiThreadedComments;
   use crate::ParseParams;
   use crate::StartSourcePos;
+  use crate::parse_module;
+  use crate::swc::common::comments::SingleThreadedComments;
 
   #[test]
   fn general_use() {

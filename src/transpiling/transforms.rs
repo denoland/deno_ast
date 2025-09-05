@@ -5,8 +5,8 @@ use swc_common::SyntaxContext;
 
 use crate::swc::ast as swc_ast;
 use crate::swc::common::DUMMY_SP;
-use crate::swc::ecma_visit::noop_fold_type;
 use crate::swc::ecma_visit::Fold;
+use crate::swc::ecma_visit::noop_fold_type;
 
 /// Transforms import declarations to variable declarations
 /// with a dynamic import. This is used to provide import
@@ -285,19 +285,19 @@ fn create_assignment(key: swc_ast::Ident) -> swc_ast::ObjectPatProp {
 
 #[cfg(test)]
 mod test {
+  use crate::ModuleSpecifier;
   use crate::swc::ast::Module;
-  use crate::swc::codegen::text_writer::JsWriter;
   use crate::swc::codegen::Node;
-  use crate::swc::common::sync::Lrc;
+  use crate::swc::codegen::text_writer::JsWriter;
   use crate::swc::common::FileName;
   use crate::swc::common::SourceMap;
+  use crate::swc::common::sync::Lrc;
   use crate::swc::ecma_visit::Fold;
   use crate::swc::ecma_visit::FoldWith;
   use crate::swc::parser::Parser;
   use crate::swc::parser::StringInput;
   use crate::swc::parser::Syntax;
   use crate::swc::parser::TsSyntax;
-  use crate::ModuleSpecifier;
   use pretty_assertions::assert_eq;
 
   use super::*;

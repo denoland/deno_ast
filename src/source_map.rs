@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::swc::common::sync::Lrc;
+use crate::ModuleSpecifier;
 use crate::swc::common::FileName;
 use crate::swc::common::SourceFile;
-use crate::ModuleSpecifier;
+use crate::swc::common::sync::Lrc;
 
 // this is used in JSR, so don't remove it
 pub trait IntoSwcFileName {

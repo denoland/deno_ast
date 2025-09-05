@@ -353,11 +353,11 @@ impl Visit for Analyzer<'_> {
 #[cfg(test)]
 mod tests {
   use super::{BindingKind, Scope, ScopeKind, Var};
-  use crate::parse_module;
-  use crate::swc::ast::Id;
   use crate::MediaType;
   use crate::ModuleSpecifier;
   use crate::ParseParams;
+  use crate::parse_module;
+  use crate::swc::ast::Id;
 
   fn test_scope(source_code: &str, test: impl Fn(Scope)) {
     let parsed_source = parse_module(ParseParams {

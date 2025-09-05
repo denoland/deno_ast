@@ -492,10 +492,11 @@ fn print_snippet(
       write!(io, "{}", highlight.style.style_underline(underline))?;
 
       if line_number == end_line_number
-        && let Some(description) = &highlight.description {
-          write!(io, " {}", highlight.style.style_underline(description))?;
-          wrote_description = true;
-        }
+        && let Some(description) = &highlight.description
+      {
+        write!(io, " {}", highlight.style.style_underline(description))?;
+        wrote_description = true;
+      }
 
       writeln!(io)?;
     }

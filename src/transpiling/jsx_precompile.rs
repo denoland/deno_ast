@@ -1,15 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::swc::atoms::Atom;
-use swc_common::SyntaxContext;
 use swc_common::DUMMY_SP;
+use swc_common::SyntaxContext;
 use swc_ecma_ast::*;
 use swc_ecma_lexer::common::lexer::char::CharExt;
 use swc_ecma_utils::prepend_stmt;
 use swc_ecma_utils::quote_ident;
-use swc_ecma_visit::noop_visit_mut_type;
 use swc_ecma_visit::VisitMut;
 use swc_ecma_visit::VisitMutWith;
+use swc_ecma_visit::noop_visit_mut_type;
 
 #[derive(Debug, Default)]
 pub struct JsxPrecompile {
@@ -374,11 +374,7 @@ fn jsx_text_to_str(
     text.push_str(line);
   }
 
-  if escape {
-    escape_html(&text)
-  } else {
-    text
-  }
+  if escape { escape_html(&text) } else { text }
 }
 
 /// Convert a JSXMemberExpr to MemberExpr. We offload this to a
@@ -1630,13 +1626,13 @@ fn new_ident(name: Atom) -> Ident {
 mod tests {
   use std::collections::HashMap;
 
+  use crate::EmitOptions;
+  use crate::ModuleSpecifier;
+  use crate::SourceMap;
   use crate::swc::parser::Parser;
   use crate::swc::parser::StringInput;
   use crate::swc::parser::Syntax;
   use crate::swc::parser::TsSyntax;
-  use crate::EmitOptions;
-  use crate::ModuleSpecifier;
-  use crate::SourceMap;
   use pretty_assertions::assert_eq;
   use swc_common::comments::SingleThreadedComments;
   use swc_ecma_visit::visit_mut_pass;

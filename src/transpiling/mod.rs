@@ -9,6 +9,20 @@ use dprint_swc_ext::common::SourceTextInfo;
 use swc_ecma_visit::fold_pass;
 use thiserror::Error;
 
+use crate::EmitError;
+use crate::EmitOptions;
+use crate::EmittedSourceText;
+use crate::Globals;
+use crate::Marks;
+use crate::ModuleKind;
+use crate::ModuleSpecifier;
+use crate::ParseDiagnostic;
+use crate::ParseDiagnosticInner;
+use crate::ParseDiagnostics;
+use crate::ParseDiagnosticsError;
+use crate::ParsedSource;
+use crate::ProgramRef;
+use crate::SourceMap;
 use crate::emit;
 use crate::swc::ast::Program;
 use crate::swc::common::comments::SingleThreadedComments;
@@ -25,20 +39,6 @@ use crate::swc::transforms::react;
 use crate::swc::transforms::resolver;
 use crate::swc::transforms::typescript;
 use crate::swc::visit::Optional;
-use crate::EmitError;
-use crate::EmitOptions;
-use crate::EmittedSourceText;
-use crate::Globals;
-use crate::Marks;
-use crate::ModuleKind;
-use crate::ModuleSpecifier;
-use crate::ParseDiagnostic;
-use crate::ParseDiagnosticInner;
-use crate::ParseDiagnostics;
-use crate::ParseDiagnosticsError;
-use crate::ParsedSource;
-use crate::ProgramRef;
-use crate::SourceMap;
 
 use deno_error::JsError;
 
@@ -356,7 +356,7 @@ impl ParsedSource {
           syntax_contexts: inner.syntax_contexts,
           diagnostics: inner.diagnostics,
           globals: inner.globals,
-        })))
+        })));
       }
     };
     Ok(transpile(
@@ -475,8 +475,8 @@ fn convert_script_module_to_swc_script(
   module: crate::swc::ast::Module,
 ) -> Result<crate::swc::ast::Script, TranspileError> {
   use crate::swc::ast::*;
-  use crate::swc::common::SyntaxContext;
   use crate::swc::common::DUMMY_SP;
+  use crate::swc::common::SyntaxContext;
 
   fn ts_entity_name_to_expr(ts_entity_name: TsEntityName) -> Expr {
     match ts_entity_name {
@@ -978,11 +978,11 @@ fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
 mod tests {
   use super::*;
 
-  use crate::parse_program;
   use crate::MediaType;
   use crate::ModuleSpecifier;
   use crate::ParseParams;
   use crate::SourceMapOption;
+  use crate::parse_program;
 
   use base64::Engine;
   use pretty_assertions::assert_eq;
@@ -1070,9 +1070,11 @@ var N;
       &transpiled_source.text[..expected_text.len()],
       expected_text
     );
-    assert!(transpiled_source
-      .text
-      .contains("\n//# sourceMappingURL=data:application/json;base64,"));
+    assert!(
+      transpiled_source
+        .text
+        .contains("\n//# sourceMappingURL=data:application/json;base64,")
+    );
     assert!(transpiled_source.source_map.is_none());
   }
 
@@ -1147,9 +1149,11 @@ var N;
       )
       .unwrap()
       .into_source();
-    assert!(transpiled_source
-      .text
-      .contains("React.createElement(\"div\", null"));
+    assert!(
+      transpiled_source
+        .text
+        .contains("React.createElement(\"div\", null")
+    );
   }
 
   #[test]
@@ -1180,9 +1184,11 @@ var N;
       )
       .unwrap()
       .into_source();
-    assert!(transpiled_source
-      .text
-      .contains("React.createElement(\"my:tag\", null"));
+    assert!(
+      transpiled_source
+        .text
+        .contains("React.createElement(\"my:tag\", null")
+    );
     assert!(transpiled_source.text.contains("\"my:attr\": \"this\""));
   }
 
@@ -1844,31 +1850,39 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       scope_analysis: false,
     })
     .unwrap();
-    assert!(parsed_source
-      .transpile(
-        &Default::default(),
-        &TranspileModuleOptions::default(),
-        &EmitOptions::default()
-      )
-      .is_ok());
+    assert!(
+      parsed_source
+        .transpile(
+          &Default::default(),
+          &TranspileModuleOptions::default(),
+          &EmitOptions::default()
+        )
+        .is_ok()
+    );
   }
 
   #[test]
   fn diagnostic_octal_and_leading_zero_num_literals() {
-    assert_eq!(get_diagnostic("077"), concat!(
-      "Legacy octal literals are not available when targeting ECMAScript 5 and higher ",
-      "at https://deno.land/x/mod.ts:1:1\n\n",
-      "  077\n",
-      "  ~~~\n\n",
-      "Legacy octal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-      "  077\n",
-      "  ~~~",
-    ));
-    assert_eq!(get_diagnostic("099"), concat!(
-      "Legacy decimal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-      "  099\n",
-      "  ~~~",
-    ));
+    assert_eq!(
+      get_diagnostic("077"),
+      concat!(
+        "Legacy octal literals are not available when targeting ECMAScript 5 and higher ",
+        "at https://deno.land/x/mod.ts:1:1\n\n",
+        "  077\n",
+        "  ~~~\n\n",
+        "Legacy octal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
+        "  077\n",
+        "  ~~~",
+      )
+    );
+    assert_eq!(
+      get_diagnostic("099"),
+      concat!(
+        "Legacy decimal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
+        "  099\n",
+        "  ~~~",
+      )
+    );
   }
 
   #[test]
@@ -1905,25 +1919,31 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
 
   #[test]
   fn diagnostic_missing_init_in_using() {
-    assert_eq!(get_diagnostic("using test"), concat!(
-      "Using declaration requires initializer at https://deno.land/x/mod.ts:1:1\n\n",
-      "  using test\n",
-      "  ~~~~~~~~~~",
-    ));
+    assert_eq!(
+      get_diagnostic("using test"),
+      concat!(
+        "Using declaration requires initializer at https://deno.land/x/mod.ts:1:1\n\n",
+        "  using test\n",
+        "  ~~~~~~~~~~",
+      )
+    );
   }
 
   #[test]
   fn diagnostic_invalid_left_hand_side_of_assignment() {
-    assert_eq!(get_diagnostic("(true ? a : b) = 1;"), concat!(
-      "The left-hand side of an assignment expression must be a variable or a property access. at https://deno.land/x/mod.ts:1:1\n\n",
-      "  (true ? a : b) = 1;\n",
-      "  ~~~~~~~~~~~~~~\n",
-      "\n",
-      // for some reason, swc does the same diagnostic twice
-      "The left-hand side of an assignment expression must be a variable or a property access. at https://deno.land/x/mod.ts:1:1\n\n",
-      "  (true ? a : b) = 1;\n",
-      "  ~~~~~~~~~~~~~~",
-    ));
+    assert_eq!(
+      get_diagnostic("(true ? a : b) = 1;"),
+      concat!(
+        "The left-hand side of an assignment expression must be a variable or a property access. at https://deno.land/x/mod.ts:1:1\n\n",
+        "  (true ? a : b) = 1;\n",
+        "  ~~~~~~~~~~~~~~\n",
+        "\n",
+        // for some reason, swc does the same diagnostic twice
+        "The left-hand side of an assignment expression must be a variable or a property access. at https://deno.land/x/mod.ts:1:1\n\n",
+        "  (true ? a : b) = 1;\n",
+        "  ~~~~~~~~~~~~~~",
+      )
+    );
   }
 
   fn get_diagnostic(source: &str) -> String {

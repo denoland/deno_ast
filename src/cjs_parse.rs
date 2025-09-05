@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::swc::ast::*;
-use crate::swc::atoms::Atom;
-use crate::swc::ecma_visit::noop_visit_type;
-use crate::swc::ecma_visit::Visit;
-use crate::swc::ecma_visit::VisitWith;
 use crate::ParsedSource;
 use crate::ProgramRef;
+use crate::swc::ast::*;
+use crate::swc::atoms::Atom;
+use crate::swc::ecma_visit::Visit;
+use crate::swc::ecma_visit::VisitWith;
+use crate::swc::ecma_visit::noop_visit_type;
 
 pub type CjsAnalysis = crate::ModuleExportsAndReExports;
 
@@ -559,10 +559,10 @@ mod test {
   use pretty_assertions::assert_eq;
   use std::cell::RefCell;
 
-  use crate::parse_script;
   use crate::MediaType;
   use crate::ModuleSpecifier;
   use crate::ParseParams;
+  use crate::parse_script;
 
   use super::*;
 
