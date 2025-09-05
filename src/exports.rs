@@ -3,13 +3,13 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::ParsedSource;
+use crate::ProgramRef;
 use crate::swc::ast::ExportSpecifier;
 use crate::swc::ast::ModuleDecl;
 use crate::swc::ast::ModuleItem;
 use crate::swc::atoms::Atom;
 use crate::swc::utils::find_pat_ids;
-use crate::ParsedSource;
-use crate::ProgramRef;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModuleExportsAndReExports {
@@ -121,9 +121,9 @@ mod test {
 
   use deno_media_type::MediaType;
 
-  use crate::parse_module;
   use crate::ModuleSpecifier;
   use crate::ParseParams;
+  use crate::parse_module;
 
   use super::ModuleExportsAndReExports;
 

@@ -6,6 +6,12 @@ use dprint_swc_ext::common::SourceTextInfo;
 use dprint_swc_ext::common::StartSourcePos;
 use swc_ecma_lexer::common::parser::Parser as _;
 
+use crate::Globals;
+use crate::MediaType;
+use crate::ModuleSpecifier;
+use crate::ParseDiagnostic;
+use crate::ParseDiagnostics;
+use crate::ParsedSource;
 use crate::comments::MultiThreadedComments;
 use crate::swc::ast::EsVersion;
 use crate::swc::ast::Module;
@@ -13,17 +19,11 @@ use crate::swc::ast::Program;
 use crate::swc::ast::Script;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
-use crate::swc::parser::error::Error as SwcError;
-use crate::swc::parser::token::TokenAndSpan;
 use crate::swc::parser::EsSyntax;
 use crate::swc::parser::Syntax;
 use crate::swc::parser::TsSyntax;
-use crate::Globals;
-use crate::MediaType;
-use crate::ModuleSpecifier;
-use crate::ParseDiagnostic;
-use crate::ParseDiagnostics;
-use crate::ParsedSource;
+use crate::swc::parser::error::Error as SwcError;
+use crate::swc::parser::token::TokenAndSpan;
 
 /// Ecmascript version used for lexing and parsing.
 pub const ES_VERSION: EsVersion = EsVersion::Es2021;
@@ -407,7 +407,9 @@ fn strip_bom_from_arc(s: Arc<str>, should_panic_in_debug: bool) -> Arc<str> {
   if let Some(stripped_text) = s.strip_prefix('\u{FEFF}') {
     // this is only a perf concern, so don't crash in release
     if cfg!(debug_assertions) && should_panic_in_debug {
-      panic!("BOM should be stripped from text before providing it to deno_ast to avoid a file text allocation");
+      panic!(
+        "BOM should be stripped from text before providing it to deno_ast to avoid a file text allocation"
+      );
     }
     stripped_text.into()
   } else {
@@ -419,8 +421,8 @@ fn strip_bom_from_arc(s: Arc<str>, should_panic_in_debug: bool) -> Arc<str> {
 mod test {
   use pretty_assertions::assert_eq;
 
-  use crate::diagnostics::Diagnostic;
   use crate::LineAndColumnDisplay;
+  use crate::diagnostics::Diagnostic;
 
   use super::*;
 
@@ -762,8 +764,8 @@ function _bar(...Foo: Foo) {
   }
 
   #[test]
-  fn should_error_without_issue_when_there_exists_multi_byte_char_on_line_with_syntax_error(
-  ) {
+  fn should_error_without_issue_when_there_exists_multi_byte_char_on_line_with_syntax_error()
+   {
     let diagnostic = parse_ts_module(concat!(
       "test;\n",
       r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,

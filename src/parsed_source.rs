@@ -14,18 +14,18 @@ use swc_ecma_ast::ModuleDecl;
 use swc_ecma_ast::ModuleItem;
 use swc_ecma_ast::Stmt;
 
+use crate::MediaType;
+use crate::ModuleSpecifier;
+use crate::ParseDiagnostic;
+use crate::SourceRangedForSpanned;
 use crate::comments::MultiThreadedComments;
 use crate::scope_analysis_transform;
 use crate::swc::ast::Module;
 use crate::swc::ast::Program;
 use crate::swc::ast::Script;
-use crate::swc::common::comments::Comment;
 use crate::swc::common::SyntaxContext;
+use crate::swc::common::comments::Comment;
 use crate::swc::parser::token::TokenAndSpan;
-use crate::MediaType;
-use crate::ModuleSpecifier;
-use crate::ParseDiagnostic;
-use crate::SourceRangedForSpanned;
 
 #[derive(Debug, Clone)]
 pub struct Marks {
@@ -544,14 +544,14 @@ impl ParsedSource {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::parse_program;
   use crate::ParseParams;
+  use crate::parse_program;
 
   #[cfg(feature = "view")]
   #[test]
   fn should_parse_program() {
-    use crate::view::NodeTrait;
     use crate::ModuleSpecifier;
+    use crate::view::NodeTrait;
 
     let program = parse_program(ParseParams {
       specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),

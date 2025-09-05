@@ -3,12 +3,12 @@
 use base64::Engine;
 use thiserror::Error;
 
-use crate::swc::codegen::text_writer::JsWriter;
-use crate::swc::codegen::Node;
-use crate::swc::common::FileName;
 use crate::ModuleSpecifier;
 use crate::ProgramRef;
 use crate::SourceMap;
+use crate::swc::codegen::Node;
+use crate::swc::codegen::text_writer::JsWriter;
+use crate::swc::common::FileName;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SourceMapOption {

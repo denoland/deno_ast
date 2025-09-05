@@ -2,18 +2,18 @@
 
 use std::rc::Rc;
 
+use crate::ES_VERSION;
+use crate::MediaType;
+use crate::SourceRangedForSpanned;
+use crate::StartSourcePos;
 use crate::get_syntax;
 use crate::swc::atoms::Atom;
 use crate::swc::common::comments::Comment;
 use crate::swc::common::comments::CommentKind;
 use crate::swc::common::comments::SingleThreadedComments;
 use crate::swc::common::input::StringInput;
-use crate::swc::lexer::token::Token;
 use crate::swc::lexer::Lexer;
-use crate::MediaType;
-use crate::SourceRangedForSpanned;
-use crate::StartSourcePos;
-use crate::ES_VERSION;
+use crate::swc::lexer::token::Token;
 
 #[derive(Debug, Clone)]
 pub enum TokenOrComment {

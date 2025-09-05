@@ -1,15 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::swc::atoms::Atom;
-use swc_common::SyntaxContext;
 use swc_common::DUMMY_SP;
+use swc_common::SyntaxContext;
 use swc_ecma_ast::*;
 use swc_ecma_lexer::common::lexer::char::CharExt;
 use swc_ecma_utils::prepend_stmt;
 use swc_ecma_utils::quote_ident;
-use swc_ecma_visit::noop_visit_mut_type;
 use swc_ecma_visit::VisitMut;
 use swc_ecma_visit::VisitMutWith;
+use swc_ecma_visit::noop_visit_mut_type;
 
 #[derive(Debug, Default)]
 pub struct JsxPrecompile {
@@ -374,11 +374,7 @@ fn jsx_text_to_str(
     text.push_str(line);
   }
 
-  if escape {
-    escape_html(&text)
-  } else {
-    text
-  }
+  if escape { escape_html(&text) } else { text }
 }
 
 /// Convert a JSXMemberExpr to MemberExpr. We offload this to a
@@ -421,10 +417,10 @@ fn is_serializable(
         return false;
       }
 
-      if let Some(skip_elements) = skip_serialize {
-        if skip_elements.contains(&name) {
-          return false;
-        }
+      if let Some(skip_elements) = skip_serialize
+        && skip_elements.contains(&name)
+      {
+        return false;
       }
 
       if opening.attrs.is_empty() {
@@ -826,11 +822,11 @@ impl JsxPrecompile {
 
         // Flatten to a single child call when children
         // array only contains one element
-        if elems.len() == 1 {
-          if let Some(first) = &elems[0] {
-            let expr = &*first.expr;
-            return Some(expr.clone());
-          }
+        if elems.len() == 1
+          && let Some(first) = &elems[0]
+        {
+          let expr = &*first.expr;
+          return Some(expr.clone());
         }
 
         Some(Expr::Array(ArrayLit {
@@ -1297,19 +1293,19 @@ impl JsxPrecompile {
                       _ => {}
                     },
                     Expr::Unary(unary_expr) => {
-                      if unary_expr.op == UnaryOp::Minus {
-                        if let Expr::Lit(Lit::Num(num_lit)) = &*unary_expr.arg {
-                          let value = format!("-{}", &num_lit.value);
-                          let serialized_attr =
-                            serialize_attr(&attr_name, &value);
+                      if unary_expr.op == UnaryOp::Minus
+                        && let Expr::Lit(Lit::Num(num_lit)) = &*unary_expr.arg
+                      {
+                        let value = format!("-{}", &num_lit.value);
+                        let serialized_attr =
+                          serialize_attr(&attr_name, &value);
 
-                          strings
-                            .last_mut()
-                            .unwrap()
-                            .push_str(serialized_attr.as_str());
-                          continue;
-                        };
-                      }
+                        strings
+                          .last_mut()
+                          .unwrap()
+                          .push_str(serialized_attr.as_str());
+                        continue;
+                      };
                     }
                     _ => {}
                   }
@@ -1630,13 +1626,13 @@ fn new_ident(name: Atom) -> Ident {
 mod tests {
   use std::collections::HashMap;
 
+  use crate::EmitOptions;
+  use crate::ModuleSpecifier;
+  use crate::SourceMap;
   use crate::swc::parser::Parser;
   use crate::swc::parser::StringInput;
   use crate::swc::parser::Syntax;
   use crate::swc::parser::TsSyntax;
-  use crate::EmitOptions;
-  use crate::ModuleSpecifier;
-  use crate::SourceMap;
   use pretty_assertions::assert_eq;
   use swc_common::comments::SingleThreadedComments;
   use swc_ecma_visit::visit_mut_pass;
