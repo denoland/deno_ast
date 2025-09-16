@@ -13,7 +13,7 @@ const repo = await Repo.load({
 
 const crate = repo.getCrate("deno_ast");
 const swcDeps = crate.dependencies.filter(
-  (dep) => dep.name.startsWith("swc_") || dep.name === "dprint-swc-ext"
+  (dep) => dep.name.startsWith("swc_") || dep.name === "dprint-swc-ext",
 );
 for (const dep of swcDeps) {
   const version = await Crate.getLatestVersion(dep.name);
