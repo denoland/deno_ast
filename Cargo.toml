@@ -58,14 +58,14 @@ swc_ecma_codegen = { version = "=17.0.2", optional = true }
 swc_ecma_codegen_macros = { version = "=2.0.2", optional = true }
 swc_ecma_loader = { version = "=14.0.0", optional = true }
 swc_ecma_lexer = "=23.0.2"
-swc_ecma_parser = "=24.0.2"
+swc_ecma_parser = "=24.0.3"
 swc_ecma_transforms_base = { version = "=27.0.0", features = ["inline-helpers"], optional = true }
 swc_ecma_transforms_classes = { version = "=27.0.0", optional = true }
 swc_ecma_transforms_compat = { version = "=31.0.0", optional = true }
 swc_ecma_transforms_macros = { version = "=1.0.1", optional = true }
 swc_ecma_transforms_optimization = { version = "=29.0.0", optional = true }
 swc_ecma_transforms_proposal = { version = "=27.0.0", optional = true }
-swc_ecma_transforms_react = { version = "=30.0.1", optional = true }
+swc_ecma_transforms_react = { version = "=30.0.2", optional = true }
 swc_ecma_transforms_typescript = { version = "=30.0.1", optional = true }
 swc_ecma_utils = { version = "=21.0.0", optional = true }
 swc_ecma_visit = { version = "=15.0.0", optional = true }
