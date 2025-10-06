@@ -283,7 +283,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.50.2"
+version = "0.50.3"
 dependencies = [
  "base64",
  "capacity_builder",
