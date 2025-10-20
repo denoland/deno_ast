@@ -351,9 +351,9 @@ dependencies = [
 
 [[package]]
 name = "deno_media_type"
-version = "0.2.8"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d9080fcfcea53bcd6eea1916217bd5611c896f3a0db4c001a859722a1258a47"
+checksum = "ac0109d26ff08a089642a79b45c65f91a849404c1ef3ec78c837a412956d8808"
 dependencies = [
  "data-url",
  "serde",
