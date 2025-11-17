@@ -832,10 +832,7 @@ pub fn fold_program<'a>(
 
   let mut diagnostics = diagnostics_cell.borrow_mut();
   let diagnostics = std::mem::take(&mut *diagnostics);
-  ensure_no_fatal_swc_diagnostics(
-    &source_map.inner(),
-    diagnostics.into_iter(),
-  )?;
+  ensure_no_fatal_swc_diagnostics(source_map.inner(), diagnostics.into_iter())?;
   Ok(result)
 }
 
