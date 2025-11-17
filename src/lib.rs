@@ -17,8 +17,6 @@ pub mod diagnostics;
 mod emit;
 #[cfg(feature = "utils")]
 mod exports;
-#[cfg(feature = "fast_strip")]
-mod fast_strip;
 mod lexing;
 mod parsed_source;
 mod parsing;
@@ -28,6 +26,8 @@ mod source_map;
 mod text_changes;
 #[cfg(feature = "transpiling")]
 mod transpiling;
+#[cfg(feature = "type_strip")]
+mod type_strip;
 mod types;
 
 #[cfg(feature = "view")]
@@ -43,8 +43,6 @@ pub use deno_media_type::*;
 pub use emit::*;
 #[cfg(feature = "utils")]
 pub use exports::*;
-#[cfg(feature = "fast_strip")]
-pub use fast_strip::*;
 pub use lexing::*;
 pub use parsed_source::*;
 pub use parsing::*;
@@ -54,6 +52,8 @@ pub use source_map::*;
 pub use text_changes::*;
 #[cfg(feature = "transpiling")]
 pub use transpiling::*;
+#[cfg(feature = "type_strip")]
+pub use type_strip::*;
 pub use types::*;
 
 pub type ModuleSpecifier = url::Url;
