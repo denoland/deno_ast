@@ -17,6 +17,8 @@ pub mod diagnostics;
 mod emit;
 #[cfg(feature = "utils")]
 mod exports;
+#[cfg(feature = "fast_strip")]
+mod fast_strip;
 mod lexing;
 mod parsed_source;
 mod parsing;
@@ -41,6 +43,8 @@ pub use deno_media_type::*;
 pub use emit::*;
 #[cfg(feature = "utils")]
 pub use exports::*;
+#[cfg(feature = "fast_strip")]
+pub use fast_strip::*;
 pub use lexing::*;
 pub use parsed_source::*;
 pub use parsing::*;

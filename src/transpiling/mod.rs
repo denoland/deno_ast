@@ -23,12 +23,12 @@ use crate::ParseDiagnosticsError;
 use crate::ParsedSource;
 use crate::ProgramRef;
 use crate::SourceMap;
+use crate::diagnostics::DiagnosticCollector;
+use crate::diagnostics::SwcFoldDiagnosticsError;
+use crate::diagnostics::ensure_no_fatal_swc_diagnostics;
 use crate::emit;
 use crate::swc::ast::Program;
 use crate::swc::common::comments::SingleThreadedComments;
-use crate::swc::common::errors::Diagnostic as SwcDiagnostic;
-use crate::swc::common::sync::Lock;
-use crate::swc::common::sync::Lrc;
 use crate::swc::ecma_visit::visit_mut_pass;
 use crate::swc::parser::error::SyntaxError;
 use crate::swc::transforms::fixer;
@@ -667,31 +667,6 @@ fn convert_script_module_to_swc_script(
   })
 }
 
-#[derive(Default, Clone)]
-struct DiagnosticCollector {
-  diagnostics: Lrc<Lock<Vec<SwcDiagnostic>>>,
-}
-
-impl DiagnosticCollector {
-  pub fn into_handler(self) -> crate::swc::common::errors::Handler {
-    crate::swc::common::errors::Handler::with_emitter(
-      true,
-      false,
-      Box::new(self),
-    )
-  }
-}
-
-impl crate::swc::common::errors::Emitter for DiagnosticCollector {
-  fn emit(
-    &mut self,
-    db: &mut crate::swc::common::errors::DiagnosticBuilder<'_>,
-  ) {
-    let mut diagnostics = self.diagnostics.lock();
-    diagnostics.push(db.take());
-  }
-}
-
 #[derive(Debug, Error, JsError)]
 pub enum FoldProgramError {
   #[class(inherit)]
@@ -849,8 +824,7 @@ pub fn fold_program<'a>(
   );
 
   let emitter = DiagnosticCollector::default();
-  let diagnostics_cell = emitter.diagnostics.clone();
-  let handler = emitter.into_handler();
+  let (handler, diagnostics_cell) = emitter.into_handler_and_cell();
   let result = crate::swc::common::errors::HANDLER.set(&handler, || {
     helpers::HELPERS
       .set(&helpers::Helpers::new(false), || program.apply(passes))
@@ -858,80 +832,11 @@ pub fn fold_program<'a>(
 
   let mut diagnostics = diagnostics_cell.borrow_mut();
   let diagnostics = std::mem::take(&mut *diagnostics);
-  ensure_no_fatal_swc_diagnostics(source_map, diagnostics.into_iter())?;
+  ensure_no_fatal_swc_diagnostics(
+    &source_map.inner(),
+    diagnostics.into_iter(),
+  )?;
   Ok(result)
-}
-
-#[derive(Debug, JsError)]
-#[class(syntax)]
-pub struct SwcFoldDiagnosticsError(Vec<String>);
-
-impl std::error::Error for SwcFoldDiagnosticsError {}
-
-impl std::fmt::Display for SwcFoldDiagnosticsError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    for (i, diagnostic) in self.0.iter().enumerate() {
-      if i > 0 {
-        write!(f, "\n\n")?;
-      }
-
-      write!(f, "{}", diagnostic)?
-    }
-
-    Ok(())
-  }
-}
-
-fn ensure_no_fatal_swc_diagnostics(
-  source_map: &SourceMap,
-  diagnostics: impl Iterator<Item = SwcDiagnostic>,
-) -> Result<(), SwcFoldDiagnosticsError> {
-  let fatal_diagnostics = diagnostics
-    .filter(is_fatal_swc_diagnostic)
-    .collect::<Vec<_>>();
-  if !fatal_diagnostics.is_empty() {
-    Err(SwcFoldDiagnosticsError(
-      fatal_diagnostics
-        .iter()
-        .map(|d| format_swc_diagnostic(source_map, d))
-        .collect::<Vec<_>>(),
-    ))
-  } else {
-    Ok(())
-  }
-}
-
-fn is_fatal_swc_diagnostic(diagnostic: &SwcDiagnostic) -> bool {
-  use crate::swc::common::errors::Level;
-  match diagnostic.level {
-    Level::Bug
-    | Level::Cancelled
-    | Level::FailureNote
-    | Level::Fatal
-    | Level::PhaseFatal
-    | Level::Error => true,
-    Level::Help | Level::Note | Level::Warning => false,
-  }
-}
-
-fn format_swc_diagnostic(
-  source_map: &SourceMap,
-  diagnostic: &SwcDiagnostic,
-) -> String {
-  if let Some(span) = &diagnostic.span.primary_span() {
-    let source_map = source_map.inner();
-    let file_name = source_map.span_to_filename(*span);
-    let loc = source_map.lookup_char_pos(span.lo);
-    format!(
-      "{} at {}:{}:{}",
-      diagnostic.message(),
-      file_name,
-      loc.line,
-      loc.col_display + 1,
-    )
-  } else {
-    diagnostic.message()
-  }
 }
 
 fn ensure_no_fatal_diagnostics<'a>(
