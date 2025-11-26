@@ -26,6 +26,8 @@ mod source_map;
 mod text_changes;
 #[cfg(feature = "transpiling")]
 mod transpiling;
+#[cfg(feature = "type_strip")]
+mod type_strip;
 mod types;
 
 #[cfg(feature = "view")]
@@ -50,6 +52,8 @@ pub use source_map::*;
 pub use text_changes::*;
 #[cfg(feature = "transpiling")]
 pub use transpiling::*;
+#[cfg(feature = "type_strip")]
+pub use type_strip::*;
 pub use types::*;
 
 pub type ModuleSpecifier = url::Url;
