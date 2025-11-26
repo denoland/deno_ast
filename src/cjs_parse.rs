@@ -97,9 +97,9 @@ impl CjsVisitor {
       Expr::Lit(Lit::Str(str)) => {
         let lit_value = &*str.value;
         if is_valid_object_define_obj_lit(&call_expr.args[2].expr) {
-          self.add_export(lit_value);
+          self.add_export(&lit_value.to_string_lossy());
         } else {
-          self.add_unsafe_getter(lit_value);
+          self.add_unsafe_getter(&lit_value.to_string_lossy());
         }
       }
       // Object.defineProperty(exports, key, { ... });
@@ -335,7 +335,7 @@ fn get_call_expr_require_value(call_expr: &CallExpr) -> Option<&str> {
       let arg = call_expr.args.first()?;
       let lit = arg.expr.as_lit()?;
       if let Lit::Str(str) = lit {
-        return Some(&*str.value);
+        return str.value.as_str();
       }
     }
     // _interopRequireWildcard(require(...))
@@ -524,7 +524,7 @@ fn get_member_prop_text(member_prop: &MemberProp) -> Option<&str> {
   match member_prop {
     MemberProp::Ident(ident) => Some(&ident.sym),
     MemberProp::Computed(computed) => match &*computed.expr {
-      Expr::Lit(Lit::Str(str)) => Some(&str.value),
+      Expr::Lit(Lit::Str(str)) => str.value.as_str(),
       _ => None,
     },
     _ => None,
@@ -546,7 +546,7 @@ fn get_prop_name(prop: &Prop) -> Option<&str> {
 fn prop_name_from_key(prop: &PropName) -> Option<&str> {
   match prop {
     PropName::Ident(ident) => Some(&*ident.sym),
-    PropName::Str(str) => Some(&*str.value),
+    PropName::Str(str) => str.value.as_str(),
     PropName::BigInt(_) | PropName::Computed(_) | PropName::Num(_) => None,
   }
 }
