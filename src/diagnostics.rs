@@ -563,15 +563,18 @@ fn specifier_to_file_path(specifier: &ModuleSpecifier) -> Option<PathBuf> {
   }
 }
 
+#[cfg(any(feature = "transpiling", feature = "type_strip"))]
 pub(crate) type DiagnosticsCell = crate::swc::common::sync::Lrc<
   crate::swc::common::sync::Lock<Vec<SwcDiagnostic>>,
 >;
 
+#[cfg(any(feature = "transpiling", feature = "type_strip"))]
 #[derive(Default, Clone)]
 pub(crate) struct DiagnosticCollector {
   diagnostics: DiagnosticsCell,
 }
 
+#[cfg(any(feature = "transpiling", feature = "type_strip"))]
 impl DiagnosticCollector {
   pub fn into_handler_and_cell(
     self,
@@ -588,6 +591,7 @@ impl DiagnosticCollector {
   }
 }
 
+#[cfg(any(feature = "transpiling", feature = "type_strip"))]
 impl crate::swc::common::errors::Emitter for DiagnosticCollector {
   fn emit(
     &mut self,
@@ -618,7 +622,7 @@ impl std::fmt::Display for SwcFoldDiagnosticsError {
   }
 }
 
-pub(crate) fn ensure_no_fatal_swc_diagnostics(
+pub fn ensure_no_fatal_swc_diagnostics(
   source_map: &swc_common::SourceMap,
   diagnostics: impl Iterator<Item = SwcDiagnostic>,
 ) -> Result<(), SwcFoldDiagnosticsError> {
