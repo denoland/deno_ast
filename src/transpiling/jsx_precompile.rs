@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::swc::atoms::Atom;
+use swc_atoms::Wtf8Atom;
 use swc_common::DUMMY_SP;
 use swc_common::SyntaxContext;
 use swc_ecma_ast::*;
@@ -325,27 +326,22 @@ fn get_attr_name(jsx_attr: &JSXAttr, normalize: bool) -> String {
   }
 }
 
-fn normalize_lit_str(lit: &Lit) -> Lit {
-  match lit {
-    Lit::Str(lit_str) => {
-      let value: &str = &lit_str.value;
-      let mut replaced = "".to_string();
+fn normalize_lit_str(lit_str: &Str) -> Lit {
+  let value = lit_str.value.to_string_lossy();
+  let mut replaced = "".to_string();
 
-      for (i, line) in value.lines().enumerate() {
-        if i > 0 {
-          replaced.push(' ');
-        }
-        replaced.push_str(line.trim_start());
-      }
-
-      Lit::Str(Str {
-        span: lit_str.span,
-        value: replaced.into(),
-        raw: None,
-      })
+  for (i, line) in value.lines().enumerate() {
+    if i > 0 {
+      replaced.push(' ');
     }
-    _ => lit.clone(),
+    replaced.push_str(line.trim_start());
   }
+
+  Lit::Str(Str {
+    span: lit_str.span,
+    value: replaced.into(),
+    raw: None,
+  })
 }
 
 fn jsx_text_to_str(
@@ -451,7 +447,7 @@ fn is_text_valid_identifier(string_value: &str) -> bool {
   true
 }
 
-fn string_lit_expr(value: Atom) -> Expr {
+fn string_lit_expr(value: Wtf8Atom) -> Expr {
   Expr::Lit(Lit::Str(Str {
     span: DUMMY_SP,
     value,
@@ -524,7 +520,7 @@ fn merge_serializable_children(
                 }
                 // Can be flattened
                 Lit::Str(str_lit) => {
-                  buf.push_str(&escape_html(str_lit.value.as_ref()));
+                  buf.push_str(&escape_html(&str_lit.value.to_string_lossy()));
                   continue;
                 }
                 _ => {}
@@ -673,8 +669,8 @@ impl JsxPrecompile {
         Lit::Bool(_) => expr,
         Lit::Null(_) => expr,
         Lit::Str(string_lit) => {
-          let escaped_value = escape_html(string_lit.value.as_ref());
-          if string_lit.value != escaped_value {
+          let escaped_value = escape_html(&string_lit.value.to_string_lossy());
+          if string_lit.value.to_string_lossy() != escaped_value {
             self.wrap_with_jsx_escape_call(expr)
           } else {
             expr
@@ -771,7 +767,7 @@ impl JsxPrecompile {
               JSXElementChild::JSXText(jsx_text) => {
                 elems.push(Some(ExprOrSpread {
                   spread: None,
-                  expr: Box::new(string_lit_expr(jsx_text.value)),
+                  expr: Box::new(string_lit_expr(jsx_text.value.into())),
                 }));
               }
               // Case: <div>{2 + 2}</div>
@@ -856,7 +852,7 @@ impl JsxPrecompile {
           is_component = true;
           Expr::Ident(ident.clone())
         } else {
-          string_lit_expr(name.clone())
+          string_lit_expr(name.clone().into())
         }
       }
       // Case: <ctx.Provider />
@@ -920,8 +916,8 @@ impl JsxPrecompile {
 
             if attr_name == "key" {
               key_value = match attr_value {
-                JSXAttrValue::Lit(lit) => {
-                  let normalized_lit = normalize_lit_str(lit);
+                JSXAttrValue::Str(str) => {
+                  let normalized_lit = normalize_lit_str(str);
                   Some(Expr::Lit(normalized_lit))
                 }
                 JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
@@ -944,8 +940,8 @@ impl JsxPrecompile {
             // Case: <Foo class={true}>
             // Case: <Foo class={null}>
             match attr_value {
-              JSXAttrValue::Lit(lit) => {
-                let normalized_lit = normalize_lit_str(lit);
+              JSXAttrValue::Str(str) => {
+                let normalized_lit = normalize_lit_str(str);
 
                 props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
                   KeyValueProp {
@@ -1023,7 +1019,11 @@ impl JsxPrecompile {
     }
   }
 
-  fn convert_to_jsx_attr_call(&mut self, name: Atom, expr: Expr) -> CallExpr {
+  fn convert_to_jsx_attr_call(
+    &mut self,
+    name: Wtf8Atom,
+    expr: Expr,
+  ) -> CallExpr {
     let args = vec![
       ExprOrSpread {
         spread: None,
@@ -1157,7 +1157,7 @@ impl JsxPrecompile {
 
               let value = match &jsx_attr.value {
                 Some(attr_value) => match attr_value.clone() {
-                  JSXAttrValue::Lit(lit) => Expr::Lit(lit),
+                  JSXAttrValue::Str(lit) => Expr::Lit(Lit::Str(lit)),
                   JSXAttrValue::JSXExprContainer(_) => todo!(),
                   JSXAttrValue::JSXElement(jsx_element) => {
                     Expr::JSXElement(jsx_element)
@@ -1210,44 +1210,34 @@ impl JsxPrecompile {
           // Case: <div class={true}>
           // Case: <div class={null}>
           match attr_value {
-            JSXAttrValue::Lit(lit) => match lit {
-              Lit::Str(string_lit) => {
-                // Edge Case: Both "key" and "ref" attributes are
-                // special attributes in most frameworks. Some
-                // frameworks may want to serialize it, other's don't.
-                // To support both use cases we'll always pass them to
-                // `jsxAttr()` so that frameowrks can decide for
-                // themselves what to do with it.
-                // Case: <div key="123" />
-                // Case: <div ref="123" />
-                if attr_name == "key" || attr_name == "ref" {
-                  strings.last_mut().unwrap().push(' ');
-                  strings.push("".to_string());
-                  let expr = self.convert_to_jsx_attr_call(
-                    attr_name.into(),
-                    string_lit_expr(string_lit.value.clone()),
-                  );
-                  dynamic_exprs.push(Expr::Call(expr));
-                  continue;
-                }
-
-                let serialized_attr =
-                  serialize_attr(&attr_name, &string_lit.value);
-
-                strings
-                  .last_mut()
-                  .unwrap()
-                  .push_str(serialized_attr.as_str());
+            JSXAttrValue::Str(string_lit) => {
+              // Edge Case: Both "key" and "ref" attributes are
+              // special attributes in most frameworks. Some
+              // frameworks may want to serialize it, other's don't.
+              // To support both use cases we'll always pass them to
+              // `jsxAttr()` so that frameowrks can decide for
+              // themselves what to do with it.
+              // Case: <div key="123" />
+              // Case: <div ref="123" />
+              if attr_name == "key" || attr_name == "ref" {
+                strings.last_mut().unwrap().push(' ');
+                strings.push("".to_string());
+                let expr = self.convert_to_jsx_attr_call(
+                  attr_name.into(),
+                  string_lit_expr(string_lit.value.clone()),
+                );
+                dynamic_exprs.push(Expr::Call(expr));
+                continue;
               }
-              // I've never seen this being possible as it would
-              // always be treated as an expression.
-              Lit::Bool(_) => {}
-              Lit::Null(_) => {}
-              Lit::Num(_) => {}
-              Lit::BigInt(_) => {}
-              Lit::Regex(_) => {}
-              Lit::JSXText(_) => {}
-            },
+
+              let serialized_attr =
+                serialize_attr(&attr_name, &string_lit.value.to_string_lossy());
+
+              strings
+                .last_mut()
+                .unwrap()
+                .push_str(serialized_attr.as_str());
+            }
             JSXAttrValue::JSXExprContainer(jsx_expr_container) => {
               match &jsx_expr_container.expr {
                 // This is treated as a syntax error in attributes
@@ -1281,8 +1271,10 @@ impl JsxPrecompile {
                         continue;
                       }
                       Lit::Str(str_lit) => {
-                        let serialized_attr =
-                          serialize_attr(&attr_name, &str_lit.value);
+                        let serialized_attr = serialize_attr(
+                          &attr_name,
+                          &str_lit.value.to_string_lossy(),
+                        );
 
                         strings
                           .last_mut()

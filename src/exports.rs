@@ -32,7 +32,9 @@ impl ParsedSource {
           ModuleItem::ModuleDecl(m) => match m {
             ModuleDecl::Import(_) => {}
             ModuleDecl::ExportAll(n) => {
-              result.reexports.push(n.src.value.to_string());
+              result
+                .reexports
+                .push(n.src.value.to_string_lossy().into_owned());
             }
             ModuleDecl::ExportDecl(d) => {
               match &d.decl {

@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use swc_atoms::Atom;
+use swc_atoms::Wtf8Atom;
 use swc_common::SyntaxContext;
 
 use crate::swc::ast as swc_ast;
@@ -55,7 +56,7 @@ impl Fold for ImportDeclsToVarDeclsFolder {
               Some(match specifier.imported.as_ref() {
                 Some(name) => create_key_value(
                   match name {
-                    ModuleExportName::Ident(ident) => ident.sym.clone(),
+                    ModuleExportName::Ident(ident) => ident.sym.clone().into(),
                     ModuleExportName::Str(str) => str.value.clone(),
                   },
                   specifier.local.clone(),
@@ -211,7 +212,7 @@ fn create_ident_name(name: Atom) -> swc_ast::IdentName {
 }
 
 fn create_key_value(
-  key: Atom,
+  key: Wtf8Atom,
   value: swc_ast::Ident,
 ) -> swc_ast::ObjectPatProp {
   swc_ast::ObjectPatProp::KeyValue(swc_ast::KeyValuePatProp {
@@ -229,7 +230,7 @@ fn create_key_value(
 }
 
 fn create_await_import_expr(
-  module_specifier: &str,
+  module_specifier: &Wtf8Atom,
   maybe_attrs: Option<Box<swc_ast::ObjectLit>>,
 ) -> Box<swc_ast::Expr> {
   use swc_ast::*;
@@ -238,7 +239,7 @@ fn create_await_import_expr(
     expr: Box::new(Expr::Lit(Lit::Str(Str {
       span: DUMMY_SP,
       raw: None,
-      value: module_specifier.into(),
+      value: module_specifier.clone(),
     }))),
   }];
 
