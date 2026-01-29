@@ -378,6 +378,7 @@ pub fn get_syntax(media_type: MediaType) -> Syntax {
     | MediaType::Json
     | MediaType::Jsonc
     | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Wasm
     | MediaType::SourceMap
     | MediaType::Css
