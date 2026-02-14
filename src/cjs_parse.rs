@@ -184,8 +184,10 @@ impl Visit for CjsVisitor {
       self.visit_object_define(call_expr)
     } else if is_export_callee(&call_expr.callee) {
       // __export, __exportStar, tslib.__export, etc...
-      if let Some(name) = get_export_require_arg(call_expr) {
-        self.add_reexport(name);
+      if let Some(name) =
+        get_export_require_arg(call_expr, &self.var_assignments)
+      {
+        self.add_reexport(&name);
       }
     }
 
@@ -223,7 +225,10 @@ impl Visit for CjsVisitor {
       false
     }
 
-    fn get_export_require_arg(call_expr: &CallExpr) -> Option<&str> {
+    fn get_export_require_arg(
+      call_expr: &CallExpr,
+      var_assignments: &HashMap<String, String>,
+    ) -> Option<String> {
       if call_expr.args.iter().any(|a| a.spread.is_some()) {
         return None;
       }
@@ -233,10 +238,18 @@ impl Visit for CjsVisitor {
         // (0, tslib_1.__exportStar)(require("./file"), exports);
         || call_expr.args.len() == 2 && is_exports_expr(&call_expr.args[1].expr)
       {
-        get_expr_require_value(&call_expr.args[0].expr)
-      } else {
-        None
+        if let Some(require_value) =
+          get_expr_require_value(&call_expr.args[0].expr)
+        {
+          return Some(require_value.to_string());
+        }
+        if let Some(ident) = call_expr.args[0].expr.as_ident() {
+          // Handle __export(bound_ident) where bound_ident = require("...").
+          return var_assignments.get(&*ident.sym).cloned();
+        }
       }
+
+      None
     }
   }
 
@@ -288,6 +301,8 @@ impl Visit for CjsVisitor {
         }
       }
     }
+
+    assign_expr.visit_children_with(self);
   }
 }
 
@@ -681,6 +696,61 @@ mod test {
       "external3",
       "external4",
     ]);
+  }
+
+  #[test]
+  fn typescript_reexports_via_bound_ident() {
+    let tester = parse_cjs(
+      r#"
+    "use strict";
+      var reexported_1 = require("./reexported");
+      __export(reexported_1);
+    "#,
+    );
+
+    tester.assert_reexports(vec!["./reexported"]);
+  }
+
+  #[test]
+  fn typescript_enum_exports() {
+    let tester = parse_cjs(
+      r#"
+    "use strict";
+      var MyEnum;
+      (function (MyEnum) {
+        MyEnum[MyEnum["A"] = 0] = "A";
+        MyEnum[MyEnum["B"] = 1] = "B";
+      })(MyEnum || (MyEnum = {}));
+      exports.MyEnum = MyEnum;
+      exports.Outer = (exports.Inner = {});
+    "#,
+    );
+
+    tester.assert_exports(vec!["Inner", "MyEnum", "Outer"]);
+  }
+
+  #[test]
+  fn nested_exports_assignment_in_expression() {
+    let tester = parse_cjs(
+      r#"
+    "use strict";
+      exports.A = (exports.B = (exports.C = {}));
+    "#,
+    );
+
+    tester.assert_exports(vec!["A", "B", "C"]);
+  }
+
+  #[test]
+  fn exports_assignment_in_logical_or_expression() {
+    let tester = parse_cjs(
+      r#"
+    "use strict";
+      exports.Foo = exports.Foo || {};
+    "#,
+    );
+
+    tester.assert_exports(vec!["Foo"]);
   }
 
   #[test]
