@@ -244,7 +244,8 @@ impl Visit for CjsVisitor {
           return Some(require_value.to_string());
         }
         if let Some(ident) = call_expr.args[0].expr.as_ident() {
-          // Handle __export(bound_ident) where bound_ident = require("...").
+          // Handle __export(require("something"))
+          // https://github.com/nodejs/node/blob/65df9ad6438ca0c852a8f208361ae9507e072c9e/deps/merve/merve.h#L99
           return var_assignments.get(&*ident.sym).cloned();
         }
       }
