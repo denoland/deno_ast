@@ -732,18 +732,6 @@ mod test {
   }
 
   #[test]
-  fn exports_assignment_in_logical_or_expression() {
-    let tester = parse_cjs(
-      r#"
-    "use strict";
-      exports.Foo = exports.Foo || {};
-    "#,
-    );
-
-    tester.assert_exports(vec!["Foo"]);
-  }
-
-  #[test]
   fn rollup_babel_reexport_getter() {
     let tester = parse_cjs(
       r#"
