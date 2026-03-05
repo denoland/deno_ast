@@ -2,10 +2,10 @@
 
 use oxc::allocator::Allocator;
 use oxc::allocator::CloneIn;
-use oxc::ast::ast::*;
 use oxc::ast::AstBuilder;
-use oxc::ast_visit::walk_mut;
+use oxc::ast::ast::*;
 use oxc::ast_visit::VisitMut;
+use oxc::ast_visit::walk_mut;
 use oxc::span::SPAN;
 
 /// Transforms import declarations to variable declarations
@@ -24,7 +24,10 @@ impl<'a> ImportDeclsToVarDecls<'a> {
 }
 
 impl<'a> VisitMut<'a> for ImportDeclsToVarDecls<'a> {
-  fn visit_statements(&mut self, stmts: &mut oxc::allocator::Vec<'a, Statement<'a>>) {
+  fn visit_statements(
+    &mut self,
+    stmts: &mut oxc::allocator::Vec<'a, Statement<'a>>,
+  ) {
     let mut new_stmts = self.ast.vec_with_capacity(stmts.len());
     for stmt in stmts.drain(..) {
       match stmt {
@@ -37,7 +40,11 @@ impl<'a> VisitMut<'a> for ImportDeclsToVarDecls<'a> {
           let source_value = import_decl.source.value.as_str();
 
           // Side-effect only import: `import "./mod.ts"` -> `await import("./mod.ts")`
-          if import_decl.specifiers.as_ref().map_or(true, |s| s.is_empty()) {
+          if import_decl
+            .specifiers
+            .as_ref()
+            .map_or(true, |s| s.is_empty())
+          {
             let import_expr = self.create_await_import_expr(source_value);
             new_stmts.push(self.ast.statement_expression(SPAN, import_expr));
             continue;
@@ -52,17 +59,30 @@ impl<'a> VisitMut<'a> for ImportDeclsToVarDecls<'a> {
           for specifier in specifiers {
             match specifier {
               ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
-                let key = self.ast.property_key_static_identifier(SPAN, "default");
-                let value = self.ast.binding_pattern_binding_identifier(SPAN, s.local.name.as_str());
-                props.push(self.ast.binding_property(SPAN, key, value, false, false));
+                let key =
+                  self.ast.property_key_static_identifier(SPAN, "default");
+                let value = self.ast.binding_pattern_binding_identifier(
+                  SPAN,
+                  s.local.name.as_str(),
+                );
+                props.push(
+                  self.ast.binding_property(SPAN, key, value, false, false),
+                );
               }
               ImportDeclarationSpecifier::ImportSpecifier(s) => {
                 let imported_name = s.imported.name();
                 let local_name = s.local.name.as_str();
                 let shorthand = imported_name == local_name;
-                let key = self.ast.property_key_static_identifier(SPAN, imported_name);
-                let value = self.ast.binding_pattern_binding_identifier(SPAN, local_name);
-                props.push(self.ast.binding_property(SPAN, key, value, shorthand, false));
+                let key =
+                  self.ast.property_key_static_identifier(SPAN, imported_name);
+                let value = self
+                  .ast
+                  .binding_pattern_binding_identifier(SPAN, local_name);
+                props.push(
+                  self
+                    .ast
+                    .binding_property(SPAN, key, value, shorthand, false),
+                );
               }
               ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => {
                 namespace_name = Some(s.local.name.as_str());
@@ -75,7 +95,11 @@ impl<'a> VisitMut<'a> for ImportDeclsToVarDecls<'a> {
           let mut declarators = self.ast.vec();
 
           if !props.is_empty() {
-            let pattern = self.ast.binding_pattern_object_pattern(SPAN, props, None::<BindingRestElement<'a>>);
+            let pattern = self.ast.binding_pattern_object_pattern(
+              SPAN,
+              props,
+              None::<BindingRestElement<'a>>,
+            );
             declarators.push(self.ast.variable_declarator(
               SPAN,
               VariableDeclarationKind::Const,
@@ -87,7 +111,8 @@ impl<'a> VisitMut<'a> for ImportDeclsToVarDecls<'a> {
           }
 
           if let Some(ns_name) = namespace_name {
-            let pattern = self.ast.binding_pattern_binding_identifier(SPAN, ns_name);
+            let pattern =
+              self.ast.binding_pattern_binding_identifier(SPAN, ns_name);
             declarators.push(self.ast.variable_declarator(
               SPAN,
               VariableDeclarationKind::Const,
@@ -99,9 +124,12 @@ impl<'a> VisitMut<'a> for ImportDeclsToVarDecls<'a> {
           }
 
           if !declarators.is_empty() {
-            let var_decl = Statement::from(
-              self.ast.declaration_variable(SPAN, VariableDeclarationKind::Const, declarators, false),
-            );
+            let var_decl = Statement::from(self.ast.declaration_variable(
+              SPAN,
+              VariableDeclarationKind::Const,
+              declarators,
+              false,
+            ));
             new_stmts.push(var_decl);
           }
         }
@@ -119,8 +147,13 @@ impl<'a> VisitMut<'a> for ImportDeclsToVarDecls<'a> {
 
 impl<'a> ImportDeclsToVarDecls<'a> {
   fn create_await_import_expr(&self, source: &str) -> Expression<'a> {
-    let source_in_alloc = oxc::allocator::StringBuilder::from_str_in(source, self.ast.allocator);
-    let import_arg = self.ast.expression_string_literal(SPAN, source_in_alloc.into_str(), None);
+    let source_in_alloc =
+      oxc::allocator::StringBuilder::from_str_in(source, self.ast.allocator);
+    let import_arg = self.ast.expression_string_literal(
+      SPAN,
+      source_in_alloc.into_str(),
+      None,
+    );
     let import_call = self.ast.expression_import(SPAN, import_arg, None, None);
     self.ast.expression_await(SPAN, import_call)
   }
@@ -142,7 +175,10 @@ impl<'a> StripExports<'a> {
 }
 
 impl<'a> VisitMut<'a> for StripExports<'a> {
-  fn visit_statements(&mut self, stmts: &mut oxc::allocator::Vec<'a, Statement<'a>>) {
+  fn visit_statements(
+    &mut self,
+    stmts: &mut oxc::allocator::Vec<'a, Statement<'a>>,
+  ) {
     let mut new_stmts = self.ast.vec_with_capacity(stmts.len());
     for stmt in stmts.drain(..) {
       match stmt {
@@ -200,8 +236,13 @@ impl<'a> VisitMut<'a> for StripExports<'a> {
 
 impl<'a> StripExports<'a> {
   fn create_await_import_expr(&self, source: &str) -> Expression<'a> {
-    let source_in_alloc = oxc::allocator::StringBuilder::from_str_in(source, self.ast.allocator);
-    let import_arg = self.ast.expression_string_literal(SPAN, source_in_alloc.into_str(), None);
+    let source_in_alloc =
+      oxc::allocator::StringBuilder::from_str_in(source, self.ast.allocator);
+    let import_arg = self.ast.expression_string_literal(
+      SPAN,
+      source_in_alloc.into_str(),
+      None,
+    );
     let import_call = self.ast.expression_import(SPAN, import_arg, None, None);
     self.ast.expression_await(SPAN, import_call)
   }

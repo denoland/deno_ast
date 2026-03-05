@@ -23,8 +23,8 @@ use oxc::ast::ast::TSImportType;
 use oxc::ast::ast::TSModuleReference;
 use oxc::ast::ast::TemplateLiteral;
 use oxc::ast::ast::WithClause;
-use oxc::ast_visit::walk;
 use oxc::ast_visit::Visit;
+use oxc::ast_visit::walk;
 use oxc::span::GetSpan;
 use oxc::span::Span;
 use serde::Deserialize;
@@ -208,8 +208,9 @@ impl<'a, 'b> DependencyCollector<'a, 'b> {
       .filter(|c| c.is_leading() && c.attached_to == span_start)
       .map(|c| {
         let content_span = c.content_span();
-        let text =
-          self.source_text[content_span.start as usize..content_span.end as usize].to_string();
+        let text = self.source_text
+          [content_span.start as usize..content_span.end as usize]
+          .to_string();
         DependencyComment {
           kind: if c.is_line() {
             DependencyCommentKind::Line
@@ -292,10 +293,7 @@ impl<'a, 'b> DependencyCollector<'a, 'b> {
     }
   }
 
-  fn analyze_binary_expr(
-    &self,
-    bin: &BinaryExpression<'a>,
-  ) -> DynamicArgument {
+  fn analyze_binary_expr(&self, bin: &BinaryExpression<'a>) -> DynamicArgument {
     use oxc::syntax::operator::BinaryOperator;
 
     let mut parts = Vec::with_capacity(2);
@@ -356,9 +354,7 @@ impl<'a> Visit<'a> for DependencyCollector<'a, '_> {
         span: node.span,
         specifier,
         specifier_span: node.source.span,
-        import_attributes: parse_import_attributes(
-          node.with_clause.as_deref(),
-        ),
+        import_attributes: parse_import_attributes(node.with_clause.as_deref()),
       }
       .into(),
     );
@@ -419,9 +415,7 @@ impl<'a> Visit<'a> for DependencyCollector<'a, '_> {
         span: node.span,
         specifier,
         specifier_span: node.source.span,
-        import_attributes: parse_import_attributes(
-          node.with_clause.as_deref(),
-        ),
+        import_attributes: parse_import_attributes(node.with_clause.as_deref()),
       }
       .into(),
     );
@@ -448,7 +442,10 @@ impl<'a> Visit<'a> for DependencyCollector<'a, '_> {
     walk::walk_ts_import_type(self, node);
   }
 
-  fn visit_statements(&mut self, stmts: &oxc::allocator::Vec<'a, Statement<'a>>) {
+  fn visit_statements(
+    &mut self,
+    stmts: &oxc::allocator::Vec<'a, Statement<'a>>,
+  ) {
     walk::walk_statements(self, stmts);
   }
 
@@ -785,10 +782,7 @@ try {
         .into(),
         StaticDependencyDescriptor {
           kind: StaticDependencyKind::ImportType,
-          leading_comments: vec![block_comment(
-            Span::new(34, 46),
-            "* JSDoc ",
-          )],
+          leading_comments: vec![block_comment(Span::new(34, 46), "* JSDoc ",)],
           span: Span::new(47, 85),
           specifier: "./foo.d.ts".to_string(),
           specifier_span: Span::new(72, 84),
@@ -1117,9 +1111,7 @@ const d12 = await import(expr);
           kind: DynamicDependencyKind::Import,
           leading_comments: Vec::new(),
           span: Span::new(55, 73),
-          argument: DynamicArgument::Template(vec![
-            DynamicTemplatePart::Expr
-          ]),
+          argument: DynamicArgument::Template(vec![DynamicTemplatePart::Expr]),
           argument_span: Span::new(62, 72),
           import_attributes: ImportAttributes::None,
         }

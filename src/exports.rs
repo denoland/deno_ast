@@ -34,9 +34,7 @@ impl ParsedSource<'_> {
             collect_declaration_exports(decl, &mut result.exports);
           }
           for s in &n.specifiers {
-            result.exports.push(
-              s.exported.name().to_string(),
-            );
+            result.exports.push(s.exported.name().to_string());
           }
         }
         Statement::ExportDefaultDeclaration(_) => {
@@ -185,9 +183,7 @@ export * as y from './other.js';
 export { z } from './other.js';
 ",
     );
-    tester.assert_exports(vec![
-      "A", "d", "e", "f", "g", "h", "y", "z",
-    ]);
+    tester.assert_exports(vec!["A", "d", "e", "f", "g", "h", "y", "z"]);
   }
 
   #[test]

@@ -199,11 +199,7 @@ impl<'a> Visit<'a> for Analyzer<'_> {
     }
   }
 
-  fn visit_function(
-    &mut self,
-    func: &Function<'a>,
-    _flags: ScopeFlags,
-  ) {
+  fn visit_function(&mut self, func: &Function<'a>, _flags: ScopeFlags) {
     if let Some(id) = &func.id {
       self.declare(BindingKind::Function, id.name.as_str());
     }
@@ -272,8 +268,7 @@ impl<'a> Visit<'a> for Analyzer<'_> {
             self.declare(BindingKind::ValueImport, s.local.name.as_str());
           }
           ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => {
-            self
-              .declare(BindingKind::NamespaceImport, s.local.name.as_str());
+            self.declare(BindingKind::NamespaceImport, s.local.name.as_str());
           }
         }
       }

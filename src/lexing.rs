@@ -51,12 +51,12 @@ pub fn lex(source: &str, media_type: MediaType) -> Vec<LexedItem> {
 
   // OXC doesn't expose a separate token stream in the same way SWC does.
   // Tokens are available via ParserReturn.tokens when enabled.
-  for token in &ret.tokens {
+  for &token in &ret.tokens {
     let start = token.start() as usize;
     let end = token.end() as usize;
     items.push(LexedItem {
       range: start..end,
-      inner: TokenOrComment::Token(token.clone()),
+      inner: TokenOrComment::Token(token),
     });
   }
 

@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use oxc::ast::ast::*;
-use oxc::ast_visit::walk;
 use oxc::ast_visit::Visit;
+use oxc::ast_visit::walk;
 
 use crate::ParsedSource;
 
@@ -499,13 +499,11 @@ fn is_supported_object_prop(prop: &ObjectProperty) -> bool {
   if prop.kind == PropertyKind::Get {
     // getter
     match &prop.value {
-      Expression::FunctionExpression(func) => {
-        func
-          .body
-          .as_ref()
-          .map(|b| is_non_side_effect_block_stmt(b))
-          .unwrap_or(false)
-      }
+      Expression::FunctionExpression(func) => func
+        .body
+        .as_ref()
+        .map(|b| is_non_side_effect_block_stmt(b))
+        .unwrap_or(false),
       _ => false,
     }
   } else {
@@ -517,28 +515,26 @@ fn is_supported_get_prop(prop: &ObjectProperty) -> bool {
   if prop.method {
     // method shorthand
     match &prop.value {
-      Expression::FunctionExpression(func) => {
-        func
-          .body
-          .as_ref()
-          .map(|b| is_non_side_effect_block_stmt(b))
-          .unwrap_or(false)
-      }
+      Expression::FunctionExpression(func) => func
+        .body
+        .as_ref()
+        .map(|b| is_non_side_effect_block_stmt(b))
+        .unwrap_or(false),
       _ => false,
     }
   } else {
     // key-value
     match &prop.value {
-      Expression::FunctionExpression(func) => {
-        func
-          .body
-          .as_ref()
-          .map(|b| is_non_side_effect_block_stmt(b))
-          .unwrap_or(false)
-      }
+      Expression::FunctionExpression(func) => func
+        .body
+        .as_ref()
+        .map(|b| is_non_side_effect_block_stmt(b))
+        .unwrap_or(false),
       Expression::ArrowFunctionExpression(arrow) => {
         if arrow.expression {
-          if let Statement::ExpressionStatement(expr_stmt) = &arrow.body.statements[0] {
+          if let Statement::ExpressionStatement(expr_stmt) =
+            &arrow.body.statements[0]
+          {
             is_non_side_effect_expr(&expr_stmt.expression)
           } else {
             false
@@ -557,19 +553,23 @@ fn get_prop_return_expr<'a>(
 ) -> Option<&'a Expression<'a>> {
   if prop.method {
     match &prop.value {
-      Expression::FunctionExpression(func) => {
-        func.body.as_ref().and_then(|b| get_block_stmt_return_expr(b))
-      }
+      Expression::FunctionExpression(func) => func
+        .body
+        .as_ref()
+        .and_then(|b| get_block_stmt_return_expr(b)),
       _ => None,
     }
   } else {
     match &prop.value {
-      Expression::FunctionExpression(func) => {
-        func.body.as_ref().and_then(|b| get_block_stmt_return_expr(b))
-      }
+      Expression::FunctionExpression(func) => func
+        .body
+        .as_ref()
+        .and_then(|b| get_block_stmt_return_expr(b)),
       Expression::ArrowFunctionExpression(arrow) => {
         if arrow.expression {
-          if let Statement::ExpressionStatement(expr_stmt) = &arrow.body.statements[0] {
+          if let Statement::ExpressionStatement(expr_stmt) =
+            &arrow.body.statements[0]
+          {
             Some(&expr_stmt.expression)
           } else {
             None

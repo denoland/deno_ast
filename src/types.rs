@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::LineAndColumnDisplay;
 use crate::ModuleSpecifier;
 use crate::SourceTextInfo;
 use crate::diagnostics::Diagnostic;
@@ -10,7 +11,6 @@ use crate::diagnostics::DiagnosticSnippetHighlight;
 use crate::diagnostics::DiagnosticSnippetHighlightStyle;
 use crate::diagnostics::DiagnosticSourcePos;
 use crate::diagnostics::DiagnosticSourceRange;
-use crate::LineAndColumnDisplay;
 use deno_error::JsError;
 use oxc::diagnostics::OxcDiagnostic;
 use oxc::span::Span;
@@ -68,7 +68,10 @@ impl ParseDiagnostic {
 
   /// 1-indexed display position the diagnostic occurred at.
   pub fn display_position(&self) -> LineAndColumnDisplay {
-    self.0.source.line_and_column_display(self.0.span.start as usize)
+    self
+      .0
+      .source
+      .line_and_column_display(self.0.span.start as usize)
   }
 
   pub fn from_oxc_diagnostic(
@@ -81,10 +84,7 @@ impl ParseDiagnostic {
       .as_ref()
       .and_then(|labels| labels.first())
       .map(|label| {
-        Span::new(
-          label.offset() as u32,
-          (label.offset() + label.len()) as u32,
-        )
+        Span::new(label.offset() as u32, (label.offset() + label.len()) as u32)
       })
       .unwrap_or(Span::new(0, 0));
 

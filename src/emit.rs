@@ -96,11 +96,7 @@ pub fn emit(
         let base_str = base.as_str();
         let new_sources: Vec<String> = source_map
           .get_sources()
-          .map(|s| {
-            s.strip_prefix(base_str)
-              .unwrap_or(s.as_ref())
-              .to_string()
-          })
+          .map(|s| s.strip_prefix(base_str).unwrap_or(s.as_ref()).to_string())
           .collect();
         source_map.set_sources(new_sources);
       }
@@ -123,8 +119,7 @@ pub fn emit(
           .encode_slice(&map_buf, &mut inline_buf)
           .map_err(EmitError::SourceMapEncode)?;
         let inline_buf = &inline_buf[..size];
-        let prelude_text =
-          "//# sourceMappingURL=data:application/json;base64,";
+        let prelude_text = "//# sourceMappingURL=data:application/json;base64,";
         let src_has_trailing_newline = src_buf.ends_with(b"\n");
         let additional_capacity = if src_has_trailing_newline { 0 } else { 1 }
           + prelude_text.len()

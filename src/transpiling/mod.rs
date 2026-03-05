@@ -240,14 +240,12 @@ impl<'a> ParsedSource<'a> {
 
     // Apply custom pre-transforms
     if transpile_options.var_decl_imports {
-      let mut strip_exports =
-        transforms::StripExports::new(allocator);
+      let mut strip_exports = transforms::StripExports::new(allocator);
       strip_exports.visit_program(&mut self.program);
 
       // Transform import declarations to variable declarations before
       // the TS pass so that the transformer doesn't optimize them away
-      let mut import_to_var =
-        transforms::ImportDeclsToVarDecls::new(allocator);
+      let mut import_to_var = transforms::ImportDeclsToVarDecls::new(allocator);
       import_to_var.visit_program(&mut self.program);
     }
 
@@ -284,12 +282,15 @@ impl<'a> ParsedSource<'a> {
       build_transform_options(&transpile_options, &self.specifier);
 
     // Run semantic analysis to get scoping info
-    let semantic_ret =
-      SemanticBuilder::new().build(&self.program);
+    let semantic_ret = SemanticBuilder::new().build(&self.program);
     let scoping = semantic_ret.semantic.into_scoping();
 
     // Run OXC transformer (TS strip, JSX, decorators, etc.)
-    let transformer = Transformer::new(allocator, Path::new(self.specifier.as_str()), &transform_options);
+    let transformer = Transformer::new(
+      allocator,
+      Path::new(self.specifier.as_str()),
+      &transform_options,
+    );
     let _transform_ret =
       transformer.build_with_scoping(scoping, &mut self.program);
 
@@ -297,8 +298,7 @@ impl<'a> ParsedSource<'a> {
     // inserted by the JSX transform to variable declarations
     let has_jsx_transform = transpile_options.jsx.is_some();
     if transpile_options.var_decl_imports && has_jsx_transform {
-      let mut import_to_var =
-        transforms::ImportDeclsToVarDecls::new(allocator);
+      let mut import_to_var = transforms::ImportDeclsToVarDecls::new(allocator);
       import_to_var.visit_program(&mut self.program);
     }
 
@@ -473,11 +473,8 @@ pub fn transform_program<'a>(
   let transform_ret = transformer.build_with_scoping(scoping, program);
 
   if !transform_ret.errors.is_empty() {
-    let messages: Vec<String> = transform_ret
-      .errors
-      .iter()
-      .map(|e| e.to_string())
-      .collect();
+    let messages: Vec<String> =
+      transform_ret.errors.iter().map(|e| e.to_string()).collect();
     return Err(TransformProgramError::Transform(messages.join("\n")));
   }
 
@@ -665,8 +662,10 @@ export class A {
       )
       .unwrap();
     // Should have decorator-related output
-    assert!(transpiled_source.text.contains("decorate")
-      || transpiled_source.text.contains("__decorateClass"));
+    assert!(
+      transpiled_source.text.contains("decorate")
+        || transpiled_source.text.contains("__decorateClass")
+    );
   }
 
   #[test]
@@ -701,9 +700,11 @@ export class A {
         &EmitOptions::default(),
       )
       .unwrap();
-    assert!(transpiled_source
-      .text
-      .contains("React.createElement(\"my:tag\""));
+    assert!(
+      transpiled_source
+        .text
+        .contains("React.createElement(\"my:tag\"")
+    );
     assert!(transpiled_source.text.contains("\"my:attr\": \"this\""));
   }
 
@@ -1273,14 +1274,16 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       },
     )
     .unwrap();
-    assert!(parsed_source
-      .transpile(
-        &allocator,
-        &Default::default(),
-        &TranspileModuleOptions::default(),
-        &EmitOptions::default()
-      )
-      .is_ok());
+    assert!(
+      parsed_source
+        .transpile(
+          &allocator,
+          &Default::default(),
+          &TranspileModuleOptions::default(),
+          &EmitOptions::default()
+        )
+        .is_ok()
+    );
   }
 
   #[test]
@@ -1352,9 +1355,11 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
       )
       .unwrap();
     assert!(emit_result.text.contains("const foo = \"bar\""));
-    assert!(emit_result
-      .text
-      .contains("//# sourceMappingURL=data:application/json;base64,"));
+    assert!(
+      emit_result
+        .text
+        .contains("//# sourceMappingURL=data:application/json;base64,")
+    );
     assert_eq!(emit_result.source_map, None);
   }
 
@@ -1394,11 +1399,13 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
     let sm = emit_result.source_map.unwrap();
     let value: serde_json::Value = serde_json::from_str(&sm).unwrap();
     assert_eq!(value["version"], 3);
-    assert!(value["sources"]
-      .as_array()
-      .unwrap()
-      .iter()
-      .any(|s| s.as_str().unwrap().contains("mod.tsx")));
+    assert!(
+      value["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|s| s.as_str().unwrap().contains("mod.tsx"))
+    );
   }
 
   #[test]
@@ -1654,16 +1661,22 @@ export function formatter(record: Record) {
       Err(e) => {
         let msg = e.to_string();
         assert!(
-          msg.contains("octal") || msg.contains("Octal") || msg.contains("legacy") || msg.contains("0-prefixed"),
+          msg.contains("octal")
+            || msg.contains("Octal")
+            || msg.contains("legacy")
+            || msg.contains("0-prefixed"),
           "Expected octal diagnostic, got: {msg}"
         );
       }
       Ok(program) => {
         // OXC accepts this — verify it at least parsed something
-        assert!(program.diagnostics().is_empty() || program.diagnostics().iter().any(|d| {
-          let msg = d.to_string();
-          msg.contains("octal") || msg.contains("Octal")
-        }));
+        assert!(
+          program.diagnostics().is_empty()
+            || program.diagnostics().iter().any(|d| {
+              let msg = d.to_string();
+              msg.contains("octal") || msg.contains("Octal")
+            })
+        );
       }
     }
   }
@@ -1672,7 +1685,10 @@ export function formatter(record: Record) {
   fn diagnostic_missing_brace() {
     let diag = get_diagnostic("function test() {");
     assert!(
-      diag.contains("}") || diag.contains("Expected") || diag.contains("expected") || diag.contains("Unexpected"),
+      diag.contains("}")
+        || diag.contains("Expected")
+        || diag.contains("expected")
+        || diag.contains("Unexpected"),
       "Expected missing brace diagnostic, got: {diag}"
     );
   }
@@ -1681,7 +1697,11 @@ export function formatter(record: Record) {
   fn diagnostic_nullish_coalescing_with_logical_op() {
     let diag = get_diagnostic("null || undefined ?? 'foo';");
     assert!(
-      diag.contains("Nullish") || diag.contains("nullish") || diag.contains("??") || diag.contains("coalescing") || diag.contains("mixed"),
+      diag.contains("Nullish")
+        || diag.contains("nullish")
+        || diag.contains("??")
+        || diag.contains("coalescing")
+        || diag.contains("mixed"),
       "Expected nullish coalescing diagnostic, got: {diag}"
     );
   }
@@ -1690,7 +1710,10 @@ export function formatter(record: Record) {
   fn diagnostic_missing_init_in_using() {
     let diag = get_diagnostic("using test");
     assert!(
-      diag.contains("initializer") || diag.contains("Expected") || diag.contains("using") || diag.contains("="),
+      diag.contains("initializer")
+        || diag.contains("Expected")
+        || diag.contains("using")
+        || diag.contains("="),
       "Expected using diagnostic, got: {diag}"
     );
   }
@@ -1699,7 +1722,9 @@ export function formatter(record: Record) {
   fn diagnostic_invalid_left_hand_side_of_assignment() {
     let diag = get_diagnostic("(true ? a : b) = 1;");
     assert!(
-      diag.contains("left-hand") || diag.contains("assign") || diag.contains("Invalid"),
+      diag.contains("left-hand")
+        || diag.contains("assign")
+        || diag.contains("Invalid"),
       "Expected left-hand side diagnostic, got: {diag}"
     );
   }
@@ -1814,10 +1839,7 @@ export function formatter(record: Record) {
     let source_map_str = emit_result.source_map.unwrap();
     let value: serde_json::Value =
       serde_json::from_str(&source_map_str).unwrap();
-    assert_eq!(
-      value["file"].as_str().unwrap(),
-      "mod.tsx",
-    );
+    assert_eq!(value["file"].as_str().unwrap(), "mod.tsx",);
     assert_eq!(
       value["sources"][0].as_str().unwrap(),
       "https://deno.land/x/mod.tsx",

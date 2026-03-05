@@ -84,7 +84,10 @@ impl SourceTextInfo {
   }
 
   /// Get 1-indexed line and column display for a byte position.
-  pub fn line_and_column_display(&self, byte_pos: usize) -> LineAndColumnDisplay {
+  pub fn line_and_column_display(
+    &self,
+    byte_pos: usize,
+  ) -> LineAndColumnDisplay {
     let line_index = self.line_index(byte_pos);
     let line_start = self.line_start(line_index);
     let column = self.text[line_start..byte_pos].encode_utf16().count();

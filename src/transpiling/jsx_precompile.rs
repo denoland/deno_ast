@@ -3,10 +3,10 @@
 use oxc::allocator::Allocator;
 use oxc::allocator::CloneIn;
 use oxc::allocator::StringBuilder;
-use oxc::ast::ast::*;
 use oxc::ast::AstBuilder;
-use oxc::ast_visit::walk_mut;
+use oxc::ast::ast::*;
 use oxc::ast_visit::VisitMut;
+use oxc::ast_visit::walk_mut;
 use oxc::span::SPAN;
 
 pub struct JsxPrecompile<'a> {
@@ -363,11 +363,7 @@ fn jsx_text_to_str(
     text.push_str(line);
   }
 
-  if escape {
-    escape_html(&text)
-  } else {
-    text
-  }
+  if escape { escape_html(&text) } else { text }
 }
 
 /// Convert a JSXMemberExpression to a static member expression chain.
@@ -387,9 +383,9 @@ fn jsx_member_expr_to_normal<'a>(
     }
   };
   let prop = ast.identifier_name(SPAN, jsx_member_expr.property.name.as_str());
-  Expression::StaticMemberExpression(ast.alloc_static_member_expression(
-    SPAN, obj, prop, false,
-  ))
+  Expression::StaticMemberExpression(
+    ast.alloc_static_member_expression(SPAN, obj, prop, false),
+  )
 }
 
 /// Edge case: If the JSX opening element contains a spread attribute
@@ -541,8 +537,11 @@ fn merge_serializable_children<'a>(
             }
 
             if !buf.is_empty() {
-              let alloc_str = StringBuilder::from_str_in(&buf, ast.allocator).into_str();
-              normalized_children.push(JSXChild::Text(ast.alloc_jsx_text(SPAN, alloc_str, None)));
+              let alloc_str =
+                StringBuilder::from_str_in(&buf, ast.allocator).into_str();
+              normalized_children.push(JSXChild::Text(
+                ast.alloc_jsx_text(SPAN, alloc_str, None),
+              ));
 
               buf = String::new()
             }
@@ -553,8 +552,10 @@ fn merge_serializable_children<'a>(
       }
       JSXChild::Element(jsx_el) => {
         if !buf.is_empty() {
-          let alloc_str = StringBuilder::from_str_in(&buf, ast.allocator).into_str();
-          normalized_children.push(JSXChild::Text(ast.alloc_jsx_text(SPAN, alloc_str, None)));
+          let alloc_str =
+            StringBuilder::from_str_in(&buf, ast.allocator).into_str();
+          normalized_children
+            .push(JSXChild::Text(ast.alloc_jsx_text(SPAN, alloc_str, None)));
 
           buf = String::new()
         }
@@ -563,7 +564,8 @@ fn merge_serializable_children<'a>(
           serializable_count += 1;
         }
 
-        normalized_children.push(JSXChild::Element(jsx_el.clone_in(ast.allocator)));
+        normalized_children
+          .push(JSXChild::Element(jsx_el.clone_in(ast.allocator)));
       }
       // Invalid, was part of an earlier JSX iteration, but no
       // transform supports it. Babel and TypeScript error when they
@@ -571,8 +573,10 @@ fn merge_serializable_children<'a>(
       JSXChild::Spread(_) => {}
       child => {
         if !buf.is_empty() {
-          let alloc_str = StringBuilder::from_str_in(&buf, ast.allocator).into_str();
-          normalized_children.push(JSXChild::Text(ast.alloc_jsx_text(SPAN, alloc_str, None)));
+          let alloc_str =
+            StringBuilder::from_str_in(&buf, ast.allocator).into_str();
+          normalized_children
+            .push(JSXChild::Text(ast.alloc_jsx_text(SPAN, alloc_str, None)));
 
           buf = String::new()
         }
@@ -584,7 +588,8 @@ fn merge_serializable_children<'a>(
 
   if !buf.is_empty() {
     let alloc_str = StringBuilder::from_str_in(&buf, ast.allocator).into_str();
-    normalized_children.push(JSXChild::Text(ast.alloc_jsx_text(SPAN, alloc_str, None)));
+    normalized_children
+      .push(JSXChild::Text(ast.alloc_jsx_text(SPAN, alloc_str, None)));
   }
 
   MergedChildren {
@@ -661,7 +666,9 @@ impl<'a> JsxPrecompile<'a> {
     expr: Expression<'a>,
   ) -> Expression<'a> {
     let callee_name = self.get_jsx_escape_fn_identifier();
-    let callee = self.ast.expression_identifier(SPAN, self.alloc_str(&callee_name));
+    let callee = self
+      .ast
+      .expression_identifier(SPAN, self.alloc_str(&callee_name));
     let mut args = self.ast.vec_with_capacity(1);
     args.push(Argument::from(expr));
 
@@ -756,9 +763,7 @@ impl<'a> JsxPrecompile<'a> {
         let mut elems: Vec<ArrayExpressionElement<'a>> = vec![];
 
         // Determine whether we should wrap children with a template
-        if serializable_count > 1
-          || serializable_count == 1 && text_count > 0
-        {
+        if serializable_count > 1 || serializable_count == 1 && text_count > 0 {
           self.next_index += 1;
           let index = self.next_index;
           let mut strings: Vec<String> = vec![];
@@ -916,9 +921,14 @@ impl<'a> JsxPrecompile<'a> {
             let attr_name = get_attr_name(jsx_attr, !is_component);
             let prop_key = if !is_text_valid_identifier(&attr_name) {
               let s = self.alloc_str(&attr_name);
-              PropertyKey::StringLiteral(self.ast.alloc_string_literal(SPAN, s, None))
+              PropertyKey::StringLiteral(
+                self.ast.alloc_string_literal(SPAN, s, None),
+              )
             } else {
-              self.ast.property_key_static_identifier(SPAN, self.alloc_str(&attr_name))
+              self.ast.property_key_static_identifier(
+                SPAN,
+                self.alloc_str(&attr_name),
+              )
             };
 
             // Case: <Foo required />
@@ -932,9 +942,8 @@ impl<'a> JsxPrecompile<'a> {
                 false,
                 false,
               );
-              props.push(ObjectPropertyKind::ObjectProperty(
-                self.ast.alloc(prop),
-              ));
+              props
+                .push(ObjectPropertyKind::ObjectProperty(self.ast.alloc(prop)));
               continue;
             };
 
@@ -948,9 +957,9 @@ impl<'a> JsxPrecompile<'a> {
                   match &jsx_expr_container.expression {
                     // This is treated as a syntax error in attributes
                     JSXExpression::EmptyExpression(_) => None,
-                    expr => {
-                      expr.as_expression().map(|e| e.clone_in(self.ast.allocator))
-                    }
+                    expr => expr
+                      .as_expression()
+                      .map(|e| e.clone_in(self.ast.allocator)),
                   }
                 }
                 // There is no valid way to construct these
@@ -1011,12 +1020,10 @@ impl<'a> JsxPrecompile<'a> {
           }
           // Case: <Foo {...props} />
           JSXAttributeItem::SpreadAttribute(spread_attr) => {
-            props.push(
-              self.ast.object_property_kind_spread_property(
-                SPAN,
-                spread_attr.argument.clone_in(self.ast.allocator),
-              ),
-            );
+            props.push(self.ast.object_property_kind_spread_property(
+              SPAN,
+              spread_attr.argument.clone_in(self.ast.allocator),
+            ));
           }
         }
       }
@@ -1025,7 +1032,8 @@ impl<'a> JsxPrecompile<'a> {
       let child_expr = self.serialize_jsx_children_to_expr(&el.children);
 
       if let Some(expr) = child_expr {
-        let children_key = self.ast.property_key_static_identifier(SPAN, "children");
+        let children_key =
+          self.ast.property_key_static_identifier(SPAN, "children");
         let prop = self.ast.object_property(
           SPAN,
           PropertyKind::Init,
@@ -1035,9 +1043,7 @@ impl<'a> JsxPrecompile<'a> {
           false,
           false,
         );
-        props.push(ObjectPropertyKind::ObjectProperty(
-          self.ast.alloc(prop),
-        ));
+        props.push(ObjectPropertyKind::ObjectProperty(self.ast.alloc(prop)));
       }
 
       if props.is_empty() {
@@ -1057,7 +1063,9 @@ impl<'a> JsxPrecompile<'a> {
     }
 
     let callee_name = self.get_jsx_identifier();
-    let callee = self.ast.expression_identifier(SPAN, self.alloc_str(&callee_name));
+    let callee = self
+      .ast
+      .expression_identifier(SPAN, self.alloc_str(&callee_name));
     let mut arena_args = self.ast.vec_with_capacity(args.len());
     for arg in args {
       arena_args.push(arg);
@@ -1078,7 +1086,9 @@ impl<'a> JsxPrecompile<'a> {
     expr: Expression<'a>,
   ) -> Expression<'a> {
     let callee_name = self.get_jsx_attr_identifier();
-    let callee = self.ast.expression_identifier(SPAN, self.alloc_str(&callee_name));
+    let callee = self
+      .ast
+      .expression_identifier(SPAN, self.alloc_str(&callee_name));
     let mut args = self.ast.vec_with_capacity(2);
     args.push(Argument::from(self.string_lit_expr(name)));
     args.push(Argument::from(expr));
@@ -1160,13 +1170,12 @@ impl<'a> JsxPrecompile<'a> {
             dynamic_exprs,
           ),
         // Case: <div><></></div>
-        JSXChild::Fragment(jsx_frag) => self
-          .serialize_jsx_children_to_string(
-            &jsx_frag.children,
-            strings,
-            dynamic_exprs,
-            false,
-          ),
+        JSXChild::Fragment(jsx_frag) => self.serialize_jsx_children_to_string(
+          &jsx_frag.children,
+          strings,
+          dynamic_exprs,
+          false,
+        ),
         // Invalid
         JSXChild::Spread(_) => {}
       }
@@ -1228,13 +1237,12 @@ impl<'a> JsxPrecompile<'a> {
                   }
                   JSXAttributeValue::Fragment(jsx_frag) => {
                     // Convert fragment to expression
-                    self.serialize_jsx_children_to_expr(&jsx_frag.children)
+                    self
+                      .serialize_jsx_children_to_expr(&jsx_frag.children)
                       .unwrap_or_else(|| self.ast.expression_null_literal(SPAN))
                   }
                 },
-                None => {
-                  self.ast.expression_boolean_literal(SPAN, true)
-                }
+                None => self.ast.expression_boolean_literal(SPAN, true),
               };
 
               let expr = self.convert_to_jsx_attr_call(&attr_name, value);
@@ -1272,8 +1280,10 @@ impl<'a> JsxPrecompile<'a> {
               if attr_name == "key" || attr_name == "ref" {
                 strings.last_mut().unwrap().push(' ');
                 strings.push("".to_string());
-                let value_expr = self.string_lit_expr(string_lit.value.as_str());
-                let expr = self.convert_to_jsx_attr_call(&attr_name, value_expr);
+                let value_expr =
+                  self.string_lit_expr(string_lit.value.as_str());
+                let expr =
+                  self.convert_to_jsx_attr_call(&attr_name, value_expr);
                 dynamic_exprs.push(expr);
                 continue;
               }
@@ -1356,7 +1366,11 @@ impl<'a> JsxPrecompile<'a> {
                       let cond_expr = self.ast.expression_conditional(
                         SPAN,
                         expr_clone,
-                        self.ast.expression_string_literal(SPAN, attr_name_str, None),
+                        self.ast.expression_string_literal(
+                          SPAN,
+                          attr_name_str,
+                          None,
+                        ),
                         self.ast.expression_string_literal(SPAN, "", None),
                       );
                       dynamic_exprs.push(cond_expr)
@@ -1417,7 +1431,9 @@ impl<'a> JsxPrecompile<'a> {
 
     // Case: _jsxTemplate($$_tpl_1);
     let jsx_ident_name = self.get_jsx_ssr_identifier();
-    let callee = self.ast.expression_identifier(SPAN, self.alloc_str(&jsx_ident_name));
+    let callee = self
+      .ast
+      .expression_identifier(SPAN, self.alloc_str(&jsx_ident_name));
 
     self.ast.expression_call(
       SPAN,
@@ -1479,7 +1495,9 @@ impl<'a> JsxPrecompile<'a> {
           SPAN,
           self.alloc_str(&imported_name),
         );
-        let local = self.ast.binding_identifier(SPAN, self.alloc_str(&local_name));
+        let local = self
+          .ast
+          .binding_identifier(SPAN, self.alloc_str(&local_name));
         specifiers.push(ImportDeclarationSpecifier::ImportSpecifier(
           self.ast.alloc_import_specifier(
             SPAN,
@@ -1500,9 +1518,8 @@ impl<'a> JsxPrecompile<'a> {
         ImportOrExportKind::Value,
       );
 
-      let import_stmt = Statement::ImportDeclaration(
-        self.ast.alloc(import_decl),
-      );
+      let import_stmt =
+        Statement::ImportDeclaration(self.ast.alloc(import_decl));
 
       // Prepend the import statement
       stmts.insert(0, import_stmt);
@@ -1728,10 +1745,7 @@ mod tests {
     let source_type = SourceType::tsx();
     let source_in_arena = allocator.alloc_str(src);
     let mut ret = Parser::new(allocator, source_in_arena, source_type).parse();
-    assert!(
-      !ret.panicked,
-      "Parse failed for: {src}"
-    );
+    assert!(!ret.panicked, "Parse failed for: {src}");
     transform.visit_program(&mut ret.program);
     let output = Codegen::new().build(&ret.program).code;
     assert_eq!(normalize(&output), normalize(expected_output));
