@@ -7,17 +7,11 @@ use std::fmt::Display;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
-use deno_error::JsError;
 use deno_terminal::colors;
 use unicode_width::UnicodeWidthStr;
 
 use crate::ModuleSpecifier;
-use crate::SourcePos;
-use crate::SourceRange;
-use crate::SourceRanged;
 use crate::SourceTextInfo;
-
-use crate::swc::common::errors::Diagnostic as SwcDiagnostic;
 
 pub enum DiagnosticLevel {
   Error,
@@ -32,7 +26,6 @@ pub struct DiagnosticSourceRange {
 
 #[derive(Clone, Copy, Debug)]
 pub enum DiagnosticSourcePos {
-  SourcePos(SourcePos),
   ByteIndex(usize),
   LineAndCol {
     // 0-indexed line number in bytes
@@ -43,10 +36,9 @@ pub enum DiagnosticSourcePos {
 }
 
 impl DiagnosticSourcePos {
-  fn pos(&self, source: &SourceTextInfo) -> SourcePos {
+  fn byte_index(&self, source: &SourceTextInfo) -> usize {
     match self {
-      DiagnosticSourcePos::SourcePos(pos) => *pos,
-      DiagnosticSourcePos::ByteIndex(index) => source.range().start() + *index,
+      DiagnosticSourcePos::ByteIndex(index) => *index,
       DiagnosticSourcePos::LineAndCol { line, column } => {
         source.line_start(*line) + *column
       }
@@ -64,10 +56,6 @@ pub enum DiagnosticLocation<'a> {
     specifier: Cow<'a, ModuleSpecifier>,
   },
   /// The diagnostic is relevant to a specific position in a module.
-  ///
-  /// This variant will get the relevant `SouceTextInfo` from the cache using
-  /// the given specifier, and will then calculate the line and column numbers
-  /// from the given `SourcePos`.
   ModulePosition {
     /// The specifier of the module that contains the diagnostic.
     specifier: Cow<'a, ModuleSpecifier>,
@@ -84,8 +72,6 @@ impl DiagnosticLocation<'_> {
   ///
   /// The column number is 1-indexed. This is the number of UTF-16 code units
   /// from the start of the line to the diagnostic.
-  /// Why UTF-16 code units? Because that's what VS Code understands, and
-  /// everyone uses VS Code. :)
   fn position(&self) -> Option<(usize, usize)> {
     match self {
       DiagnosticLocation::Path { .. } => None,
@@ -95,12 +81,10 @@ impl DiagnosticLocation<'_> {
         source_pos,
         text_info,
       } => {
-        let pos = source_pos.pos(text_info);
+        let pos = source_pos.byte_index(text_info);
         let line_index = text_info.line_index(pos);
-        let line_start_pos = text_info.line_start(line_index);
-        // todo(dsherret): fix in text_lines
-        let content =
-          text_info.range_text(&SourceRange::new(line_start_pos, pos));
+        let line_start = text_info.line_start(line_index);
+        let content = text_info.range_text(line_start, pos);
         let line = line_index + 1;
         let column = content.encode_utf16().count() + 1;
         Some((line, column))
@@ -110,7 +94,7 @@ impl DiagnosticLocation<'_> {
 }
 
 pub struct DiagnosticSnippet<'a> {
-  /// The source text for this snippet. The
+  /// The source text for this snippet.
   pub source: Cow<'a, crate::SourceTextInfo>,
   /// The piece of the snippet that should be highlighted. For best results, the
   /// highlights should not overlap and be ordered by their start position.
@@ -162,15 +146,15 @@ impl DiagnosticSnippetHighlightStyle {
   }
 }
 
-/// Returns the text of the line with the given number.
+/// Returns the text of the line with the given number (1-indexed).
 fn line_text(source: &SourceTextInfo, line_number: usize) -> &str {
   source.line_text(line_number - 1)
 }
 
-/// Returns the line number (1 indexed) of the line that contains the given
+/// Returns the line number (1-indexed) of the line that contains the given
 /// position.
 fn line_number(source: &SourceTextInfo, pos: DiagnosticSourcePos) -> usize {
-  source.line_index(pos.pos(source)) + 1
+  source.line_index(pos.byte_index(source)) + 1
 }
 
 pub trait Diagnostic {
@@ -236,26 +220,6 @@ impl fmt::Display for ReplaceTab<'_> {
 }
 
 /// The width of the string as displayed, assuming tabs are 2 spaces wide.
-///
-/// This display width assumes that zero-width-joined characters are the width
-/// of their consituent characters. This means that "Person: Red Hair" (which is
-/// represented as "Person" + "ZWJ" + "Red Hair") will have a width of 4.
-///
-/// Whether this is correct is unfortunately dependent on the font / terminal
-/// being used. Here is a list of what terminals consider the length of
-/// "Person: Red Hair" to be:
-///
-/// | Terminal         | Rendered Width |
-/// | ---------------- | -------------- |
-/// | Windows Terminal | 5 chars        |
-/// | iTerm (macOS)    | 2 chars        |
-/// | Terminal (macOS) | 2 chars        |
-/// | VS Code terminal | 4 chars        |
-/// | GNOME Terminal   | 4 chars        |
-///
-/// If we really wanted to, we could try and detect the terminal being used and
-/// adjust the width accordingly. However, this is probably not worth the
-/// effort.
 fn display_width(str: &str) -> usize {
   let num_tabs = str.chars().filter(|c| *c == '\t').count();
   str.width_cjk() + num_tabs * TAB_WIDTH - num_tabs
@@ -271,18 +235,6 @@ impl<T: Diagnostic + ?Sized> Display for DiagnosticDisplay<'_, T> {
   }
 }
 
-// error[missing-return-type]: missing explicit return type on public function
-//   at /mnt/artemis/Projects/github.com/denoland/deno/test.ts:1:16
-//    |
-//  1 | export function test() {
-//    |                 ^^^^
-//    = hint: add an explicit return type to the function
-//    |
-//  1 | export function test(): string {
-//    |                       ^^^^^^^^
-//
-//   info: all functions that are exported from a module must have an explicit return type to support fast check and documentation generation.
-//   docs: https://jsr.io/d/missing-return-type
 fn print_diagnostic(
   io: &mut dyn std::fmt::Write,
   diagnostic: &(impl Diagnostic + ?Sized),
@@ -460,29 +412,23 @@ fn print_snippet(
       let padding_width;
       let highlight_width;
       if start_line_number == end_line_number {
-        padding_width = display_width(source.range_text(&SourceRange::new(
-          line_start_pos,
-          highlight.range.start.pos(source),
-        )));
-        highlight_width = display_width(source.range_text(&SourceRange::new(
-          highlight.range.start.pos(source),
-          highlight.range.end.pos(source),
-        )));
+        let highlight_start = highlight.range.start.byte_index(source);
+        let highlight_end = highlight.range.end.byte_index(source);
+        padding_width =
+          display_width(source.range_text(line_start_pos, highlight_start));
+        highlight_width =
+          display_width(source.range_text(highlight_start, highlight_end));
       } else if start_line_number == line_number {
-        padding_width = display_width(source.range_text(&SourceRange::new(
-          line_start_pos,
-          highlight.range.start.pos(source),
-        )));
-        highlight_width = display_width(source.range_text(&SourceRange::new(
-          highlight.range.start.pos(source),
-          line_end_pos,
-        )));
+        let highlight_start = highlight.range.start.byte_index(source);
+        padding_width =
+          display_width(source.range_text(line_start_pos, highlight_start));
+        highlight_width =
+          display_width(source.range_text(highlight_start, line_end_pos));
       } else if end_line_number == line_number {
+        let highlight_end = highlight.range.end.byte_index(source);
         padding_width = 0;
-        highlight_width = display_width(source.range_text(&SourceRange::new(
-          line_start_pos,
-          highlight.range.end.pos(source),
-        )));
+        highlight_width =
+          display_width(source.range_text(line_start_pos, highlight_end));
       } else {
         padding_width = 0;
         highlight_width = display_width(line_text);
@@ -539,8 +485,6 @@ fn specifier_to_file_path(specifier: &ModuleSpecifier) -> Option<PathBuf> {
       Some(path) => Some(path),
       None => {
         // This might be a unix-style path which is used in the tests even on Windows.
-        // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
-        // once/if https://github.com/servo/rust-url/issues/730 is implemented.
         if specifier.scheme() == "file"
           && specifier.host().is_none()
           && specifier.port().is_none()
@@ -560,116 +504,6 @@ fn specifier_to_file_path(specifier: &ModuleSpecifier) -> Option<PathBuf> {
     }
   } else {
     to_file_path_if_not_wasm(specifier)
-  }
-}
-
-#[cfg(any(feature = "transpiling", feature = "type_strip"))]
-pub(crate) type DiagnosticsCell = crate::swc::common::sync::Lrc<
-  crate::swc::common::sync::Lock<Vec<SwcDiagnostic>>,
->;
-
-#[cfg(any(feature = "transpiling", feature = "type_strip"))]
-#[derive(Default, Clone)]
-pub(crate) struct DiagnosticCollector {
-  diagnostics: DiagnosticsCell,
-}
-
-#[cfg(any(feature = "transpiling", feature = "type_strip"))]
-impl DiagnosticCollector {
-  pub fn into_handler_and_cell(
-    self,
-  ) -> (crate::swc::common::errors::Handler, DiagnosticsCell) {
-    let cell = self.diagnostics.clone();
-    (
-      crate::swc::common::errors::Handler::with_emitter(
-        true,
-        false,
-        Box::new(self),
-      ),
-      cell,
-    )
-  }
-}
-
-#[cfg(any(feature = "transpiling", feature = "type_strip"))]
-impl crate::swc::common::errors::Emitter for DiagnosticCollector {
-  fn emit(
-    &mut self,
-    db: &mut crate::swc::common::errors::DiagnosticBuilder<'_>,
-  ) {
-    let mut diagnostics = self.diagnostics.lock();
-    diagnostics.push(db.take());
-  }
-}
-
-#[derive(Debug, JsError)]
-#[class(syntax)]
-pub struct SwcFoldDiagnosticsError(Vec<String>);
-
-impl std::error::Error for SwcFoldDiagnosticsError {}
-
-impl std::fmt::Display for SwcFoldDiagnosticsError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    for (i, diagnostic) in self.0.iter().enumerate() {
-      if i > 0 {
-        write!(f, "\n\n")?;
-      }
-
-      write!(f, "{}", diagnostic)?
-    }
-
-    Ok(())
-  }
-}
-
-pub fn ensure_no_fatal_swc_diagnostics(
-  source_map: &swc_common::SourceMap,
-  diagnostics: impl Iterator<Item = SwcDiagnostic>,
-) -> Result<(), SwcFoldDiagnosticsError> {
-  let fatal_diagnostics = diagnostics
-    .filter(is_fatal_swc_diagnostic)
-    .collect::<Vec<_>>();
-  if !fatal_diagnostics.is_empty() {
-    Err(SwcFoldDiagnosticsError(
-      fatal_diagnostics
-        .iter()
-        .map(|d| format_swc_diagnostic(source_map, d))
-        .collect::<Vec<_>>(),
-    ))
-  } else {
-    Ok(())
-  }
-}
-
-fn is_fatal_swc_diagnostic(diagnostic: &SwcDiagnostic) -> bool {
-  use crate::swc::common::errors::Level;
-  match diagnostic.level {
-    Level::Bug
-    | Level::Cancelled
-    | Level::FailureNote
-    | Level::Fatal
-    | Level::PhaseFatal
-    | Level::Error => true,
-    Level::Help | Level::Note | Level::Warning => false,
-  }
-}
-
-fn format_swc_diagnostic(
-  source_map: &swc_common::SourceMap,
-  diagnostic: &SwcDiagnostic,
-) -> String {
-  if let Some(span) = &diagnostic.span.primary_span() {
-    let file_name = source_map.span_to_filename(*span);
-    let loc = source_map.lookup_char_pos(span.lo);
-    format!(
-      "{} at {}:{}:{}",
-      diagnostic.message(),
-      file_name,
-      loc.line,
-      loc.col_display + 1,
-    )
-  } else {
-    diagnostic.message()
   }
 }
 
@@ -698,7 +532,7 @@ mod tests {
     let pos = text_info.line_start(1);
     let location = DiagnosticLocation::ModulePosition {
       specifier: Cow::Borrowed(&specifier),
-      source_pos: DiagnosticSourcePos::SourcePos(pos),
+      source_pos: DiagnosticSourcePos::ByteIndex(pos),
       text_info: Cow::Owned(text_info),
     };
     let position = location.position().unwrap();
@@ -712,7 +546,7 @@ mod tests {
     let pos = text_info.line_start(0) + 11; // the end of the emoji
     let location = DiagnosticLocation::ModulePosition {
       specifier: Cow::Borrowed(&specifier),
-      source_pos: DiagnosticSourcePos::SourcePos(pos),
+      source_pos: DiagnosticSourcePos::ByteIndex(pos),
       text_info: Cow::Owned(text_info),
     };
     let position = location.position().unwrap();

@@ -1,63 +1,46 @@
 // Copyright 2020-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::swc::ast::Id;
-use crate::swc::ast::{
-  ArrowExpr, BlockStmt, BlockStmtOrExpr, CatchClause, ClassDecl, ClassExpr,
-  DoWhileStmt, Expr, FnDecl, FnExpr, ForInStmt, ForOfStmt, ForStmt, Function,
-  Ident, ImportDefaultSpecifier, ImportNamedSpecifier, ImportStarAsSpecifier,
-  Param, Pat, SwitchStmt, TsInterfaceDecl, TsTypeAliasDecl, VarDecl,
-  VarDeclKind, WhileStmt, WithStmt,
-};
-use crate::swc::atoms::Atom;
-use crate::swc::ecma_visit::Visit;
-use crate::swc::ecma_visit::VisitWith;
-use crate::swc::utils::find_pat_ids;
-use crate::view;
+use oxc::ast::ast::*;
+use oxc::ast_visit::Visit;
+use oxc::ast_visit::walk;
+use oxc::syntax::scope::ScopeFlags;
 use std::collections::HashMap;
+
+/// Uniquely identifies a binding declaration.
+/// The first element is the name, the second is a disambiguation index
+/// for cases where multiple declarations share the same name.
+pub type Id = (String, usize);
 
 #[derive(Debug)]
 pub struct Scope {
   vars: HashMap<Id, Var>,
-  symbols: HashMap<Atom, Vec<Id>>,
+  symbols: HashMap<String, Vec<Id>>,
+  next_id: usize,
 }
 
 impl Scope {
-  pub fn analyze(program: view::Program) -> Self {
+  pub fn analyze(program: &Program<'_>) -> Self {
     let mut scope = Self {
       vars: Default::default(),
       symbols: Default::default(),
+      next_id: 0,
     };
     let mut path = vec![];
-
-    match program {
-      view::Program::Module(module) => {
-        module.inner.visit_with(&mut Analyzer {
-          scope: &mut scope,
-          path: &mut path,
-        });
-      }
-      view::Program::Script(script) => {
-        script.inner.visit_with(&mut Analyzer {
-          scope: &mut scope,
-          path: &mut path,
-        });
-      }
+    let mut analyzer = Analyzer {
+      scope: &mut scope,
+      path: &mut path,
     };
-
+    analyzer.visit_program(program);
     scope
   }
 
-  // Get all declarations with a symbol.
-  pub fn ids_with_symbol(&self, sym: &Atom) -> Option<&Vec<Id>> {
+  /// Get all declarations with a symbol.
+  pub fn ids_with_symbol(&self, sym: &str) -> Option<&Vec<Id>> {
     self.symbols.get(sym)
   }
 
   pub fn var(&self, id: &Id) -> Option<&Var> {
     self.vars.get(id)
-  }
-
-  pub fn var_by_ident(&self, ident: &view::Ident) -> Option<&Var> {
-    self.var(&ident.inner.to_id())
   }
 
   pub fn is_global(&self, id: &Id) -> bool {
@@ -72,7 +55,6 @@ pub struct Var {
 }
 
 impl Var {
-  /// Empty path means root scope.
   #[allow(dead_code)]
   pub fn path(&self) -> &[ScopeKind] {
     &self.path
@@ -92,18 +74,8 @@ pub enum BindingKind {
   Param,
   Class,
   CatchClause,
-
-  /// This means that the binding comes from `ImportStarAsSpecifier`, like
-  /// `import * as foo from "foo.ts";`
-  /// `foo` effectively represents a namespace.
   NamespaceImport,
-
-  /// Represents `ImportDefaultSpecifier` or `ImportNamedSpecifier`.
-  /// e.g.
-  ///   - import foo from "foo.ts";
-  ///   - import { foo } from "foo.ts";
   ValueImport,
-
   Type,
 }
 
@@ -118,7 +90,6 @@ impl BindingKind {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum ScopeKind {
-  // Module,
   Arrow,
   Function,
   Block,
@@ -135,39 +106,57 @@ struct Analyzer<'a> {
 }
 
 impl Analyzer<'_> {
-  fn declare_id(&mut self, kind: BindingKind, i: Id) {
+  fn declare(&mut self, kind: BindingKind, name: &str) {
+    let id_index = self.scope.next_id;
+    self.scope.next_id += 1;
+    let id = (name.to_string(), id_index);
     self.scope.vars.insert(
-      i.clone(),
+      id.clone(),
       Var {
         kind,
         path: self.path.clone(),
       },
     );
-    self.scope.symbols.entry(i.0.clone()).or_default().push(i);
+    self
+      .scope
+      .symbols
+      .entry(name.to_string())
+      .or_default()
+      .push(id);
   }
 
-  fn declare(&mut self, kind: BindingKind, i: &Ident) {
-    self.declare_id(kind, i.to_id());
-  }
-
-  fn declare_pat(&mut self, kind: BindingKind, pat: &Pat) {
-    let ids: Vec<Id> = find_pat_ids(pat);
-
-    for id in ids {
-      self.declare_id(kind, id);
+  fn declare_binding_pattern(
+    &mut self,
+    kind: BindingKind,
+    pattern: &BindingPattern<'_>,
+  ) {
+    match pattern {
+      BindingPattern::BindingIdentifier(ident) => {
+        self.declare(kind, ident.name.as_str());
+      }
+      BindingPattern::ObjectPattern(obj) => {
+        for prop in &obj.properties {
+          self.declare_binding_pattern(kind, &prop.value);
+        }
+        if let Some(rest) = &obj.rest {
+          self.declare_binding_pattern(kind, &rest.argument);
+        }
+      }
+      BindingPattern::ArrayPattern(arr) => {
+        for elem in arr.elements.iter().flatten() {
+          self.declare_binding_pattern(kind, elem);
+        }
+        if let Some(rest) = &arr.rest {
+          self.declare_binding_pattern(kind, &rest.argument);
+        }
+      }
+      BindingPattern::AssignmentPattern(assign) => {
+        self.declare_binding_pattern(kind, &assign.left);
+      }
     }
   }
 
-  fn visit_with_path<T>(&mut self, kind: ScopeKind, node: &T)
-  where
-    T: 'static + for<'any> VisitWith<Analyzer<'any>>,
-  {
-    self.path.push(kind);
-    node.visit_with(self);
-    self.path.pop();
-  }
-
-  fn with<F>(&mut self, kind: ScopeKind, op: F)
+  fn with_scope<F>(&mut self, kind: ScopeKind, op: F)
   where
     F: FnOnce(&mut Analyzer),
   {
@@ -177,210 +166,225 @@ impl Analyzer<'_> {
   }
 }
 
-impl Visit for Analyzer<'_> {
-  fn visit_arrow_expr(&mut self, n: &ArrowExpr) {
-    self.with(ScopeKind::Arrow, |a| {
-      // Parameters of `ArrowExpr` are of type `Vec<Pat>`, not `Vec<Param>`,
-      // which means `visit_param` does _not_ handle parameters of `ArrowExpr`.
-      // We need to handle them manually here.
-      for param in &n.params {
-        a.declare_pat(BindingKind::Param, param);
+impl<'a> Visit<'a> for Analyzer<'_> {
+  fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
+    for declarator in &decl.declarations {
+      if let Some(init) = &declarator.init {
+        self.visit_expression(init);
       }
-      n.visit_children_with(a);
+
+      let kind = match decl.kind {
+        VariableDeclarationKind::Var => BindingKind::Var,
+        VariableDeclarationKind::Let => BindingKind::Let,
+        VariableDeclarationKind::Const => BindingKind::Const,
+        VariableDeclarationKind::Using
+        | VariableDeclarationKind::AwaitUsing => BindingKind::Const,
+      };
+
+      // Check for `let Foo = class Foo {}` pattern
+      if let Some(init) = &declarator.init {
+        if let Expression::ClassExpression(class_expr) = init {
+          if let Some(class_id) = &class_expr.id {
+            if let Some(binding_id) = declarator.id.get_binding_identifier() {
+              if binding_id.name == class_id.name {
+                self.declare(BindingKind::Class, class_id.name.as_str());
+                continue;
+              }
+            }
+          }
+        }
+      }
+
+      self.declare_binding_pattern(kind, &declarator.id);
+    }
+  }
+
+  fn visit_function(
+    &mut self,
+    func: &Function<'a>,
+    _flags: ScopeFlags,
+  ) {
+    if let Some(id) = &func.id {
+      self.declare(BindingKind::Function, id.name.as_str());
+    }
+    self.with_scope(ScopeKind::Function, |a| {
+      for param in &func.params.items {
+        a.declare_binding_pattern(BindingKind::Param, &param.pattern);
+      }
+      if let Some(body) = &func.body {
+        for stmt in &body.statements {
+          a.visit_statement(stmt);
+        }
+      }
     });
   }
 
-  /// Overriden not to add ScopeKind::Block
-  fn visit_block_stmt_or_expr(&mut self, n: &BlockStmtOrExpr) {
-    match n {
-      BlockStmtOrExpr::BlockStmt(s) => s.stmts.visit_with(self),
-      BlockStmtOrExpr::Expr(e) => e.visit_with(self),
-    }
-  }
-
-  fn visit_var_decl(&mut self, n: &VarDecl) {
-    n.decls.iter().for_each(|v| {
-      v.init.visit_with(self);
-
-      // If the class name and the variable name are the same like `let Foo = class Foo {}`,
-      // this binding should be treated as `BindingKind::Class`.
-      if let Some(expr) = &v.init
-        && let Expr::Class(ClassExpr {
-          ident: Some(class_name),
-          ..
-        }) = &**expr
-        && let Pat::Ident(var_name) = &v.name
-        && var_name.id.sym == class_name.sym
-      {
-        self.declare(BindingKind::Class, class_name);
-        return;
+  fn visit_arrow_function_expression(
+    &mut self,
+    expr: &ArrowFunctionExpression<'a>,
+  ) {
+    self.with_scope(ScopeKind::Arrow, |a| {
+      for param in &expr.params.items {
+        a.declare_binding_pattern(BindingKind::Param, &param.pattern);
       }
-
-      self.declare_pat(
-        match n.kind {
-          VarDeclKind::Var => BindingKind::Var,
-          VarDeclKind::Let => BindingKind::Let,
-          VarDeclKind::Const => BindingKind::Const,
-        },
-        &v.name,
-      );
+      for stmt in &expr.body.statements {
+        a.visit_statement(stmt);
+      }
     });
   }
 
-  /// Overriden not to add ScopeKind::Block
-  fn visit_function(&mut self, n: &Function) {
-    n.decorators.visit_with(self);
-    n.params.visit_with(self);
+  fn visit_class(&mut self, class: &Class<'a>) {
+    if let Some(id) = &class.id {
+      self.declare(BindingKind::Class, id.name.as_str());
+    }
+    self.with_scope(ScopeKind::Class, |a| {
+      walk::walk_class(a, class);
+    });
+  }
 
-    // Don't add ScopeKind::Block
-    if let Some(body) = &n.body {
-      body.stmts.visit_with(self);
+  fn visit_block_statement(&mut self, block: &BlockStatement<'a>) {
+    self.with_scope(ScopeKind::Block, |a| {
+      for stmt in &block.body {
+        a.visit_statement(stmt);
+      }
+    });
+  }
+
+  fn visit_catch_clause(&mut self, clause: &CatchClause<'a>) {
+    if let Some(param) = &clause.param {
+      self.declare_binding_pattern(BindingKind::CatchClause, &param.pattern);
+    }
+    self.with_scope(ScopeKind::Catch, |a| {
+      for stmt in &clause.body.body {
+        a.visit_statement(stmt);
+      }
+    });
+  }
+
+  fn visit_import_declaration(&mut self, decl: &ImportDeclaration<'a>) {
+    if let Some(specifiers) = &decl.specifiers {
+      for spec in specifiers {
+        match spec {
+          ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
+            self.declare(BindingKind::ValueImport, s.local.name.as_str());
+          }
+          ImportDeclarationSpecifier::ImportSpecifier(s) => {
+            self.declare(BindingKind::ValueImport, s.local.name.as_str());
+          }
+          ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => {
+            self
+              .declare(BindingKind::NamespaceImport, s.local.name.as_str());
+          }
+        }
+      }
     }
   }
 
-  fn visit_fn_decl(&mut self, n: &FnDecl) {
-    self.declare(BindingKind::Function, &n.ident);
-
-    self.visit_with_path(ScopeKind::Function, &n.function);
-  }
-
-  fn visit_fn_expr(&mut self, n: &FnExpr) {
-    if let Some(ident) = &n.ident {
-      self.declare(BindingKind::Function, ident);
+  fn visit_for_statement(&mut self, stmt: &ForStatement<'a>) {
+    if let Some(init) = &stmt.init {
+      self.visit_for_statement_init(init);
     }
-
-    self.visit_with_path(ScopeKind::Function, &n.function);
-  }
-
-  fn visit_class_decl(&mut self, n: &ClassDecl) {
-    self.declare(BindingKind::Class, &n.ident);
-
-    self.visit_with_path(ScopeKind::Class, &n.class);
-  }
-
-  fn visit_class_expr(&mut self, n: &ClassExpr) {
-    if let Some(class_name) = n.ident.as_ref() {
-      self.declare(BindingKind::Class, class_name);
+    if let Some(update) = &stmt.update {
+      self.visit_expression(update);
     }
-
-    self.visit_with_path(ScopeKind::Class, &n.class);
-  }
-
-  fn visit_block_stmt(&mut self, n: &BlockStmt) {
-    self.visit_with_path(ScopeKind::Block, &n.stmts)
-  }
-
-  fn visit_catch_clause(&mut self, n: &CatchClause) {
-    if let Some(pat) = &n.param {
-      self.declare_pat(BindingKind::CatchClause, pat);
+    if let Some(test) = &stmt.test {
+      self.visit_expression(test);
     }
-    self.visit_with_path(ScopeKind::Catch, &n.body)
+    self.with_scope(ScopeKind::Loop, |a| {
+      a.visit_statement(&stmt.body);
+    });
   }
 
-  fn visit_param(&mut self, n: &Param) {
-    self.declare_pat(BindingKind::Param, &n.pat);
+  fn visit_for_in_statement(&mut self, stmt: &ForInStatement<'a>) {
+    self.visit_for_statement_left(&stmt.left);
+    self.visit_expression(&stmt.right);
+    self.with_scope(ScopeKind::Loop, |a| {
+      a.visit_statement(&stmt.body);
+    });
   }
 
-  fn visit_import_named_specifier(&mut self, n: &ImportNamedSpecifier) {
-    self.declare(BindingKind::ValueImport, &n.local);
+  fn visit_for_of_statement(&mut self, stmt: &ForOfStatement<'a>) {
+    self.visit_for_statement_left(&stmt.left);
+    self.visit_expression(&stmt.right);
+    self.with_scope(ScopeKind::Loop, |a| {
+      a.visit_statement(&stmt.body);
+    });
   }
 
-  fn visit_import_default_specifier(&mut self, n: &ImportDefaultSpecifier) {
-    self.declare(BindingKind::ValueImport, &n.local);
+  fn visit_while_statement(&mut self, stmt: &WhileStatement<'a>) {
+    self.visit_expression(&stmt.test);
+    self.with_scope(ScopeKind::Loop, |a| {
+      a.visit_statement(&stmt.body);
+    });
   }
 
-  fn visit_import_star_as_specifier(&mut self, n: &ImportStarAsSpecifier) {
-    self.declare(BindingKind::NamespaceImport, &n.local);
+  fn visit_do_while_statement(&mut self, stmt: &DoWhileStatement<'a>) {
+    self.visit_expression(&stmt.test);
+    self.with_scope(ScopeKind::Loop, |a| {
+      a.visit_statement(&stmt.body);
+    });
   }
 
-  fn visit_with_stmt(&mut self, n: &WithStmt) {
-    n.obj.visit_with(self);
-    self.with(ScopeKind::With, |a| n.body.visit_children_with(a))
+  fn visit_switch_statement(&mut self, stmt: &SwitchStatement<'a>) {
+    self.visit_expression(&stmt.discriminant);
+    self.with_scope(ScopeKind::Switch, |a| {
+      for case in &stmt.cases {
+        a.visit_switch_case(case);
+      }
+    });
   }
 
-  fn visit_for_stmt(&mut self, n: &ForStmt) {
-    n.init.visit_with(self);
-    n.update.visit_with(self);
-    n.test.visit_with(self);
-
-    self.visit_with_path(ScopeKind::Loop, &n.body);
+  fn visit_ts_type_alias_declaration(
+    &mut self,
+    decl: &TSTypeAliasDeclaration<'a>,
+  ) {
+    self.declare(BindingKind::Type, decl.id.name.as_str());
   }
 
-  fn visit_for_of_stmt(&mut self, n: &ForOfStmt) {
-    n.left.visit_with(self);
-    n.right.visit_with(self);
-
-    self.visit_with_path(ScopeKind::Loop, &n.body);
-  }
-
-  fn visit_for_in_stmt(&mut self, n: &ForInStmt) {
-    n.left.visit_with(self);
-    n.right.visit_with(self);
-
-    self.visit_with_path(ScopeKind::Loop, &n.body);
-  }
-
-  fn visit_do_while_stmt(&mut self, n: &DoWhileStmt) {
-    n.test.visit_with(self);
-
-    self.visit_with_path(ScopeKind::Loop, &n.body);
-  }
-
-  fn visit_while_stmt(&mut self, n: &WhileStmt) {
-    n.test.visit_with(self);
-
-    self.visit_with_path(ScopeKind::Loop, &n.body);
-  }
-
-  fn visit_switch_stmt(&mut self, n: &SwitchStmt) {
-    n.discriminant.visit_with(self);
-
-    self.visit_with_path(ScopeKind::Switch, &n.cases);
-  }
-
-  fn visit_ts_type_alias_decl(&mut self, n: &TsTypeAliasDecl) {
-    self.declare(BindingKind::Type, &n.id);
-  }
-
-  fn visit_ts_interface_decl(&mut self, n: &TsInterfaceDecl) {
-    self.declare(BindingKind::Type, &n.id);
+  fn visit_ts_interface_declaration(
+    &mut self,
+    decl: &TSInterfaceDeclaration<'a>,
+  ) {
+    self.declare(BindingKind::Type, decl.id.name.as_str());
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{BindingKind, Scope, ScopeKind, Var};
+  use super::*;
   use crate::MediaType;
   use crate::ModuleSpecifier;
   use crate::ParseParams;
   use crate::parse_module;
-  use crate::swc::ast::Id;
+  use oxc::allocator::Allocator;
 
   fn test_scope(source_code: &str, test: impl Fn(Scope)) {
-    let parsed_source = parse_module(ParseParams {
-      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
-      text: source_code.to_string().into(),
-      media_type: MediaType::TypeScript,
-      capture_tokens: true,
-      maybe_syntax: None,
-      scope_analysis: true,
-    })
+    let allocator = Allocator::default();
+    let parsed_source = parse_module(
+      &allocator,
+      ParseParams {
+        specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
+        text: source_code.to_string().into(),
+        media_type: MediaType::TypeScript,
+        capture_tokens: true,
+        maybe_source_type: None,
+        scope_analysis: true,
+      },
+    )
     .unwrap();
 
-    parsed_source.with_view(|view| {
-      let scope = Scope::analyze(view);
-      test(scope);
-    });
+    let scope = Scope::analyze(parsed_source.program());
+    test(scope);
   }
 
   fn id(scope: &Scope, s: &str) -> Id {
-    let ids = scope.ids_with_symbol(&s.into());
+    let ids = scope.ids_with_symbol(s);
     if ids.is_none() {
       panic!("No identifier named {}", s);
     }
     let ids = ids.unwrap();
     if ids.len() > 1 {
-      panic!("Multiple identifers named {} found", s);
+      panic!("Multiple identifiers named {} found", s);
     }
 
     ids.first().unwrap().clone()
@@ -420,7 +424,7 @@ mod tests {
       assert_eq!(var(&scope, "a").path(), &[]);
 
       assert_eq!(var(&scope, "b").kind(), BindingKind::Param);
-      assert_eq!(scope.ids_with_symbol(&"c".into()).unwrap().len(), 2);
+      assert_eq!(scope.ids_with_symbol("c").unwrap().len(), 2);
       assert_eq!(
         var(&scope, "d").path(),
         &[ScopeKind::Function, ScopeKind::Block]

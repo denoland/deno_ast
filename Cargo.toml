@@ -13,72 +13,31 @@ description = "Source text parsing, lexing, and AST related functionality for De
 all-features = true
 
 [features]
-bundler = ["swc_bundler", "swc_ecma_transforms_optimization", "swc_graph_analyzer"]
-concurrent = ["swc_common/concurrent"]
-cjs = ["utils", "visit"]
-codegen = ["swc_ecma_codegen", "swc_ecma_codegen_macros", "swc_macros_common"]
-compat = ["transforms", "swc_ecma_transforms_compat", "swc_trace_macro", "swc_config", "swc_config_macro"]
-proposal = ["transforms", "swc_ecma_transforms_proposal", "swc_ecma_transforms_classes", "swc_ecma_transforms_macros", "swc_macros_common"]
-react = ["transforms", "swc_ecma_transforms_react", "swc_ecma_transforms_macros", "swc_config", "swc_config_macro", "swc_macros_common"]
-scopes = ["view", "utils", "visit"]
-sourcemap = ["dprint-swc-ext/sourcemap", "swc_sourcemap"]
-transforms = ["swc_ecma_loader", "swc_ecma_transforms_base"]
-emit = ["base64", "codegen", "sourcemap"]
-type_strip = [ "swc_ts_fast_strip" ]
-transpiling = ["emit", "proposal", "react", "transforms", "typescript", "utils", "visit"]
-typescript = ["transforms", "swc_ecma_transforms_typescript"]
-utils = ["swc_ecma_utils"]
-view = ["dprint-swc-ext/view"]
-visit = ["swc_ecma_visit", "swc_visit", "swc_macros_common"]
+cjs = ["visit"]
+codegen = ["oxc/codegen"]
+dep_analysis = ["visit"]
+scopes = ["visit"]
+semantic = ["oxc/semantic"]
+emit = ["codegen", "dep:base64"]
+transforms = ["semantic"]
+transpiling = ["emit", "transforms", "visit"]
+visit = ["oxc/ast_visit"]
 
 [dependencies]
-base64 = { version = "0.22.1", optional = true }
 capacity_builder = "0.5.0"
 deno_media_type = "0.4.0"
 deno_terminal = "0.2.2"
 deno_error = "0.7.0"
 
-dprint-swc-ext = "0.26.0"
+base64 = { version = "0.22.1", optional = true }
 percent-encoding = "2.3.1"
 serde = { version = "1.0.219", features = ["derive"] }
 text_lines = { version = "0.6.0", features = ["serialization"] }
 url = { version = "2.5.4", features = ["serde"] }
 unicode-width = "0.2.0"
-
-# swc's version bumping is very buggy and there will often be patch versions
-# published that break our build, so we pin all swc versions to prevent
-# pulling in new versions of swc crates
-#
-# NOTE: You can automatically update these dependencies by running ./scripts/update_swc_deps.ts
-swc_atoms = "=9.0.0"
-swc_common = "=17.0.1"
-swc_config = { version = "=3.1.2", optional = true }
-swc_config_macro = { version = "=1.0.1", optional = true }
-swc_ecma_ast = { version = "=18.0.0", features = ["serde-impl"] }
-swc_ecma_codegen = { version = "=20.0.2", optional = true }
-swc_ecma_codegen_macros = { version = "=2.0.2", optional = true }
-swc_ecma_loader = { version = "=17.0.0", optional = true }
-swc_ecma_lexer = "=26.0.0"
-swc_ecma_parser = "=27.0.7"
-swc_ecma_transforms_base = { version = "=30.0.1", features = ["inline-helpers"], optional = true }
-swc_ecma_transforms_classes = { version = "=30.0.0", optional = true }
-swc_ecma_transforms_compat = { version = "=35.0.0", optional = true }
-swc_ecma_transforms_macros = { version = "=1.0.1", optional = true }
-swc_ecma_transforms_optimization = { version = "=32.0.0", optional = true }
-swc_ecma_transforms_proposal = { version = "=30.0.0", optional = true }
-swc_ecma_transforms_react = { version = "=33.0.0", optional = true }
-swc_ecma_transforms_typescript = { version = "=33.0.0", optional = true }
-swc_ecma_utils = { version = "=24.0.0", optional = true }
-swc_ecma_visit = { version = "=18.0.1", optional = true }
-swc_eq_ignore_macros = "=1.0.1"
-swc_bundler = { version = "=35.0.0", optional = true }
-swc_graph_analyzer = { version = "=14.0.1", optional = true }
-swc_macros_common = { version = "=1.0.1", optional = true }
-swc_sourcemap = { version = "=9.3.4", optional = true }
-swc_ts_fast_strip = { version = "=36.0.0", optional = true }
-swc_trace_macro = { version = "=2.0.2", optional = true }
-swc_visit = { version = "=2.0.1", optional = true }
 thiserror = "2.0.12"
+
+oxc = { version = "0.116.0", features = ["semantic", "codegen", "transformer", "ast_visit"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
