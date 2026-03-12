@@ -157,10 +157,10 @@ pub fn get_source_type(media_type: MediaType) -> SourceType {
       SourceType::ts().with_typescript_definition(true)
     }
     MediaType::Jsx => SourceType::jsx(),
-    MediaType::JavaScript
-    | MediaType::Mjs
-    | MediaType::Cjs
-    | MediaType::Json
+    MediaType::JavaScript => SourceType::unambiguous(),
+    MediaType::Mjs => SourceType::mjs(),
+    MediaType::Cjs => SourceType::cjs(),
+    MediaType::Json
     | MediaType::Jsonc
     | MediaType::Json5
     | MediaType::Markdown

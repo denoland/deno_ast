@@ -43,6 +43,12 @@ impl Scope {
     self.vars.get(id)
   }
 
+  pub fn var_by_name(&self, name: &str) -> Option<&Var> {
+    let ids = self.symbols.get(name)?;
+    let id = ids.first()?;
+    self.vars.get(id)
+  }
+
   pub fn is_global(&self, id: &Id) -> bool {
     self.var(id).is_none()
   }
@@ -85,6 +91,31 @@ impl BindingKind {
       *self,
       BindingKind::ValueImport | BindingKind::NamespaceImport
     )
+  }
+
+  /// Convert from OXC's `SymbolFlags` to `BindingKind`.
+  pub fn from_symbol_flags(flags: oxc::syntax::symbol::SymbolFlags) -> Self {
+    use oxc::syntax::symbol::SymbolFlags;
+    if flags.contains(SymbolFlags::Function) {
+      BindingKind::Function
+    } else if flags.contains(SymbolFlags::Class) {
+      BindingKind::Class
+    } else if flags.contains(SymbolFlags::Import) {
+      BindingKind::ValueImport
+    } else if flags.contains(SymbolFlags::CatchVariable) {
+      BindingKind::CatchClause
+    } else if flags.contains(SymbolFlags::ConstVariable) {
+      BindingKind::Const
+    } else if flags.contains(SymbolFlags::BlockScopedVariable) {
+      BindingKind::Let
+    } else if flags.intersects(SymbolFlags::TypeAlias | SymbolFlags::Interface)
+    {
+      BindingKind::Type
+    } else if flags.contains(SymbolFlags::FunctionScopedVariable) {
+      BindingKind::Var
+    } else {
+      BindingKind::Var
+    }
   }
 }
 
@@ -207,6 +238,9 @@ impl<'a> Visit<'a> for Analyzer<'_> {
       for param in &func.params.items {
         a.declare_binding_pattern(BindingKind::Param, &param.pattern);
       }
+      if let Some(rest) = &func.params.rest {
+        a.declare_binding_pattern(BindingKind::Param, &rest.rest.argument);
+      }
       if let Some(body) = &func.body {
         for stmt in &body.statements {
           a.visit_statement(stmt);
@@ -222,6 +256,9 @@ impl<'a> Visit<'a> for Analyzer<'_> {
     self.with_scope(ScopeKind::Arrow, |a| {
       for param in &expr.params.items {
         a.declare_binding_pattern(BindingKind::Param, &param.pattern);
+      }
+      if let Some(rest) = &expr.params.rest {
+        a.declare_binding_pattern(BindingKind::Param, &rest.rest.argument);
       }
       for stmt in &expr.body.statements {
         a.visit_statement(stmt);
@@ -334,6 +371,15 @@ impl<'a> Visit<'a> for Analyzer<'_> {
     decl: &TSTypeAliasDeclaration<'a>,
   ) {
     self.declare(BindingKind::Type, decl.id.name.as_str());
+    // Type parameters are in scope within the type alias body
+    if let Some(type_params) = &decl.type_parameters {
+      self.with_scope(ScopeKind::Block, |a| {
+        for param in &type_params.params {
+          a.declare(BindingKind::Type, param.name.name.as_str());
+        }
+        a.visit_ts_type(&decl.type_annotation);
+      });
+    }
   }
 
   fn visit_ts_interface_declaration(

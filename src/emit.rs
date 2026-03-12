@@ -2,7 +2,7 @@
 
 use base64::Engine;
 use oxc::ast::ast::Program;
-use oxc::codegen::{Codegen, CodegenOptions, CodegenReturn};
+use oxc::codegen::{Codegen, CodegenOptions, CodegenReturn, IndentChar};
 use thiserror::Error;
 
 use crate::ModuleSpecifier;
@@ -78,6 +78,8 @@ pub fn emit(
     } else {
       None
     },
+    indent_char: IndentChar::Space,
+    indent_width: 2,
     ..Default::default()
   };
 
