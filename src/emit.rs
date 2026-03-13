@@ -30,6 +30,9 @@ pub struct EmitOptions {
   pub inline_sources: bool,
   /// Whether to remove comments in the output. Defaults to `false`.
   pub remove_comments: bool,
+  /// Whether to escape non-ASCII characters in the output as `\uXXXX`.
+  /// Defaults to `false`.
+  pub ascii_only: bool,
 }
 
 impl Default for EmitOptions {
@@ -40,6 +43,7 @@ impl Default for EmitOptions {
       source_map_file: None,
       inline_sources: true,
       remove_comments: false,
+      ascii_only: false,
     }
   }
 }
@@ -88,7 +92,12 @@ pub fn emit(
     .with_source_text(source_text)
     .build(program);
 
-  let mut src_buf = codegen_ret.code.into_bytes();
+  let code = if emit_options.ascii_only {
+    escape_non_ascii(&codegen_ret.code)
+  } else {
+    codegen_ret.code
+  };
+  let mut src_buf = code.into_bytes();
   let mut map: Option<Vec<u8>> = None;
 
   if need_source_map {
@@ -142,4 +151,32 @@ pub fn emit(
     text: unsafe { String::from_utf8_unchecked(src_buf) },
     source_map: map.map(|b| unsafe { String::from_utf8_unchecked(b) }),
   })
+}
+
+/// Escapes all non-ASCII characters in JavaScript source to `\uXXXX`
+/// (or `\u{XXXXXX}` for characters outside the BMP).
+///
+/// This is safe in all JS contexts: unicode escapes are valid in string
+/// literals, template literals, identifiers, and comments.
+fn escape_non_ascii(code: &str) -> String {
+  use std::fmt::Write;
+
+  if code.is_ascii() {
+    return code.to_string();
+  }
+
+  let mut out = String::with_capacity(code.len());
+  for ch in code.chars() {
+    if ch.is_ascii() {
+      out.push(ch);
+    } else {
+      let cp = ch as u32;
+      if cp <= 0xFFFF {
+        write!(out, "\\u{:04X}", cp).unwrap();
+      } else {
+        write!(out, "\\u{{{:X}}}", cp).unwrap();
+      }
+    }
+  }
+  out
 }

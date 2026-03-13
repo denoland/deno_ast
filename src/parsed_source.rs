@@ -81,6 +81,7 @@ pub struct ParsedSource<'a> {
   pub(crate) text: Arc<str>,
   pub(crate) source_text_info: OnceLock<SourceTextInfo>,
   pub(crate) program: Program<'a>,
+  pub(crate) tokens: oxc::allocator::Vec<'a, oxc::parser::Token>,
   pub(crate) diagnostics: ParseDiagnostics,
 }
 
@@ -118,6 +119,11 @@ impl<'a> ParsedSource<'a> {
   /// Gets a mutable reference to the parsed program.
   pub fn program_mut(&mut self) -> &mut Program<'a> {
     &mut self.program
+  }
+
+  /// Gets the tokens parsed from the source file.
+  pub fn tokens(&self) -> &oxc::allocator::Vec<'a, oxc::parser::Token> {
+    &self.tokens
   }
 
   /// Gets the comments found in the source file.

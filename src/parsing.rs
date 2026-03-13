@@ -144,6 +144,7 @@ fn parse<'a>(
     text: source,
     source_text_info: Default::default(),
     program: ret.program,
+    tokens: ret.tokens,
     diagnostics,
   })
 }

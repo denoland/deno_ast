@@ -37,7 +37,12 @@ url = { version = "2.5.4", features = ["serde"] }
 unicode-width = "0.2.0"
 thiserror = "2.0.12"
 
-oxc = { version = "0.116.0", features = ["semantic", "codegen", "transformer", "ast_visit"] }
+oxc = { version = "0.118.0", features = [
+  "semantic",
+  "codegen",
+  "transformer",
+  "ast_visit",
+] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
