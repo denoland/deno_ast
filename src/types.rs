@@ -356,36 +356,81 @@ impl ParseDiagnostic {
 
 impl std::error::Error for ParseDiagnostic {}
 
+/// A single entry in a source code highlight.
+enum HighlightEntry {
+  /// A source line with its underline indicator.
+  SourceLine { text: String, underline: String },
+  /// An ellipsis indicating skipped lines.
+  Ellipsis,
+}
+
+/// Formats highlight entries with line numbers and pipe margins.
+///
+/// Output format:
+/// ```text
+///   |
+/// N | {source_line}
+///   | {underline}
+/// ```
+fn format_highlight_entries(
+  entries: &[HighlightEntry],
+  start_line_number: usize,
+) -> String {
+  let num_str = start_line_number.to_string();
+  let padding = " ".repeat(num_str.len());
+  let mut result = format!("{padding} |\n");
+
+  let mut current_line_num = start_line_number;
+  let entry_count = entries.len();
+  for (i, entry) in entries.iter().enumerate() {
+    match entry {
+      HighlightEntry::SourceLine { text, underline } => {
+        result.push_str(&format!("{current_line_num} | {text}\n"));
+        result.push_str(&format!("{padding} | {underline}"));
+        current_line_num += 1;
+      }
+      HighlightEntry::Ellipsis => {
+        result.push_str(&format!("{padding} | ..."));
+      }
+    }
+    if i + 1 < entry_count {
+      result.push('\n');
+    }
+  }
+
+  result
+}
+
 impl fmt::Display for ParseDiagnostic {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let display_position = self.display_position();
-    write!(
-      f,
-      "{} at {}:{}:{}\n\n{}",
-      self.message(),
+    let message = self.message();
+    let location = format!(
+      "{}:{}:{}",
       self.specifier(),
       display_position.line_number,
       display_position.column_number,
-      // todo(dsherret): remove this catch unwind once we've
-      // tested this out a lot
-      std::panic::catch_unwind(|| {
-        get_range_text_highlight(self.source(), self.range())
-          .lines()
-          // indent two spaces
-          .map(|l| {
-            if l.trim().is_empty() {
-              String::new()
-            } else {
-              format!("  {}", l)
-            }
-          })
-          .collect::<Vec<_>>()
-          .join("\n")
-      })
-      .unwrap_or_else(|err| {
-        format!("Bug in Deno. Please report this issue: {:?}", err)
-      }),
-    )
+    );
+
+    write!(f, "SyntaxError: {message}")?;
+
+    // todo(dsherret): remove this catch unwind once we've
+    // tested this out a lot
+    let snippet_result = std::panic::catch_unwind(|| {
+      let entries = get_range_highlight_entries(self.source(), self.range());
+      format_highlight_entries(&entries, display_position.line_number)
+    });
+
+    match snippet_result {
+      Ok(snippet) => {
+        write!(f, "\n{snippet}")?;
+      }
+      Err(err) => {
+        write!(f, "\nBug in Deno. Please report this issue: {:?}", err)?;
+      }
+    }
+
+    write!(f, "\n    at {location}")
   }
 }
 
@@ -411,10 +456,10 @@ impl fmt::Display for ParseDiagnosticsError {
 
 /// Code in this function was adapted from:
 /// https://github.com/dprint/dprint/blob/a026a1350d27a61ea18207cb31897b18eaab51a1/crates/core/src/formatting/utils/string_utils.rs#L62
-fn get_range_text_highlight(
+fn get_range_highlight_entries(
   source: &SourceTextInfo,
   byte_range: SourceRange,
-) -> String {
+) -> Vec<HighlightEntry> {
   fn get_column_index_of_pos(text: &str, pos: usize) -> usize {
     let line_start_byte_pos = get_line_start_byte_pos(text, pos);
     text[line_start_byte_pos..pos].chars().count()
@@ -457,7 +502,7 @@ fn get_range_text_highlight(
   let (sub_text, (error_start, error_end)) =
     get_text_and_error_range(source, byte_range);
 
-  let mut result = String::new();
+  let mut entries = Vec::new();
   // don't use .lines() here because it will trim any empty
   // lines, which might for some reason be part of the range
   let lines = sub_text.split('\n').collect::<Vec<_>>();
@@ -471,11 +516,8 @@ fn get_range_text_highlight(
     if i > 2 && !is_last_line {
       continue;
     }
-    if i > 0 {
-      result.push('\n');
-    }
     if i == 2 && !is_last_line {
-      result.push_str("...");
+      entries.push(HighlightEntry::Ellipsis);
       continue;
     }
 
@@ -490,7 +532,7 @@ fn get_range_text_highlight(
       line.chars().count()
     };
     let line_char_count = line.chars().count();
-    if line_char_count > 90 {
+    let text = if line_char_count > 90 {
       let start_char_index = if error_start_char_index > 60 {
         std::cmp::min(error_start_char_index - 20, line_char_count - 80)
       } else {
@@ -515,17 +557,48 @@ fn get_range_text_highlight(
           std::cmp::min(error_end_char_index, line_text.chars().count());
         line_text.push_str("...");
       }
-      result.push_str(&line_text);
+      line_text
     } else {
-      result.push_str(line);
-    }
-    result.push('\n');
+      line.to_string()
+    };
 
-    result.push_str(&" ".repeat(error_start_char_index));
-    result.push_str(&"~".repeat(std::cmp::max(
-      1, // this means it's the end of the line, so display a single ~
-      error_end_char_index - error_start_char_index,
-    )));
+    let underline = format!(
+      "{}{}",
+      " ".repeat(error_start_char_index),
+      "~".repeat(std::cmp::max(
+        1, // this means it's the end of the line, so display a single ~
+        error_end_char_index - error_start_char_index,
+      ))
+    );
+
+    entries.push(HighlightEntry::SourceLine { text, underline });
+  }
+  entries
+}
+
+/// Formats a range highlight as a plain string (without line numbers).
+/// Used for backwards compatibility.
+#[cfg(test)]
+fn get_range_text_highlight(
+  source: &SourceTextInfo,
+  byte_range: SourceRange,
+) -> String {
+  let entries = get_range_highlight_entries(source, byte_range);
+  let mut result = String::new();
+  for (i, entry) in entries.iter().enumerate() {
+    if i > 0 {
+      result.push('\n');
+    }
+    match entry {
+      HighlightEntry::SourceLine { text, underline } => {
+        result.push_str(text);
+        result.push('\n');
+        result.push_str(underline);
+      }
+      HighlightEntry::Ellipsis => {
+        result.push_str("...");
+      }
+    }
   }
   result
 }

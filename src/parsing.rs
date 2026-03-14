@@ -561,10 +561,11 @@ mod test {
       // should contain some context by including the previous line
       // instead of just a blank line
       [
-        "Expression expected at file:///my_file.ts:1:22",
-        "",
-        "  setTimeout(() => {}),",
-        "                       ~",
+        "SyntaxError: Expression expected",
+        "  |",
+        "1 | setTimeout(() => {}),",
+        "  |                      ~",
+        "    at file:///my_file.ts:1:22",
       ]
       .join("\n")
     );
@@ -579,10 +580,11 @@ mod test {
       diagnostic.to_string(),
       // should contain some context by including the expression
       [
-        "Expression expected at file:///my_file.ts:1:22",
-        "",
-        "  setTimeout(() => {}),",
-        "                       ~",
+        "SyntaxError: Expression expected",
+        "  |",
+        "1 | setTimeout(() => {}),",
+        "  |                      ~",
+        "    at file:///my_file.ts:1:22",
       ]
       .join("\n")
     );
