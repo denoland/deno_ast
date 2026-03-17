@@ -417,10 +417,10 @@ fn is_serializable(
         return false;
       }
 
-      if let Some(skip_elements) = skip_serialize {
-        if skip_elements.contains(&name) {
-          return false;
-        }
+      if let Some(skip_elements) = skip_serialize
+        && skip_elements.contains(&name)
+      {
+        return false;
       }
 
       if opening.attributes.is_empty() {
@@ -1339,21 +1339,20 @@ impl<'a> JsxPrecompile<'a> {
                         continue;
                       }
                       Expression::UnaryExpression(unary_expr) => {
-                        if unary_expr.operator == UnaryOperator::UnaryNegation {
-                          if let Expression::NumericLiteral(num_lit) =
+                        if unary_expr.operator == UnaryOperator::UnaryNegation
+                          && let Expression::NumericLiteral(num_lit) =
                             &unary_expr.argument
-                          {
-                            let value = format!("-{}", &num_lit.value);
-                            let serialized_attr =
-                              serialize_attr(&attr_name, &value);
+                        {
+                          let value = format!("-{}", &num_lit.value);
+                          let serialized_attr =
+                            serialize_attr(&attr_name, &value);
 
-                            strings
-                              .last_mut()
-                              .unwrap()
-                              .push_str(serialized_attr.as_str());
-                            continue;
-                          };
-                        }
+                          strings
+                            .last_mut()
+                            .unwrap()
+                            .push_str(serialized_attr.as_str());
+                          continue;
+                        };
                       }
                       _ => {}
                     }

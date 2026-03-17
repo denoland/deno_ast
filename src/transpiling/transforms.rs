@@ -40,11 +40,7 @@ impl<'a> VisitMut<'a> for ImportDeclsToVarDecls<'a> {
           let source_value = import_decl.source.value.as_str();
 
           // Side-effect only import: `import "./mod.ts"` -> `await import("./mod.ts")`
-          if import_decl
-            .specifiers
-            .as_ref()
-            .map_or(true, |s| s.is_empty())
-          {
+          if import_decl.specifiers.as_ref().is_none_or(|s| s.is_empty()) {
             let import_expr = self.create_await_import_expr(source_value);
             new_stmts.push(self.ast.statement_expression(SPAN, import_expr));
             continue;
@@ -229,8 +225,7 @@ impl<'a> VisitMut<'a> for StripExports<'a> {
       }
     }
     *stmts = new_stmts;
-
-    walk_mut::walk_statements(self, stmts);
+    // Don't recurse into nested scopes - only strip top-level exports
   }
 }
 
@@ -245,5 +240,188 @@ impl<'a> StripExports<'a> {
     );
     let import_call = self.ast.expression_import(SPAN, import_arg, None, None);
     self.ast.expression_await(SPAN, import_call)
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use oxc::allocator::Allocator;
+  use oxc::codegen::Codegen;
+  use oxc::parser::Parser;
+  use oxc::span::SourceType;
+  use pretty_assertions::assert_eq;
+
+  use super::*;
+
+  #[track_caller]
+  fn test_transform_import(src: &str, expected_output: &str) {
+    let allocator = Allocator::default();
+    let mut transform = ImportDeclsToVarDecls::new(&allocator);
+    run_transform(&allocator, &mut transform, src, expected_output);
+  }
+
+  #[track_caller]
+  fn test_transform_strip(src: &str, expected_output: &str) {
+    let allocator = Allocator::default();
+    let mut transform = StripExports::new(&allocator);
+    run_transform(&allocator, &mut transform, src, expected_output);
+  }
+
+  #[track_caller]
+  fn run_transform<'a>(
+    allocator: &'a Allocator,
+    transform: &mut impl VisitMut<'a>,
+    src: &str,
+    expected_output: &str,
+  ) {
+    let source_type = SourceType::tsx();
+    let src_in_arena = allocator.alloc_str(src);
+    let mut ret = Parser::new(allocator, src_in_arena, source_type).parse();
+    transform.visit_program(&mut ret.program);
+    let output = Codegen::new().build(&ret.program).code;
+    let output = output.trim_end();
+    assert_eq!(output, expected_output);
+  }
+
+  // === ImportDeclsToVarDecls tests ===
+
+  #[test]
+  fn test_downlevel_imports_type_only() {
+    test_transform_import(r#"import type { test } from "./mod.ts";"#, "");
+  }
+
+  #[test]
+  fn test_downlevel_imports_specifier_only() {
+    test_transform_import(
+      r#"import "./mod.ts";"#,
+      r#"await import("./mod.ts");"#,
+    );
+    test_transform_import(
+      r#"import {} from "./mod.ts";"#,
+      r#"await import("./mod.ts");"#,
+    );
+  }
+
+  #[test]
+  fn test_downlevel_imports_default() {
+    test_transform_import(
+      r#"import mod from "./mod.ts";"#,
+      r#"const { default: mod } = await import("./mod.ts");"#,
+    );
+  }
+
+  #[test]
+  fn test_downlevel_imports_named() {
+    test_transform_import(
+      r#"import { A } from "./mod.ts";"#,
+      r#"const { A } = await import("./mod.ts");"#,
+    );
+    test_transform_import(
+      r#"import { A, B, C } from "./mod.ts";"#,
+      r#"const { A, B, C } = await import("./mod.ts");"#,
+    );
+    test_transform_import(
+      r#"import { A as LocalA, B, C as LocalC } from "./mod.ts";"#,
+      r#"const { A: LocalA, B, C: LocalC } = await import("./mod.ts");"#,
+    );
+  }
+
+  #[test]
+  fn test_downlevel_imports_namespace() {
+    test_transform_import(
+      r#"import * as mod from "./mod.ts";"#,
+      r#"const mod = await import("./mod.ts");"#,
+    );
+  }
+
+  #[test]
+  fn test_downlevel_imports_mixed() {
+    test_transform_import(
+      r#"import myDefault, { A, B as LocalB } from "./mod.ts";"#,
+      r#"const { default: myDefault, A, B: LocalB } = await import("./mod.ts");"#,
+    );
+    test_transform_import(
+      r#"import myDefault, * as mod from "./mod.ts";"#,
+      r#"const { default: myDefault } = await import("./mod.ts"), mod = await import("./mod.ts");"#,
+    );
+  }
+
+  #[test]
+  fn test_downlevel_imports_assertions() {
+    test_transform_import(
+      r#"import data from "./mod.json" with { type: "json" };"#,
+      r#"const { default: data } = await import("./mod.json");"#,
+    );
+  }
+
+  // === StripExports tests ===
+
+  #[test]
+  fn test_strip_exports_export_all() {
+    test_transform_strip(
+      r#"export * from "./test.ts";"#,
+      r#"await import("./test.ts");"#,
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_named() {
+    test_transform_strip(
+      r#"export { test } from "./test.ts";"#,
+      r#"await import("./test.ts");"#,
+    );
+    test_transform_strip(r#"export { test };"#, "");
+  }
+
+  #[test]
+  fn test_strip_exports_assertions() {
+    test_transform_strip(
+      r#"export { default as data } from "./mod.json" with { type: "json" };"#,
+      r#"await import("./mod.json");"#,
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_all_assertions() {
+    test_transform_strip(
+      r#"export * from "./mod.json" with { type: "json" };"#,
+      r#"await import("./mod.json");"#,
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_default_expr() {
+    test_transform_strip("export default 5;", "5;");
+  }
+
+  #[test]
+  fn test_strip_exports_export_default_decl_name() {
+    test_transform_strip("export default class Test {}", "class Test {}");
+    test_transform_strip(
+      "export default function test() {}",
+      "function test() {}",
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_default_decl_no_name() {
+    test_transform_strip("export default class {}", "");
+    test_transform_strip("export default function() {}", "");
+  }
+
+  #[test]
+  fn test_strip_exports_export_named_decls() {
+    test_transform_strip("export class Test {}", "class Test {}");
+    test_transform_strip("export function test() {}", "function test() {}");
+    test_transform_strip("export enum Test {}", "enum Test {}");
+    test_transform_strip("export namespace Test {}", "namespace Test {}");
+  }
+
+  #[test]
+  fn test_strip_exports_not_in_namespace() {
+    test_transform_strip(
+      "namespace Test { export class Test {} }",
+      "namespace Test {\n\texport class Test {}\n}",
+    );
   }
 }

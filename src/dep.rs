@@ -280,10 +280,10 @@ impl<'a, 'b> DependencyCollector<'a, 'b> {
       let mut parts =
         Vec::with_capacity(tpl.quasis.len() + tpl.expressions.len());
       for i in 0..tpl.quasis.len() {
-        if let Some(cooked) = &tpl.quasis[i].value.cooked {
-          if !cooked.is_empty() {
-            parts.push(DynamicTemplatePart::String(cooked.to_string()));
-          }
+        if let Some(cooked) = &tpl.quasis[i].value.cooked
+          && !cooked.is_empty()
+        {
+          parts.push(DynamicTemplatePart::String(cooked.to_string()));
         }
         if tpl.expressions.get(i).is_some() {
           parts.push(DynamicTemplatePart::Expr);

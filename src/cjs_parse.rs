@@ -95,18 +95,14 @@ impl CjsVisitor {
       }
       Argument::Identifier(ident) => {
         let ident_name = ident.name.as_str();
-        if let Some(obj_lit) = get_arg_as_object_expr(&args[2]) {
-          if let Some(get_prop) = get_object_define_get_prop(obj_lit) {
-            if let Some(return_expr) = get_prop_return_expr(get_prop) {
-              if let Some(member) = return_expr.as_member_expression() {
-                if let Some(require_value) =
-                  self.get_member_require_value(member, ident_name)
-                {
-                  self.add_reexport(&require_value);
-                }
-              }
-            }
-          }
+        if let Some(obj_lit) = get_arg_as_object_expr(&args[2])
+          && let Some(get_prop) = get_object_define_get_prop(obj_lit)
+          && let Some(return_expr) = get_prop_return_expr(get_prop)
+          && let Some(member) = return_expr.as_member_expression()
+          && let Some(require_value) =
+            self.get_member_require_value(member, ident_name)
+        {
+          self.add_reexport(&require_value);
         }
       }
       _ => {}
@@ -155,14 +151,13 @@ impl CjsVisitor {
 impl<'a> Visit<'a> for CjsVisitor {
   fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
     for declarator in &decl.declarations {
-      if let Some(id) = declarator.id.get_binding_identifier() {
-        if let Some(init) = &declarator.init {
-          if let Some(require_value) = get_expr_require_value(init) {
-            self
-              .var_assignments
-              .insert(id.name.to_string(), require_value.to_string());
-          }
-        }
+      if let Some(id) = declarator.id.get_binding_identifier()
+        && let Some(init) = &declarator.init
+        && let Some(require_value) = get_expr_require_value(init)
+      {
+        self
+          .var_assignments
+          .insert(id.name.to_string(), require_value.to_string());
       }
     }
     walk::walk_variable_declaration(self, decl);
@@ -171,12 +166,11 @@ impl<'a> Visit<'a> for CjsVisitor {
   fn visit_call_expression(&mut self, call_expr: &CallExpression<'a>) {
     if is_object_define(call_expr) {
       self.visit_object_define(call_expr);
-    } else if is_export_callee(&call_expr.callee) {
-      if let Some(name) =
+    } else if is_export_callee(&call_expr.callee)
+      && let Some(name) =
         get_export_require_arg(call_expr, &self.var_assignments)
-      {
-        self.add_reexport(&name);
-      }
+    {
+      self.add_reexport(&name);
     }
 
     walk::walk_call_expression(self, call_expr);
@@ -205,16 +199,12 @@ impl<'a> Visit<'a> for CjsVisitor {
               self.add_export(&prop_name);
             } else if let Some(right_member) =
               assign_expr.right.as_member_expression()
-            {
-              if let Some(computed_name) =
+              && let Some(computed_name) =
                 get_computed_member_prop_ident(member)
-              {
-                if let Some(require_value) =
-                  self.get_member_require_value(right_member, computed_name)
-                {
-                  self.add_reexport(&require_value);
-                }
-              }
+              && let Some(require_value) =
+                self.get_member_require_value(right_member, computed_name)
+            {
+              self.add_reexport(&require_value);
             }
           }
         }
@@ -240,19 +230,19 @@ fn is_module_exports_expr(expr: &Expression) -> bool {
 }
 
 fn is_module_exports_member(member: &MemberExpression) -> bool {
-  if let Some(obj_name) = get_expr_ident_name(member.object()) {
-    if obj_name == "module" {
-      return get_member_expr_prop_text(member)
-        .map(|p| p == "exports")
-        .unwrap_or(false);
-    }
+  if let Some(obj_name) = get_expr_ident_name(member.object())
+    && obj_name == "module"
+  {
+    return get_member_expr_prop_text(member)
+      .map(|p| p == "exports")
+      .unwrap_or(false);
   }
   false
 }
 
 fn is_exports_expr(expr: &Expression) -> bool {
   get_expr_ident_name(expr)
-    .map(|n| is_exports_name(n))
+    .map(is_exports_name)
     .unwrap_or(false)
 }
 
@@ -315,9 +305,7 @@ fn get_computed_member_prop_ident<'a>(
   }
 }
 
-fn get_member_expr_prop_text<'a>(
-  member: &'a MemberExpression,
-) -> Option<String> {
+fn get_member_expr_prop_text(member: &MemberExpression) -> Option<String> {
   match member {
     MemberExpression::StaticMemberExpression(static_member) => {
       Some(static_member.property.name.to_string())
@@ -368,10 +356,10 @@ fn is_object_define_callee(callee: &Expression) -> bool {
 
 fn is_export_callee(callee: &Expression) -> bool {
   if let Some(member) = get_callee_member_expr(callee) {
-    if get_expr_ident_name(member.object()).is_some() {
-      if let Some(right_side) = get_member_expr_prop_text(member) {
-        return matches!(right_side.as_str(), "__exportStar" | "__export");
-      }
+    if get_expr_ident_name(member.object()).is_some()
+      && let Some(right_side) = get_member_expr_prop_text(member)
+    {
+      return matches!(right_side.as_str(), "__exportStar" | "__export");
     }
   } else if let Some(name) = get_expr_ident_name(callee) {
     return matches!(name, "__exportStar" | "__export");
@@ -385,21 +373,21 @@ fn get_callee_member_expr<'a>(
   if let Some(member) = expr.as_member_expression() {
     return Some(member);
   }
-  if let Expression::ParenthesizedExpression(paren) = expr {
-    if let Expression::SequenceExpression(seq) = &paren.expression {
-      if seq.expressions.len() != 2 {
-        return None;
-      }
-      let first = &seq.expressions[0];
-      if let Expression::NumericLiteral(num) = first {
-        if num.value != 0f64 {
-          return None;
-        }
-      } else {
-        return None;
-      }
-      return seq.expressions[1].as_member_expression();
+  if let Expression::ParenthesizedExpression(paren) = expr
+    && let Expression::SequenceExpression(seq) = &paren.expression
+  {
+    if seq.expressions.len() != 2 {
+      return None;
     }
+    let first = &seq.expressions[0];
+    if let Expression::NumericLiteral(num) = first {
+      if num.value != 0f64 {
+        return None;
+      }
+    } else {
+      return None;
+    }
+    return seq.expressions[1].as_member_expression();
   }
   None
 }

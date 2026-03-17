@@ -100,50 +100,48 @@ pub fn emit(
   let mut src_buf = code.into_bytes();
   let mut map: Option<Vec<u8>> = None;
 
-  if need_source_map {
-    if let Some(mut source_map) = codegen_ret.map {
-      // Apply source_map_base: make source paths relative to the base URL
-      if let Some(base) = &emit_options.source_map_base {
-        let base_str = base.as_str();
-        let new_sources: Vec<String> = source_map
-          .get_sources()
-          .map(|s| s.strip_prefix(base_str).unwrap_or(s.as_ref()).to_string())
-          .collect();
-        source_map.set_sources(new_sources);
-      }
+  if need_source_map && let Some(mut source_map) = codegen_ret.map {
+    // Apply source_map_base: make source paths relative to the base URL
+    if let Some(base) = &emit_options.source_map_base {
+      let base_str = base.as_str();
+      let new_sources: Vec<String> = source_map
+        .get_sources()
+        .map(|s| s.strip_prefix(base_str).unwrap_or(s.as_ref()).to_string())
+        .collect();
+      source_map.set_sources(new_sources);
+    }
 
-      // Apply source_map_file
-      if let Some(ref file) = emit_options.source_map_file {
-        source_map.set_file(file.as_str());
-      }
+    // Apply source_map_file
+    if let Some(ref file) = emit_options.source_map_file {
+      source_map.set_file(file.as_str());
+    }
 
-      // Inline source contents if requested
-      if emit_options.inline_sources {
-        source_map.set_source_contents(vec![Some(source_text)]);
-      }
+    // Inline source contents if requested
+    if emit_options.inline_sources {
+      source_map.set_source_contents(vec![Some(source_text)]);
+    }
 
-      let map_buf = source_map.to_json_string().into_bytes();
+    let map_buf = source_map.to_json_string().into_bytes();
 
-      if emit_options.source_map == SourceMapOption::Inline {
-        let mut inline_buf = vec![0; map_buf.len() * 4 / 3 + 4];
-        let size = base64::prelude::BASE64_STANDARD
-          .encode_slice(&map_buf, &mut inline_buf)
-          .map_err(EmitError::SourceMapEncode)?;
-        let inline_buf = &inline_buf[..size];
-        let prelude_text = "//# sourceMappingURL=data:application/json;base64,";
-        let src_has_trailing_newline = src_buf.ends_with(b"\n");
-        let additional_capacity = if src_has_trailing_newline { 0 } else { 1 }
-          + prelude_text.len()
-          + inline_buf.len();
-        src_buf.reserve(additional_capacity);
-        if !src_has_trailing_newline {
-          src_buf.push(b'\n');
-        }
-        src_buf.extend(prelude_text.as_bytes());
-        src_buf.extend(inline_buf);
-      } else {
-        map = Some(map_buf);
+    if emit_options.source_map == SourceMapOption::Inline {
+      let mut inline_buf = vec![0; map_buf.len() * 4 / 3 + 4];
+      let size = base64::prelude::BASE64_STANDARD
+        .encode_slice(&map_buf, &mut inline_buf)
+        .map_err(EmitError::SourceMapEncode)?;
+      let inline_buf = &inline_buf[..size];
+      let prelude_text = "//# sourceMappingURL=data:application/json;base64,";
+      let src_has_trailing_newline = src_buf.ends_with(b"\n");
+      let additional_capacity = if src_has_trailing_newline { 0 } else { 1 }
+        + prelude_text.len()
+        + inline_buf.len();
+      src_buf.reserve(additional_capacity);
+      if !src_has_trailing_newline {
+        src_buf.push(b'\n');
       }
+      src_buf.extend(prelude_text.as_bytes());
+      src_buf.extend(inline_buf);
+    } else {
+      map = Some(map_buf);
     }
   }
 

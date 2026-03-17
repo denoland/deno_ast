@@ -111,8 +111,6 @@ impl BindingKind {
     } else if flags.intersects(SymbolFlags::TypeAlias | SymbolFlags::Interface)
     {
       BindingKind::Type
-    } else if flags.contains(SymbolFlags::FunctionScopedVariable) {
-      BindingKind::Var
     } else {
       BindingKind::Var
     }
@@ -213,17 +211,14 @@ impl<'a> Visit<'a> for Analyzer<'_> {
       };
 
       // Check for `let Foo = class Foo {}` pattern
-      if let Some(init) = &declarator.init {
-        if let Expression::ClassExpression(class_expr) = init {
-          if let Some(class_id) = &class_expr.id {
-            if let Some(binding_id) = declarator.id.get_binding_identifier() {
-              if binding_id.name == class_id.name {
-                self.declare(BindingKind::Class, class_id.name.as_str());
-                continue;
-              }
-            }
-          }
-        }
+      if let Some(init) = &declarator.init
+        && let Expression::ClassExpression(class_expr) = init
+        && let Some(class_id) = &class_expr.id
+        && let Some(binding_id) = declarator.id.get_binding_identifier()
+        && binding_id.name == class_id.name
+      {
+        self.declare(BindingKind::Class, class_id.name.as_str());
+        continue;
       }
 
       self.declare_binding_pattern(kind, &declarator.id);
