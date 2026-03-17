@@ -262,6 +262,134 @@ mod test {
   }
 
   #[test]
+  fn should_get_leading_comments_after_hashbang() {
+    let allocator = Allocator::default();
+    let program = parse_program(
+      &allocator,
+      ParseParams {
+        specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
+        text: "#!/bin/sh deno\n// 1\n".into(),
+        media_type: MediaType::JavaScript,
+        capture_tokens: true,
+        maybe_source_type: None,
+        scope_analysis: false,
+      },
+    )
+    .unwrap();
+    assert_eq!(program.get_leading_comments().count(), 1);
+  }
+
+  #[test]
+  fn test_parse_export_equals() {
+    let allocator = Allocator::default();
+    assert!(
+      parse_program(
+        &allocator,
+        ParseParams {
+          specifier: ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
+          text: "export = 5;".into(),
+          media_type: MediaType::Cts,
+          capture_tokens: false,
+          maybe_source_type: None,
+          scope_analysis: false,
+        },
+      )
+      .is_ok()
+    );
+  }
+
+  #[test]
+  fn should_error_on_syntax_diagnostic() {
+    let diagnostic = get_any_diagnostic("test;\nas#;");
+    assert!(!diagnostic.message().is_empty());
+  }
+
+  #[test]
+  fn should_error_without_issue_when_there_exists_multi_byte_char_on_line_with_syntax_error()
+   {
+    let diagnostic = get_any_diagnostic(concat!(
+      "test;\n",
+      r#"console.log("x", `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`),;"#,
+    ));
+    assert!(!diagnostic.message().is_empty());
+  }
+
+  #[test]
+  fn should_diagnostic_for_no_equals_sign_in_var_decl() {
+    let diagnostic =
+      get_any_diagnostic("const Methods {\nf: (x, y) => x + y,\n};");
+    assert!(!diagnostic.message().is_empty());
+  }
+
+  #[test]
+  fn should_diganotic_when_var_stmts_sep_by_comma() {
+    let diagnostic = get_any_diagnostic("let a = 0, let b = 1;");
+    assert!(!diagnostic.message().is_empty());
+  }
+
+  #[test]
+  fn should_diagnostic_for_exected_expr_type_alias() {
+    let diagnostic =
+      get_any_diagnostic("type T =\n  | unknown\n  { } & unknown;");
+    assert!(!diagnostic.message().is_empty());
+  }
+
+  #[test]
+  fn should_diganotic_missing_init_in_using() {
+    let diagnostic = get_any_diagnostic("using test");
+    assert!(!diagnostic.message().is_empty());
+  }
+
+  #[test]
+  fn should_handle_parse_error_display_position() {
+    let allocator = Allocator::default();
+    let diagnostic = parse_module(
+      &allocator,
+      ParseParams {
+        specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
+        text: "t u".into(),
+        media_type: MediaType::JavaScript,
+        capture_tokens: true,
+        maybe_source_type: None,
+        scope_analysis: false,
+      },
+    )
+    .err()
+    .unwrap();
+    assert_eq!(
+      diagnostic.display_position(),
+      crate::LineAndColumnDisplay {
+        line_number: 1,
+        column_number: 2,
+      }
+    );
+  }
+
+  /// Gets a diagnostic from the source - either a fatal parse error
+  /// or a non-fatal diagnostic found after parsing.
+  fn get_any_diagnostic(text: &str) -> ParseDiagnostic {
+    let allocator = Allocator::default();
+    match parse_module(
+      &allocator,
+      ParseParams {
+        specifier: ModuleSpecifier::parse("file:///my_file.ts").unwrap(),
+        text: text.to_string().into(),
+        media_type: MediaType::TypeScript,
+        capture_tokens: false,
+        maybe_source_type: None,
+        scope_analysis: false,
+      },
+    ) {
+      Err(diagnostic) => diagnostic,
+      Ok(parsed) => parsed
+        .diagnostics()
+        .first()
+        .expect("Expected at least one diagnostic")
+        .to_owned(),
+    }
+  }
+
+  #[test]
   fn test_strip_bom() {
     let text = "\u{FEFF}test";
     assert_eq!(strip_bom(text.to_string()), "test");

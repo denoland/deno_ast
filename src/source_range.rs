@@ -54,13 +54,15 @@ impl SourceTextInfo {
   /// Get the byte offset of the end of a line (0-indexed).
   pub fn line_end(&self, line_index: usize) -> usize {
     if line_index + 1 < self.line_starts.len() {
-      let end = self.line_starts[line_index + 1];
-      // exclude the newline character
+      let mut end = self.line_starts[line_index + 1];
+      // exclude \n and \r\n line endings
       if end > 0 && self.text.as_bytes().get(end - 1) == Some(&b'\n') {
-        end - 1
-      } else {
-        end
+        end -= 1;
       }
+      if end > 0 && self.text.as_bytes().get(end - 1) == Some(&b'\r') {
+        end -= 1;
+      }
+      end
     } else {
       self.text.len()
     }
