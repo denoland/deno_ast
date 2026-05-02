@@ -1767,23 +1767,31 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   fn diagnostic_octal_and_leading_zero_num_literals() {
     assert_eq!(
       get_diagnostic("077"),
-      concat!(
-        "Legacy octal literals are not available when targeting ECMAScript 5 and higher ",
-        "at https://deno.land/x/mod.ts:1:1\n\n",
-        "  077\n",
-        "  ~~~\n\n",
-        "Legacy octal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-        "  077\n",
-        "  ~~~",
-      )
+      [
+        "SyntaxError: Legacy octal literals are not available when targeting ECMAScript 5 and higher",
+        "  |",
+        "1 | 077",
+        "  | ~~~",
+        "    at https://deno.land/x/mod.ts:1:1",
+        "",
+        "SyntaxError: Legacy octal escape is not permitted in strict mode",
+        "  |",
+        "1 | 077",
+        "  | ~~~",
+        "    at https://deno.land/x/mod.ts:1:1",
+      ]
+      .join("\n")
     );
     assert_eq!(
       get_diagnostic("099"),
-      concat!(
-        "Legacy decimal escape is not permitted in strict mode at https://deno.land/x/mod.ts:1:1\n\n",
-        "  099\n",
-        "  ~~~",
-      )
+      [
+        "SyntaxError: Legacy decimal escape is not permitted in strict mode",
+        "  |",
+        "1 | 099",
+        "  | ~~~",
+        "    at https://deno.land/x/mod.ts:1:1",
+      ]
+      .join("\n")
     );
   }
 
@@ -1791,11 +1799,14 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   fn diagnostic_missing_brace() {
     assert_eq!(
       get_diagnostic("function test() {"),
-      concat!(
-        "Expected '}', got '<eof>' at https://deno.land/x/mod.ts:1:18\n\n",
-        "  function test() {\n",
-        "                   ~",
-      ),
+      [
+        "SyntaxError: Expected '}', got '<eof>'",
+        "  |",
+        "1 | function test() {",
+        "  |                  ~",
+        "    at https://deno.land/x/mod.ts:1:18",
+      ]
+      .join("\n"),
     );
   }
 
@@ -1803,19 +1814,25 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   fn diagnostic_nullish_coalescing_with_logical_op() {
     assert_eq!(
       get_diagnostic("null || undefined ?? 'foo';"),
-      concat!(
-        "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:1\n\n",
-        "  null || undefined ?? 'foo';\n",
-        "  ~~~~~~~~~~~~~~~~~",
-      )
+      [
+        "SyntaxError: Nullish coalescing operator(??) requires parens when mixing with logical operators",
+        "  |",
+        "1 | null || undefined ?? 'foo';",
+        "  | ~~~~~~~~~~~~~~~~~",
+        "    at https://deno.land/x/mod.ts:1:1",
+      ]
+      .join("\n")
     );
     assert_eq!(
       get_diagnostic("null && undefined ?? 'foo';"),
-      concat!(
-        "Nullish coalescing operator(??) requires parens when mixing with logical operators at https://deno.land/x/mod.ts:1:1\n\n",
-        "  null && undefined ?? 'foo';\n",
-        "  ~~~~~~~~~~~~~~~~~",
-      ),
+      [
+        "SyntaxError: Nullish coalescing operator(??) requires parens when mixing with logical operators",
+        "  |",
+        "1 | null && undefined ?? 'foo';",
+        "  | ~~~~~~~~~~~~~~~~~",
+        "    at https://deno.land/x/mod.ts:1:1",
+      ]
+      .join("\n"),
     );
   }
 
@@ -1823,11 +1840,14 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   fn diagnostic_missing_init_in_using() {
     assert_eq!(
       get_diagnostic("using test"),
-      concat!(
-        "Using declaration requires initializer at https://deno.land/x/mod.ts:1:1\n\n",
-        "  using test\n",
-        "  ~~~~~~~~~~",
-      )
+      [
+        "SyntaxError: Using declaration requires initializer",
+        "  |",
+        "1 | using test",
+        "  | ~~~~~~~~~~",
+        "    at https://deno.land/x/mod.ts:1:1",
+      ]
+      .join("\n")
     );
   }
 
@@ -1835,16 +1855,21 @@ for (let i = 0; i < testVariable >> 1; i++) callCount++;
   fn diagnostic_invalid_left_hand_side_of_assignment() {
     assert_eq!(
       get_diagnostic("(true ? a : b) = 1;"),
-      concat!(
-        "The left-hand side of an assignment expression must be a variable or a property access. at https://deno.land/x/mod.ts:1:1\n\n",
-        "  (true ? a : b) = 1;\n",
-        "  ~~~~~~~~~~~~~~\n",
-        "\n",
+      [
         // for some reason, swc does the same diagnostic twice
-        "The left-hand side of an assignment expression must be a variable or a property access. at https://deno.land/x/mod.ts:1:1\n\n",
-        "  (true ? a : b) = 1;\n",
-        "  ~~~~~~~~~~~~~~",
-      )
+        "SyntaxError: The left-hand side of an assignment expression must be a variable or a property access.",
+        "  |",
+        "1 | (true ? a : b) = 1;",
+        "  | ~~~~~~~~~~~~~~",
+        "    at https://deno.land/x/mod.ts:1:1",
+        "",
+        "SyntaxError: The left-hand side of an assignment expression must be a variable or a property access.",
+        "  |",
+        "1 | (true ? a : b) = 1;",
+        "  | ~~~~~~~~~~~~~~",
+        "    at https://deno.land/x/mod.ts:1:1",
+      ]
+      .join("\n")
     );
   }
 
