@@ -11,6 +11,10 @@ on:
           - minor
         required: true
 
+
+permissions:
+  contents: read
+
 jobs:
   rust:
     name: release
