@@ -116,6 +116,21 @@ fn parse<'a>(
     ));
   }
 
+  // A script (e.g. a CommonJS module) cannot use `import`/`export` statements.
+  // OXC parses these without erroring but records `has_module_syntax`, so
+  // surface the error here rather than silently accepting the module syntax.
+  if source_type.is_script() && ret.module_record.has_module_syntax {
+    let span = first_module_decl_span(&ret.program)
+      .unwrap_or_else(|| oxc::span::Span::new(0, 0));
+    return Err(ParseDiagnostic::from_message(
+      "'import', and 'export' cannot be used outside of module code"
+        .to_string(),
+      &specifier,
+      SourceTextInfo::new(source.clone()),
+      span,
+    ));
+  }
+
   // Collect non-fatal diagnostics
   let diagnostics = if ret.errors.is_empty() {
     ParseDiagnostics::default()
@@ -146,6 +161,23 @@ fn parse<'a>(
     program: ret.program,
     tokens: ret.tokens,
     diagnostics,
+  })
+}
+
+/// Finds the span of the first `import`/`export` statement in a program, used
+/// to point at module syntax that appears in a script.
+fn first_module_decl_span(
+  program: &oxc::ast::ast::Program,
+) -> Option<oxc::span::Span> {
+  use oxc::ast::ast::Statement;
+  program.body.iter().find_map(|stmt| match stmt {
+    Statement::ImportDeclaration(d) => Some(d.span),
+    Statement::ExportAllDeclaration(d) => Some(d.span),
+    Statement::ExportDefaultDeclaration(d) => Some(d.span),
+    Statement::ExportNamedDeclaration(d) => Some(d.span),
+    Statement::TSExportAssignment(d) => Some(d.span),
+    Statement::TSNamespaceExportDeclaration(d) => Some(d.span),
+    _ => None,
   })
 }
 
@@ -259,6 +291,28 @@ mod test {
     .err()
     .unwrap();
     assert_eq!(diagnostic.specifier().as_str(), "file:///my_file.js");
+  }
+
+  #[test]
+  fn should_error_on_module_syntax_in_script() {
+    let allocator = Allocator::default();
+    let diagnostic = parse_program(
+      &allocator,
+      ParseParams {
+        specifier: ModuleSpecifier::parse("file:///my_file.cjs").unwrap(),
+        text: "export class Test {}".into(),
+        media_type: MediaType::Cjs,
+        capture_tokens: true,
+        maybe_source_type: None,
+        scope_analysis: false,
+      },
+    )
+    .err()
+    .unwrap();
+    assert_eq!(
+      diagnostic.message(),
+      "'import', and 'export' cannot be used outside of module code"
+    );
   }
 
   #[test]
