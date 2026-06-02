@@ -139,9 +139,10 @@ impl CjsVisitor {
         }
       }
       Expression::AssignmentExpression(right_assign_expr)
-        if right_assign_expr.operator == AssignmentOperator::Assign => {
-          self.visit_exports_right_expr(&right_assign_expr.right);
-        }
+        if right_assign_expr.operator == AssignmentOperator::Assign =>
+      {
+        self.visit_exports_right_expr(&right_assign_expr.right);
+      }
       _ => {}
     }
   }
