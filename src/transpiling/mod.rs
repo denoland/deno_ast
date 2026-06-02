@@ -388,7 +388,6 @@ fn parse_jsx_import_source_pragma(text: &str) -> Option<String> {
   const PRAGMA: &str = "@jsxImportSource";
   let (_, after_pragma) = text.split_once(PRAGMA)?;
   after_pragma
-    .trim_start()
     .split_whitespace()
     .next()
     .filter(|value| !value.is_empty())
