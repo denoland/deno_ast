@@ -282,7 +282,9 @@ impl<'a> ParsedSource<'a> {
       build_transform_options(&transpile_options, &self.specifier);
 
     // Run semantic analysis to get scoping info
-    let semantic_ret = SemanticBuilder::new().build(&self.program);
+    let semantic_ret = SemanticBuilder::new()
+      .with_enum_eval(true)
+      .build(&self.program);
     let scoping = semantic_ret.semantic.into_scoping();
 
     // Run OXC transformer (TS strip, JSX, decorators, etc.)
@@ -338,31 +340,59 @@ fn maybe_upgrade_jsx_for_pragma<'a>(
   comments: &[oxc::ast::ast::Comment],
   source_text: &str,
 ) -> Cow<'a, TranspileOptions> {
-  // Only relevant when JSX is configured as Classic
-  let is_classic = options
-    .jsx
-    .as_ref()
-    .is_some_and(|j| matches!(j, JsxRuntime::Classic(_)));
-  if !is_classic {
+  let Some(import_source) = jsx_import_source_pragma(comments, source_text)
+  else {
     return options.clone();
-  }
+  };
 
-  let has_import_source_pragma = comments.iter().any(|comment| {
-    let text = comment.content_span().source_text(source_text);
-    text.contains("@jsxImportSource")
-  });
-
-  if has_import_source_pragma {
-    Cow::Owned(TranspileOptions {
+  match &options.jsx {
+    Some(JsxRuntime::Classic(_)) => Cow::Owned(TranspileOptions {
       jsx: Some(JsxRuntime::Automatic(JsxAutomaticOptions {
         development: false,
-        import_source: None, // will be set from pragma by OXC transformer
+        import_source: Some(import_source),
       })),
       ..(options.as_ref().clone())
-    })
-  } else {
-    options.clone()
+    }),
+    Some(JsxRuntime::Automatic(automatic)) => Cow::Owned(TranspileOptions {
+      jsx: Some(JsxRuntime::Automatic(JsxAutomaticOptions {
+        import_source: Some(import_source),
+        ..automatic.clone()
+      })),
+      ..(options.as_ref().clone())
+    }),
+    Some(JsxRuntime::Precompile(precompile)) => Cow::Owned(TranspileOptions {
+      jsx: Some(JsxRuntime::Precompile(JsxPrecompileOptions {
+        automatic: JsxAutomaticOptions {
+          import_source: Some(import_source),
+          ..precompile.automatic.clone()
+        },
+        ..precompile.clone()
+      })),
+      ..(options.as_ref().clone())
+    }),
+    None => options.clone(),
   }
+}
+
+fn jsx_import_source_pragma(
+  comments: &[oxc::ast::ast::Comment],
+  source_text: &str,
+) -> Option<String> {
+  comments.iter().find_map(|comment| {
+    let text = comment.content_span().source_text(source_text);
+    parse_jsx_import_source_pragma(text)
+  })
+}
+
+fn parse_jsx_import_source_pragma(text: &str) -> Option<String> {
+  const PRAGMA: &str = "@jsxImportSource";
+  let (_, after_pragma) = text.split_once(PRAGMA)?;
+  after_pragma
+    .trim_start()
+    .split_whitespace()
+    .next()
+    .filter(|value| !value.is_empty())
+    .map(ToOwned::to_owned)
 }
 
 fn build_transform_options(
@@ -463,7 +493,7 @@ pub fn transform_program<'a>(
   let transform_options = build_transform_options(options, specifier);
 
   // Run semantic analysis
-  let semantic_ret = SemanticBuilder::new().build(program);
+  let semantic_ret = SemanticBuilder::new().with_enum_eval(true).build(program);
   let scoping = semantic_ret.semantic.into_scoping();
 
   // Run transformer
