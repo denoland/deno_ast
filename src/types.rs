@@ -18,6 +18,22 @@ use oxc::span::Span;
 use std::borrow::Cow;
 use std::fmt;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParseDiagnosticCode<'a> {
+  scope: Option<&'a str>,
+  number: Option<&'a str>,
+}
+
+impl<'a> ParseDiagnosticCode<'a> {
+  pub fn scope(&self) -> Option<&'a str> {
+    self.scope
+  }
+
+  pub fn number(&self) -> Option<&'a str> {
+    self.number
+  }
+}
+
 /// Parsing diagnostic.
 #[derive(Debug, Clone, JsError)]
 #[class(syntax)]
@@ -56,6 +72,18 @@ impl ParseDiagnostic {
   /// The diagnostic message.
   pub fn message(&self) -> &str {
     &self.0.message
+  }
+
+  /// Structured diagnostic code, when one is available.
+  pub fn diagnostic_code(&self) -> Option<ParseDiagnosticCode<'_>> {
+    if self.0.code.is_some() {
+      Some(ParseDiagnosticCode {
+        scope: self.0.code.scope.as_deref(),
+        number: self.0.code.number.as_deref(),
+      })
+    } else {
+      None
+    }
   }
 
   pub(crate) fn source(&self) -> &SourceTextInfo {
