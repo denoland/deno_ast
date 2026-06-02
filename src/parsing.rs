@@ -94,10 +94,13 @@ fn parse<'a>(
   // Allocate source text in the arena so it lives for 'a
   let source_in_arena = allocator.alloc_str(source.as_ref());
 
-  let parser = Parser::new(allocator, source_in_arena, source_type).with_options(parse_options);
+  let parser = Parser::new(allocator, source_in_arena, source_type)
+    .with_options(parse_options);
   // oxc only collects tokens when the parser is configured with the tokens config.
   let ret = if params.capture_tokens {
-    parser.with_config(oxc::parser::config::TokensParserConfig).parse()
+    parser
+      .with_config(oxc::parser::config::TokensParserConfig)
+      .parse()
   } else {
     parser.parse()
   };
