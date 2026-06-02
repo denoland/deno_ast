@@ -61,7 +61,12 @@ pub mod oxc {
   pub use oxc::parser;
   #[cfg(feature = "semantic")]
   pub use oxc::semantic;
-  pub use oxc::span;
+  /// Re-export of `oxc::span` plus the string types (`Str`, `Ident`,
+  /// `CompactStr`) that moved to `oxc_str` in oxc 0.134.
+  pub mod span {
+    pub use oxc::span::*;
+    pub use oxc_str::{CompactStr, Ident, Str};
+  }
   pub use oxc::syntax;
   #[cfg(feature = "transpiling")]
   pub use oxc::transformer;

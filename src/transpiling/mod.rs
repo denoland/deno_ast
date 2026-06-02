@@ -420,11 +420,13 @@ fn build_transform_options(
     DecoratorsTranspileOption::Ecma => DecoratorOptions {
       legacy: false,
       emit_decorator_metadata: false,
+      strict_null_checks: true,
     },
     DecoratorsTranspileOption::LegacyTypeScript { emit_metadata } => {
       DecoratorOptions {
         legacy: true,
         emit_decorator_metadata: *emit_metadata,
+        strict_null_checks: true,
       }
     }
   };

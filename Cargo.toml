@@ -37,12 +37,14 @@ url = { version = "2.5.4", features = ["serde"] }
 unicode-width = "0.2.0"
 thiserror = "2.0.12"
 
-oxc = { version = "0.118.0", features = [
+oxc = { version = "0.134.0", features = [
   "semantic",
   "codegen",
   "transformer",
   "ast_visit",
 ] }
+# `Atom`/`Ident`/`CompactStr` moved out of `oxc_span` into `oxc_str` in 0.134.
+oxc_str = "0.134.0"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
