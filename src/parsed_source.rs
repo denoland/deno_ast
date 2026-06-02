@@ -83,6 +83,10 @@ pub struct ParsedSource<'a> {
   pub(crate) program: Program<'a>,
   pub(crate) tokens: oxc::allocator::Vec<'a, oxc::parser::Token>,
   pub(crate) diagnostics: ParseDiagnostics,
+  /// Scope/symbol information, populated when parsing with
+  /// `scope_analysis: true`. Symbol/reference ids on AST nodes are also set
+  /// during semantic analysis.
+  pub(crate) scoping: Option<oxc::semantic::Scoping>,
 }
 
 impl<'a> ParsedSource<'a> {
@@ -114,6 +118,17 @@ impl<'a> ParsedSource<'a> {
   /// Gets the parsed program.
   pub fn program(&self) -> &Program<'a> {
     &self.program
+  }
+
+  /// Gets the scope/symbol information, if the source was parsed with
+  /// `scope_analysis: true`.
+  pub fn scoping(&self) -> Option<&oxc::semantic::Scoping> {
+    self.scoping.as_ref()
+  }
+
+  /// Takes ownership of the scope/symbol information, if present.
+  pub fn take_scoping(&mut self) -> Option<oxc::semantic::Scoping> {
+    self.scoping.take()
   }
 
   /// Gets a mutable reference to the parsed program.

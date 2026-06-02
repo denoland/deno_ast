@@ -153,6 +153,17 @@ fn parse<'a>(
     }
   };
 
+  // Run semantic analysis to assign scope-aware symbol/reference ids. This is
+  // the oxc equivalent of swc's resolver pass and is what lets consumers
+  // distinguish same-named identifiers in different scopes.
+  let scoping = if params.scope_analysis {
+    let semantic_ret =
+      oxc::semantic::SemanticBuilder::new().build(&ret.program);
+    Some(semantic_ret.semantic.into_scoping())
+  } else {
+    None
+  };
+
   Ok(ParsedSource {
     specifier,
     media_type,
@@ -161,6 +172,7 @@ fn parse<'a>(
     program: ret.program,
     tokens: ret.tokens,
     diagnostics,
+    scoping,
   })
 }
 
