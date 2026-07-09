@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Write as _;
@@ -307,27 +308,42 @@ fn print_diagnostic(
   writeln!(io, ": {}", colors::bold(diagnostic.message()))?;
 
   let mut max_line_number_digits = 1;
-  if let Some(snippet) = diagnostic.snippet() {
-    for highlight in snippet.highlights.iter() {
-      let last_line = line_number(&snippet.source, highlight.range.end);
+  // Whether any highlight spans multiple lines. When it does, a `>` marker is
+  // drawn in the gutter next to each line number that is part of a multi-line
+  // span, so the extent of the span is visible even though interior lines are
+  // not underlined.
+  let mut has_multiline_highlight = false;
+  let mut note_highlight =
+    |source: &SourceTextInfo, highlight: &DiagnosticSnippetHighlight| {
+      let first_line = line_number(source, highlight.range.start);
+      let last_line = line_number(source, highlight.range.end);
       max_line_number_digits =
         max_line_number_digits.max(last_line.ilog10() + 1);
+      if first_line != last_line {
+        has_multiline_highlight = true;
+      }
+    };
+  if let Some(snippet) = diagnostic.snippet() {
+    for highlight in snippet.highlights.iter() {
+      note_highlight(&snippet.source, highlight);
+    }
+  }
+  if let Some(snippet) = diagnostic.snippet_fixed() {
+    for highlight in snippet.highlights.iter() {
+      note_highlight(&snippet.source, highlight);
     }
   }
 
-  if let Some(snippet) = diagnostic.snippet_fixed() {
-    for highlight in snippet.highlights.iter() {
-      let last_line = line_number(&snippet.source, highlight.range.end);
-      max_line_number_digits =
-        max_line_number_digits.max(last_line.ilog10() + 1);
-    }
-  }
+  // Width of the gutter marker column (`> ` / blank) reserved to the left of
+  // line numbers. Zero when there are no multi-line highlights, keeping
+  // single-line diagnostics unchanged.
+  let marker_width: usize = if has_multiline_highlight { 2 } else { 0 };
 
   let location = diagnostic.location();
   write!(
     io,
     "{}{}",
-    RepeatingCharFmt(' ', max_line_number_digits as usize),
+    RepeatingCharFmt(' ', max_line_number_digits as usize + marker_width),
     colors::intense_blue("-->"),
   )?;
   match &location {
@@ -361,21 +377,21 @@ fn print_diagnostic(
   }
 
   if let Some(snippet) = diagnostic.snippet() {
-    print_snippet(io, &snippet, max_line_number_digits)?;
+    print_snippet(io, &snippet, max_line_number_digits, marker_width)?;
   };
 
   if let Some(hint) = diagnostic.hint() {
     write!(
       io,
       "{} {} ",
-      RepeatingCharFmt(' ', max_line_number_digits as usize),
+      RepeatingCharFmt(' ', max_line_number_digits as usize + marker_width),
       colors::intense_blue("=")
     )?;
     writeln!(io, "{}: {}", colors::bold("hint"), hint)?;
   }
 
   if let Some(snippet) = diagnostic.snippet_fixed() {
-    print_snippet(io, &snippet, max_line_number_digits)?;
+    print_snippet(io, &snippet, max_line_number_digits, marker_width)?;
   }
 
   if !diagnostic.info().is_empty() || diagnostic.docs_url().is_some() {
@@ -392,13 +408,22 @@ fn print_diagnostic(
   Ok(())
 }
 
+/// The maximum number of source lines shown for a single highlight before its
+/// middle is collapsed. A highlight spanning more lines than this shows its
+/// leading lines, a `...` elision marker, and its final line.
+const MAX_HIGHLIGHT_LINES: usize = 5;
+
 /// Prints a snippet to the given writer and returns the line number indent.
 fn print_snippet(
   io: &mut dyn std::fmt::Write,
   snippet: &DiagnosticSnippet<'_>,
   max_line_number_digits: u32,
+  marker_width: usize,
 ) -> Result<(), std::fmt::Error> {
   let DiagnosticSnippet { source, highlights } = snippet;
+  // The gutter indent for non-source rows (the `... `, ` | ` and underline
+  // rows): the line-number field plus the marker column.
+  let bar_indent = max_line_number_digits + marker_width as u32;
 
   fn print_padded(
     io: &mut dyn std::fmt::Write,
@@ -412,31 +437,66 @@ fn print_snippet(
     Ok(())
   }
 
+  // Determine which source lines to display, and where to insert elision
+  // markers ("...") for long multi-line highlights. Rather than rendering an
+  // underline under every line of a large span (which can be dozens of lines),
+  // we show the first few lines of the span, elide the middle with a "...",
+  // and show the final line. Carets are only drawn on the first and last line
+  // of a multi-line highlight.
   let mut lines_to_show = HashMap::<usize, Vec<usize>>::new();
+  // The set of line numbers after which the middle of a span was elided; used
+  // to print a "..." marker before the following (final) line of the span.
+  let mut elided_after = HashSet::<usize>::new();
   let mut highlights_info = Vec::new();
   for (i, highlight) in highlights.iter().enumerate() {
     let start_line_number = line_number(source, highlight.range.start);
     let end_line_number = line_number(source, highlight.range.end);
     highlights_info.push((start_line_number, end_line_number));
-    for line_number in start_line_number..=end_line_number {
-      lines_to_show.entry(line_number).or_default().push(i);
+
+    let line_count = end_line_number - start_line_number + 1;
+    if line_count <= MAX_HIGHLIGHT_LINES {
+      for line_number in start_line_number..=end_line_number {
+        lines_to_show.entry(line_number).or_default().push(i);
+      }
+    } else {
+      // Show the leading lines of the span, then elide the middle, then show
+      // the final line. Reserve one slot in the frame for the final line.
+      let head_end = start_line_number + MAX_HIGHLIGHT_LINES - 2;
+      for line_number in start_line_number..=head_end {
+        lines_to_show.entry(line_number).or_default().push(i);
+      }
+      elided_after.insert(head_end);
+      lines_to_show.entry(end_line_number).or_default().push(i);
     }
   }
 
   let mut lines_to_show = lines_to_show.into_iter().collect::<Vec<_>>();
   lines_to_show.sort();
 
-  print_padded(io, colors::intense_blue(" | "), max_line_number_digits)?;
+  print_padded(io, colors::intense_blue(" | "), bar_indent)?;
   writeln!(io)?;
-  let mut previous_line_number = None;
-  let mut previous_line_empty = false;
+  let mut previous_line_number: Option<usize> = None;
   for (line_number, highlight_indexes) in lines_to_show {
-    if previous_line_number.is_some()
-      && previous_line_number == Some(line_number - 1)
-      && !previous_line_empty
+    if previous_line_number
+      .is_some_and(|previous| elided_after.contains(&previous))
     {
-      print_padded(io, colors::intense_blue(" | "), max_line_number_digits)?;
+      print_padded(io, colors::intense_blue("..."), bar_indent)?;
       writeln!(io)?;
+    }
+
+    // Draw the gutter marker column: `> ` next to line numbers that are part
+    // of a multi-line span, blank otherwise.
+    if marker_width > 0 {
+      let is_span_line = highlight_indexes.iter().any(|&i| {
+        let (start_line_number, end_line_number) = highlights_info[i];
+        start_line_number != end_line_number
+      });
+      if is_span_line {
+        write!(io, "{}", colors::intense_blue(">"))?;
+        print_padded(io, "", (marker_width - 1) as u32)?;
+      } else {
+        print_padded(io, "", marker_width as u32)?;
+      }
     }
 
     print_padded(
@@ -449,13 +509,21 @@ fn print_snippet(
     let line_end_pos = source.line_end(line_number - 1);
     let line_text = line_text(source, line_number);
     writeln!(io, "{}", ReplaceTab(line_text))?;
-    previous_line_empty = false;
 
     let mut wrote_description = false;
     for highlight_index in highlight_indexes {
       let highlight = &highlights[highlight_index];
       let (start_line_number, end_line_number) =
         highlights_info[highlight_index];
+
+      // Only the first and last line of a highlight are underlined. Interior
+      // lines are shown for context but left un-underlined to avoid a wall of
+      // carets spanning many lines.
+      let is_first_line = start_line_number == line_number;
+      let is_last_line = end_line_number == line_number;
+      if !is_first_line && !is_last_line {
+        continue;
+      }
 
       let padding_width;
       let highlight_width;
@@ -468,7 +536,7 @@ fn print_snippet(
           highlight.range.start.pos(source),
           highlight.range.end.pos(source),
         )));
-      } else if start_line_number == line_number {
+      } else if is_first_line {
         padding_width = display_width(source.range_text(&SourceRange::new(
           line_start_pos,
           highlight.range.start.pos(source),
@@ -477,26 +545,27 @@ fn print_snippet(
           highlight.range.start.pos(source),
           line_end_pos,
         )));
-      } else if end_line_number == line_number {
-        padding_width = 0;
-        highlight_width = display_width(source.range_text(&SourceRange::new(
+      } else {
+        // Last line of a multi-line highlight: underline only the offending
+        // text, skipping the line's leading indentation so the carets sit
+        // under the code rather than the whitespace.
+        let line_prefix = source.range_text(&SourceRange::new(
           line_start_pos,
           highlight.range.end.pos(source),
-        )));
-      } else {
-        padding_width = 0;
-        highlight_width = display_width(line_text);
+        ));
+        let trimmed = line_prefix.trim_start();
+        let indent = &line_prefix[..line_prefix.len() - trimmed.len()];
+        padding_width = display_width(indent);
+        highlight_width = display_width(trimmed);
       }
 
       let underline =
         RepeatingCharFmt(highlight.style.underline_char(), highlight_width);
-      print_padded(io, colors::intense_blue(" | "), max_line_number_digits)?;
+      print_padded(io, colors::intense_blue(" | "), bar_indent)?;
       write!(io, "{}", RepeatingCharFmt(' ', padding_width))?;
       write!(io, "{}", highlight.style.style_underline(underline))?;
 
-      if line_number == end_line_number
-        && let Some(description) = &highlight.description
-      {
+      if is_last_line && let Some(description) = &highlight.description {
         write!(io, " {}", highlight.style.style_underline(description))?;
         wrote_description = true;
       }
@@ -505,9 +574,8 @@ fn print_snippet(
     }
 
     if wrote_description {
-      print_padded(io, colors::intense_blue(" | "), max_line_number_digits)?;
+      print_padded(io, colors::intense_blue(" | "), bar_indent)?;
       writeln!(io)?;
-      previous_line_empty = true;
     }
 
     previous_line_number = Some(line_number);
@@ -680,6 +748,179 @@ mod tests {
   use super::*;
   use crate::ModuleSpecifier;
   use crate::SourceTextInfo;
+
+  struct TestDiagnostic {
+    text_info: SourceTextInfo,
+    range: DiagnosticSourceRange,
+    description: Option<&'static str>,
+  }
+
+  impl Diagnostic for TestDiagnostic {
+    fn level(&self) -> DiagnosticLevel {
+      DiagnosticLevel::Error
+    }
+    fn code(&self) -> Cow<'_, str> {
+      Cow::Borrowed("test-rule")
+    }
+    fn message(&self) -> Cow<'_, str> {
+      Cow::Borrowed("a test diagnostic")
+    }
+    fn location(&self) -> DiagnosticLocation<'_> {
+      DiagnosticLocation::ModulePosition {
+        specifier: Cow::Owned("file:///test.ts".parse().unwrap()),
+        source_pos: DiagnosticSourcePos::SourcePos(
+          self.range.start.pos(&self.text_info),
+        ),
+        text_info: Cow::Borrowed(&self.text_info),
+      }
+    }
+    fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
+      Some(DiagnosticSnippet {
+        source: Cow::Borrowed(&self.text_info),
+        highlights: vec![DiagnosticSnippetHighlight {
+          range: self.range,
+          style: DiagnosticSnippetHighlightStyle::Error,
+          description: self.description.map(Cow::Borrowed),
+        }],
+      })
+    }
+    fn hint(&self) -> Option<Cow<'_, str>> {
+      None
+    }
+    fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>> {
+      None
+    }
+    fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
+      Cow::Borrowed(&[])
+    }
+    fn docs_url(&self) -> Option<Cow<'_, str>> {
+      None
+    }
+  }
+
+  /// Removes ANSI escape sequences so rendered snippets can be compared as
+  /// plain text regardless of whether colors are enabled.
+  fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+      if c == '\u{1b}' {
+        for c in chars.by_ref() {
+          if c == 'm' {
+            break;
+          }
+        }
+      } else {
+        out.push(c);
+      }
+    }
+    out
+  }
+
+  fn render(text: &str, range: DiagnosticSourceRange) -> String {
+    render_with_description(text, range, None)
+  }
+
+  fn render_with_description(
+    text: &str,
+    range: DiagnosticSourceRange,
+    description: Option<&'static str>,
+  ) -> String {
+    let diagnostic = TestDiagnostic {
+      text_info: SourceTextInfo::new(text.into()),
+      range,
+      description,
+    };
+    strip_ansi(&diagnostic.display().to_string())
+  }
+
+  fn line_col(line: usize, column: usize) -> DiagnosticSourcePos {
+    DiagnosticSourcePos::LineAndCol { line, column }
+  }
+
+  #[test]
+  fn test_snippet_single_line() {
+    // A single-line highlight is rendered without a gutter marker column and
+    // with carets directly under the highlighted range.
+    let output = render(
+      "const value = 1;\n",
+      DiagnosticSourceRange {
+        start: line_col(0, 6),
+        end: line_col(0, 11),
+      },
+    );
+    assert_eq!(
+      output,
+      "error[test-rule]: a test diagnostic\n \
+       --> /test.ts:1:7\n  \
+       | \n\
+       1 | const value = 1;\n  \
+       |       ^^^^^\n"
+    );
+  }
+
+  #[test]
+  fn test_snippet_multi_line_elided() {
+    // A highlight spanning more than `MAX_HIGHLIGHT_LINES` lines shows a `>`
+    // gutter marker on each span line, underlines only the first and last line
+    // (trimming leading indentation on the last), and elides the middle with a
+    // `...` marker.
+    let text = "const p = new Promise(async (resolve) => {\n  \
+                const a = 1;\n  \
+                const b = 2;\n  \
+                const c = 3;\n  \
+                const d = 4;\n  \
+                const e = 5;\n  \
+                resolve(a);\n\
+                });\n";
+    let output = render(
+      text,
+      DiagnosticSourceRange {
+        start: line_col(0, 22),
+        end: line_col(7, 2),
+      },
+    );
+    assert_eq!(
+      output,
+      "error[test-rule]: a test diagnostic\n   --> /test.ts:1:23\n    | \n> 1 | const p = new Promise(async (resolve) => {\n    |                       ^^^^^^^^^^^^^^^^^^^^\n> 2 |   const a = 1;\n> 3 |   const b = 2;\n> 4 |   const c = 3;\n   ...\n> 8 | });\n    | ^^\n"
+    );
+  }
+
+  #[test]
+  fn test_snippet_multi_line_short_not_elided() {
+    // A highlight spanning at most `MAX_HIGHLIGHT_LINES` lines shows every line
+    // (with the gutter marker) but is not elided.
+    let text = "foo(\n  1,\n  2,\n)\n";
+    let output = render(
+      text,
+      DiagnosticSourceRange {
+        start: line_col(0, 0),
+        end: line_col(3, 1),
+      },
+    );
+    assert_eq!(
+      output,
+      "error[test-rule]: a test diagnostic\n   --> /test.ts:1:1\n    | \n> 1 | foo(\n    | ^^^^\n> 2 |   1,\n> 3 |   2,\n> 4 | )\n    | ^\n"
+    );
+  }
+
+  #[test]
+  fn test_snippet_multi_line_description_on_last_line() {
+    // The highlight description is attached to the last line of the span.
+    let text = "foo(\n  1,\n)\n";
+    let output = render_with_description(
+      text,
+      DiagnosticSourceRange {
+        start: line_col(0, 0),
+        end: line_col(2, 1),
+      },
+      Some("this call"),
+    );
+    assert_eq!(
+      output,
+      "error[test-rule]: a test diagnostic\n   --> /test.ts:1:1\n    | \n> 1 | foo(\n    | ^^^^\n> 2 |   1,\n> 3 | )\n    | ^ this call\n    | \n"
+    );
+  }
 
   #[test]
   fn test_display_width() {
