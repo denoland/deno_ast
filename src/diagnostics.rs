@@ -408,10 +408,19 @@ fn print_diagnostic(
   Ok(())
 }
 
+/// The number of leading lines shown for a collapsed multi-line highlight.
+const HIGHLIGHT_HEAD_LINES: usize = 2;
+
+/// The number of trailing lines shown for a collapsed multi-line highlight.
+const HIGHLIGHT_TAIL_LINES: usize = 2;
+
 /// The maximum number of source lines shown for a single highlight before its
 /// middle is collapsed. A highlight spanning more lines than this shows its
-/// leading lines, a `...` elision marker, and its final line.
-const MAX_HIGHLIGHT_LINES: usize = 5;
+/// first `HIGHLIGHT_HEAD_LINES` lines, a `...` elision marker, and its last
+/// `HIGHLIGHT_TAIL_LINES` lines. This is `HEAD + TAIL + 1` so that collapsing
+/// only happens when it actually elides more than a single line.
+const MAX_HIGHLIGHT_LINES: usize =
+  HIGHLIGHT_HEAD_LINES + HIGHLIGHT_TAIL_LINES + 1;
 
 /// Prints a snippet to the given writer and returns the line number indent.
 fn print_snippet(
@@ -459,14 +468,17 @@ fn print_snippet(
         lines_to_show.entry(line_number).or_default().push(i);
       }
     } else {
-      // Show the leading lines of the span, then elide the middle, then show
-      // the final line. Reserve one slot in the frame for the final line.
-      let head_end = start_line_number + MAX_HIGHLIGHT_LINES - 2;
+      // Show the first `HIGHLIGHT_HEAD_LINES` and last `HIGHLIGHT_TAIL_LINES`
+      // lines of the span, eliding the middle with a `...` marker.
+      let head_end = start_line_number + HIGHLIGHT_HEAD_LINES - 1;
+      let tail_start = end_line_number - (HIGHLIGHT_TAIL_LINES - 1);
       for line_number in start_line_number..=head_end {
         lines_to_show.entry(line_number).or_default().push(i);
       }
       elided_after.insert(head_end);
-      lines_to_show.entry(end_line_number).or_default().push(i);
+      for line_number in tail_start..=end_line_number {
+        lines_to_show.entry(line_number).or_default().push(i);
+      }
     }
   }
 
@@ -864,7 +876,7 @@ mod tests {
     // A highlight spanning more than `MAX_HIGHLIGHT_LINES` lines shows a `>`
     // gutter marker on each span line, underlines only the first and last line
     // (trimming leading indentation on the last), and elides the middle with a
-    // `...` marker.
+    // `...` marker, keeping the first two and last two lines.
     let text = "const p = new Promise(async (resolve) => {\n  \
                 const a = 1;\n  \
                 const b = 2;\n  \
@@ -882,7 +894,7 @@ mod tests {
     );
     assert_eq!(
       output,
-      "error[test-rule]: a test diagnostic\n   --> /test.ts:1:23\n    | \n> 1 | const p = new Promise(async (resolve) => {\n    |                       ^^^^^^^^^^^^^^^^^^^^\n> 2 |   const a = 1;\n> 3 |   const b = 2;\n> 4 |   const c = 3;\n   ...\n> 8 | });\n    | ^^\n"
+      "error[test-rule]: a test diagnostic\n   --> /test.ts:1:23\n    | \n> 1 | const p = new Promise(async (resolve) => {\n    |                       ^^^^^^^^^^^^^^^^^^^^\n> 2 |   const a = 1;\n   ...\n> 7 |   resolve(a);\n> 8 | });\n    | ^^\n"
     );
   }
 
