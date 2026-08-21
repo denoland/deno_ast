@@ -511,6 +511,27 @@ impl fmt::Debug for ParsedSource {
   }
 }
 
+/// Allows handing an already parsed source to other crates that work with
+/// dprint-swc-ext ast views (ex. dprint-plugin-typescript) so that they
+/// don't have to parse the text again.
+#[cfg(feature = "view")]
+impl dprint_swc_ext::view::ProgramInfoProvider for ParsedSource {
+  fn program_info(&self) -> crate::view::ProgramInfo<'_> {
+    crate::view::ProgramInfo {
+      program: match self.program_ref() {
+        ProgramRef::Module(module) => crate::view::ProgramRef::Module(module),
+        ProgramRef::Script(script) => crate::view::ProgramRef::Script(script),
+      },
+      text_info: Some(self.text_info_lazy()),
+      tokens: self.0.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
+      comments: Some(crate::view::Comments {
+        leading: self.comments().leading_map(),
+        trailing: self.comments().trailing_map(),
+      }),
+    }
+  }
+}
+
 #[cfg(feature = "view")]
 impl ParsedSource {
   /// Gets a dprint-swc-ext view of the module.
@@ -524,20 +545,7 @@ impl ParsedSource {
     &self,
     with_view: impl FnOnce(crate::view::Program<'a>) -> T,
   ) -> T {
-    let program_info = crate::view::ProgramInfo {
-      program: match self.program_ref() {
-        ProgramRef::Module(module) => crate::view::ProgramRef::Module(module),
-        ProgramRef::Script(script) => crate::view::ProgramRef::Script(script),
-      },
-      text_info: Some(self.text_info_lazy()),
-      tokens: self.0.tokens.as_ref().map(|t| t as &[TokenAndSpan]),
-      comments: Some(crate::view::Comments {
-        leading: self.comments().leading_map(),
-        trailing: self.comments().trailing_map(),
-      }),
-    };
-
-    crate::view::with_ast_view(program_info, with_view)
+    dprint_swc_ext::view::ProgramInfoProvider::with_view(self, with_view)
   }
 }
 
@@ -571,6 +579,34 @@ mod test {
     });
 
     assert_eq!(result, 2);
+  }
+
+  #[cfg(feature = "view")]
+  #[test]
+  fn should_provide_program_info_to_another_crate() {
+    use crate::ModuleSpecifier;
+    use crate::view::NodeTrait;
+    use dprint_swc_ext::view::ProgramInfoProvider;
+
+    // stands in for another crate, which knows nothing about deno_ast
+    fn first_child_text(source: &impl ProgramInfoProvider) -> String {
+      source.with_view(|program| program.children()[0].text().to_string())
+    }
+
+    let parsed_source = parse_program(ParseParams {
+      specifier: ModuleSpecifier::parse("file:///my_file.js").unwrap(),
+      text: "// 1
+1 + 1
+// 2"
+        .into(),
+      media_type: MediaType::JavaScript,
+      capture_tokens: true,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .expect("should parse");
+
+    assert_eq!(first_child_text(&parsed_source), "1 + 1");
   }
 
   #[test]
